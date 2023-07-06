@@ -144,7 +144,8 @@ file(GLOB DGL_SRC
   src/geometry/*.cc
   src/geometry/cpu/*.cc
   src/partition/*.cc
-)
+  src/groot/*.cc
+  ) 
 
 file(GLOB_RECURSE DGL_SRC_1
   src/api/*.cc
