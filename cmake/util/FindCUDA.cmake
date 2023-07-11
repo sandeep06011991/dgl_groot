@@ -24,7 +24,7 @@ macro(find_cuda use_cuda)
   if(__use_cuda STREQUAL "ON")
     include(FindCUDA)
   endif()
-
+  
   # additional libraries
   if(CUDA_FOUND)
     if(MSVC)

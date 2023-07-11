@@ -2,9 +2,9 @@ cmake_minimum_required(VERSION 3.5)
 ########################################
 # Borrowed and adapted from TVM project
 ########################################
-project(dgl C CXX)
+project(dgl C CXX CUDA)
 message(STATUS "Start configuring project ${PROJECT_NAME}")
-
+set(CMAKE_CUDA_ARCHITECTURES 70) 
 # cmake utils
 include(cmake/util/Util.cmake)
 include(cmake/util/MshadowUtil.cmake)
@@ -166,7 +166,8 @@ list(APPEND DGL_SRC ${DGL_RPC_SRC})
 if(USE_CUDA)
   dgl_config_cuda(DGL_CUDA_SRC)
   list(APPEND DGL_SRC ${DGL_CUDA_SRC})
-  cuda_add_library(dgl SHARED ${DGL_SRC})
+  message(STATUS "MARK !!!!!!!!!!!!!!!! ${DGL_SRC}" ) 
+  add_library(dgl SHARED ${DGL_SRC})
 else(USE_CUDA)
   add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)

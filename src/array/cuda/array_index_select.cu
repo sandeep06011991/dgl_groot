@@ -92,7 +92,7 @@ template __nv_bfloat16 IndexSelect<kDGLCUDA, __nv_bfloat16>(
 #endif  // BF16_ENABLED
 template float IndexSelect<kDGLCUDA, float>(NDArray array, int64_t index);
 template double IndexSelect<kDGLCUDA, double>(NDArray array, int64_t index);
-
+  
 }  // namespace impl
 }  // namespace aten
 }  // namespace dgl

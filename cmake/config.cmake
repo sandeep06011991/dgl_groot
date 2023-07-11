@@ -29,7 +29,14 @@
 # - ON: enable CUDA with cmake's auto search
 # - OFF: disable CUDA
 # - /path/to/cuda: use specific path to cuda toolkit
+
 set(USE_CUDA ON)
+
+set(CUDA_TOOLKIT_ROOT_DIR /usr/local/cuda-11.8)
+set(CUDA_CUDART_LIBRARY /home/ubuntu/miniconda3/envs/groot/lib/)
+set(CUDA_CUBLAS_LIBRARY /usr/local/cuda-11.8/targets/x86_64-linux/lib)
+set(CUDA_CURAND_LIBRARY /usr/local/cuda-11.8/targets/x86_64-linux/lib)
+# set(CUDA_cusparse_LIBRARY /usr/local/cuda-11.8/targets/x86_64-linux/lib/libcusparse.so)
 
 #---------------------------------------------
 # Misc.

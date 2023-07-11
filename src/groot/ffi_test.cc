@@ -9,6 +9,7 @@
 
 #include "../c_api_common.h"
 #include <vector>
+#include "cuda/array_scatter.h"
 using namespace dgl::runtime;
 
 namespace dgl{
@@ -18,8 +19,11 @@ namespace dgl{
             public:
                 IdArray source_array;
                 IdArray partition_map;
+                IdArray index;
                 int num_partitions;
                 List<Value>  scattered_arrays;
+                
+                List<Value> csum;
  
                 List<Value> scatter_inverse;
                 //  List<Value> list;           // works
@@ -27,15 +31,24 @@ namespace dgl{
                 //  *     list.push_back(Value(MakeValue(NDArray::Empty(shape, dtype, ctx))));  //
                 List<Value>  scatter_sizes;
                 
-                ScatteredArrayObject(){
-                    DGLContext context{kDGLCPU, 0};
-                    source_array = aten::Range(10, 100, 32, context);
+                ScatteredArrayObject(IdArray source, IdArray partition, int num_partitions){
+                    this->source_array = source;
+                    this->partition_map = partition; 
+                    this->num_partitions = num_partitions;
+                    DGLContext ctx = source->ctx;
+                    uint8_t nbits = 32;
+                    index = aten::NewIdArray(source->shape[0],  ctx, nbits );
+                    index = scatter_index(source, partition);
+ 
+                    // DGLContext context{kDGLCPU, 0};
+                    // source_array = aten::Range(10, 100, 32, context);
 
                 }
 
                 void VisitAttrs(AttrVisitor *v) final {
                     v->Visit("source_array", &source_array);
                     v->Visit("partition_map", &partition_map);
+                    v->Visit("index", &index);
                     v->Visit("num_partitions", &num_partitions);
                     v->Visit("scattered_arrays", &scattered_arrays);
                     v->Visit("scatter_inverse", &scatter_inverse);
@@ -75,7 +88,6 @@ namespace dgl{
      };   
     DGL_REGISTER_GLOBAL("groot._CAPI_testffi")
         .set_body([](DGLArgs args, DGLRetValue* rv) {
-        
         *rv = TestObject::getObject()->update();
         });
     
@@ -83,7 +95,11 @@ namespace dgl{
 
      DGL_REGISTER_GLOBAL("groot._CAPI_dummyScatter")
         .set_body([](DGLArgs args, DGLRetValue* rv) {
-        auto ob = std::make_shared<ScatteredArrayObject>();
+        IdArray src_array = args[0];
+        IdArray partition = args[1];
+        int num_partitions = args[2];
+        CHECK_EQ(src_array->shape[0], partition->shape[0]);
+        auto ob = std::make_shared<ScatteredArrayObject>(src_array, partition, num_partitions);
         *rv = ob;
         });
     }
