@@ -142,6 +142,7 @@ class NeighborSampler(BlockSampler):
         output_nodes = seed_nodes
         blocks = []
         for fanout in reversed(self.fanouts):
+            # Frontier is heterograph in the global ordering.
             frontier = g.sample_neighbors(
                 seed_nodes,
                 fanout,
@@ -152,6 +153,9 @@ class NeighborSampler(BlockSampler):
                 exclude_edges=exclude_eids,
             )
             eid = frontier.edata[EID]
+            # Break the frontier into self and remote
+            # Shuffle the frontier 
+            # New set of seeds 
             block = to_block(frontier, seed_nodes)
             block.edata[EID] = eid
             seed_nodes = block.srcdata[NID]

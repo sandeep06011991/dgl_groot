@@ -5,6 +5,9 @@ cmake_minimum_required(VERSION 3.5)
 project(dgl C CXX)
 message(STATUS "Start configuring project ${PROJECT_NAME}")
 
+#Adding to have better vs code support
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
+
 # cmake utils
 include(cmake/util/Util.cmake)
 include(cmake/util/MshadowUtil.cmake)
@@ -23,6 +26,8 @@ endif()
 # and add set(OPTION VALUE) to override these build options.
 # Alernatively, use cmake -DOPTION=VALUE through command-line.
 dgl_option(USE_CUDA "Build with CUDA" OFF)
+dgl_option(USE_NCCL "Build with NCCL support" OFF)
+dgl_option(USE_SYSTEM_NCCL "Build using system's NCCL library" OFF)
 dgl_option(USE_OPENMP "Build with OpenMP" ON)
 dgl_option(USE_LIBXSMM "Build with LIBXSMM library optimization" ON)
 dgl_option(BUILD_CPP_TEST "Build cpp unittest executables" OFF)
@@ -146,6 +151,10 @@ file(GLOB DGL_SRC
   src/geometry/*.cc
   src/geometry/cpu/*.cc
   src/partition/*.cc
+  src/groot/*.cc
+  src/groot/base/*.cc
+  src/groot/comm/*.cc 
+  src/groot/conn/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1
@@ -167,10 +176,30 @@ list(APPEND DGL_SRC ${DGL_RPC_SRC})
 if(USE_CUDA)
   dgl_config_cuda(DGL_CUDA_SRC)
   list(APPEND DGL_SRC ${DGL_CUDA_SRC})
+  if(USE_NCCL)
+    add_definitions(-DDGL_USE_NCCL)
+    # if (USE_SYSTEM_NCCL)
+    #   include(cmake/util/FindNccl.cmake)
+    #   include_directories(${NCCL_INCLUDE_DIR})
+    # else()
+    # Use thirdparty nccl
+    include(cmake/modules/NCCL.cmake)
+    cuda_include_directories(BEFORE ${NCCL_INCLUDE_DIR})
+    # endif()
+    list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
+  endif(USE_NCCL)
   cuda_add_library(dgl SHARED ${DGL_SRC})
-else(USE_CUDA)
-  add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)
+
+
+# # Configure cuda
+# if(USE_CUDA)
+#   # dgl_config_cuda(DGL_CUDA_SRC)
+#   list(APPEND DGL_SRC ${DGL_CUDA_SRC})
+#   cuda_add_library(dgl SHARED ${DGL_SRC})
+# else(USE_CUDA)
+#   add_library(dgl SHARED ${DGL_SRC})
+# endif(USE_CUDA)
 
 set_property(TARGET dgl PROPERTY CXX_STANDARD 14)
 
@@ -184,6 +213,22 @@ target_include_directories(dgl PRIVATE "tensoradapter/include")
 target_include_directories(dgl PRIVATE "third_party/nanoflann/include")
 target_include_directories(dgl PRIVATE "third_party/libxsmm/include")
 target_include_directories(dgl PRIVATE "third_party/pcg/include")
+target_include_directories(dgl PRIVATE "third_party/nccl/include")
+
+# ZMQ
+find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)
+find_library(ZMQ_LIBRARY NAMES zmq)
+
+if(ZMQ_INCLUDE_DIR AND ZMQ_LIBRARY)
+  message(STATUS "Found ZeroMQ:")
+  message(STATUS "  (Headers) ${ZMQ_INCLUDE_DIR}")
+  message(STATUS "  (Library) ${ZMQ_LIBRARY}")
+else()
+  message(FATAL_ERROR "ZeorMQ not found")
+endif()
+target_include_directories(dgl PRIVATE ${ZMQ_INCLUDE_DIR})
+list(APPEND DGL_LINKER_LIBS ${ZMQ_LIBRARY})
+
 
 # For serialization
 if (USE_HDFS)
