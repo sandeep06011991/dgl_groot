@@ -7,7 +7,7 @@ data = torch.tensor([1,2,3,4,5,6,7,8], dtype = torch.int32).to(0)
 p_map = torch.tensor([0,2,1,0,1,0,1,0], dtype = torch.int32).to(0)
 num_parts = 3
 print(torch.device(data.device), torch.device(0))
-obj = test(data, p_map, num_parts)
+obj = ScatteredTensor(data, p_map, num_parts)
 print(type(obj.index))
 print(obj.sizes)
 ################## Three main elements ##################

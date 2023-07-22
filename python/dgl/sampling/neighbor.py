@@ -406,7 +406,7 @@ def _sample_neighbors(
         )
     device = utils.context_of(nodes)
     ctx = utils.to_dgl_context(device)
-    nodes_all_types = []
+    nodes_allf_types = []
     for ntype in g.ntypes:
         if ntype in nodes:
             nodes_all_types.append(F.to_dgl_nd(nodes[ntype]))
