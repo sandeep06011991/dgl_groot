@@ -1,9 +1,10 @@
 # IDE
 .idea
-build
-cmake-build-release
-cmake-build-debug
-
+.vscode
+build/
+cmake-build-release/
+cmake-build-debug/
+third_party/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
