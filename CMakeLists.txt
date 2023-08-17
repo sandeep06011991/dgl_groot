@@ -190,10 +190,18 @@ if(USE_CUDA)
     list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
     list(APPEND DGL_LINKER_LIBS /usr/local/cuda-11.8/targets/x86_64-linux/lib/stubs/libnvidia-ml.so)
   endif(USE_NCCL)
-  cuda_add_library(dgl SHARED ${DGL_SRC})
+  cuda_add_library(dgl SHARED ${DGL_SRC}
+          src/groot_dataloader/block.cc
+          src/groot_dataloader/loc_dataloader.cc
+          src/groot_dataloader/cuda/rowwise_sampling.cu
+          src/groot_dataloader/cuda/cuda_hashtable.cu
+          src/groot_dataloader/cuda/cuda_mapping.cu
+          src/groot_dataloader/cuda/cuda_index_select.cu)
 endif(USE_CUDA)
 
-
+add_executable(groot_main src/groot_dataloader/main.cc)
+target_link_libraries(groot_main dgl)
+target_include_directories(groot_main PRIVATE "include")
 # # Configure cuda
 # if(USE_CUDA)
 #   # dgl_config_cuda(DGL_CUDA_SRC)
@@ -203,7 +211,7 @@ endif(USE_CUDA)
 #   add_library(dgl SHARED ${DGL_SRC})
 # endif(USE_CUDA)
 
-set_property(TARGET dgl PROPERTY CXX_STANDARD 14)
+set_property(TARGET dgl PROPERTY CXX_STANDARD 17)
 
 # include directories
 target_include_directories(dgl PRIVATE "include")

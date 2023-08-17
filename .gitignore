@@ -1,5 +1,8 @@
 # IDE
 .idea
+build
+cmake-build-release
+cmake-build-debug
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
