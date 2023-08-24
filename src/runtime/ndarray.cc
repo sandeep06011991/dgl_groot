@@ -190,6 +190,31 @@ NDArray NDArray::Empty(
   return ret;
 }
 
+void NDArray::CopyFromTo(DGLArray* from,
+                         DGLArray* to,
+                         DGLStreamHandle stream) {
+  size_t from_size = GetDataSize(*from);
+  size_t to_size = GetDataSize(*to);
+  CHECK_EQ(from_size, to_size)
+      << "DGLArrayCopyFromTo: The size must exactly match";
+
+  CHECK(from->ctx.device_type == to->ctx.device_type
+        || from->ctx.device_type == kDGLCPU
+        || to->ctx.device_type == kDGLCPU)
+      << "Can not copy across different ctx types directly";
+
+  // Use the context that is *not* a cpu context to get the correct device
+  // api manager.
+  DGLContext ctx = from->ctx.device_type != kDGLCPU ? from->ctx : to->ctx;
+
+  DeviceAPI::Get(ctx)->CopyDataFromTo(
+      from->data, static_cast<size_t>(from->byte_offset),
+      to->data, static_cast<size_t>(to->byte_offset),
+      from_size, from->ctx, to->ctx, from->dtype, stream);
+}
+
+
+
 void NDArray::CopyFromTo(DGLArray* from, DGLArray* to) {
   size_t from_size = GetDataSize(*from);
   size_t to_size = GetDataSize(*to);

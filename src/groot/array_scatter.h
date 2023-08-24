@@ -7,7 +7,12 @@ namespace dgl{
     namespace groot{
         IdArray   getBoundaryOffsets(IdArray index_cum_sums, int num_partitions);
 
+        IdArray gatherArray(IdArray values, IdArray index, int num_partitions);
+
         namespace impl{
+            template<DGLDeviceType XPU, typename  IdType>
+            IdArray gatherIndexFromArray(IdArray values, IdArray index, int num_partitions);
+
             template<DGLDeviceType XPU, typename IdType>
             IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
         }

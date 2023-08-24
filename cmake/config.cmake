@@ -30,9 +30,9 @@
 # - OFF: disable CUDA
 # - /path/to/cuda: use specific path to cuda toolkit
 set(USE_CUDA ON)
-set(CUDA_TOOLKIT_ROOT_DIR "/usr/local/cuda-11.8")
+set(CUDA_TOOLKIT_ROOT_DIR $ENV{CUDA_HOME})
 set(USE_NCCL ON)
-
+set(USE_SYSTEM_NCCL ON)
 #---------------------------------------------
 # Misc.
 #---------------------------------------------

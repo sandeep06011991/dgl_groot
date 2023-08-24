@@ -58,7 +58,8 @@ void InitNcclComm(ncclComm_t *nccl_comm, DSContext *ds_context, int world_size, 
   ncclCommInitRank(nccl_comm, world_size, nccl_id, rank);
 }
 
-void Initialize(int rank, int world_size, int thread_num, bool enable_kernel_control, bool enable_comm_control, bool enable_profiler) {
+void Initialize(int rank, int world_size, int thread_num, \
+                  bool enable_kernel_control, bool enable_comm_control, bool enable_profiler) {
   LOG(INFO) << "Rank [" << rank << "] initializing DS context";
   auto* ds_context = DSContext::Global();
   ds_context->initialized = true;
@@ -78,7 +79,9 @@ void Initialize(int rank, int world_size, int thread_num, bool enable_kernel_con
   ds_context->enable_comm_control = enable_comm_control;
 
   int use_nccl = GetEnvParam("USE_NCCL", 0);
+  use_nccl = true;
   if (!use_nccl) {
+    LOG(INFO) << "Not Using NCCL\n";
     // Build our communication environment
     ds_context->comm_info.resize(thread_num);
     wrapNvmlInit();
@@ -107,6 +110,11 @@ void Initialize(int rank, int world_size, int thread_num, bool enable_kernel_con
   //   ds_context->profiler = std::unique_ptr<Profiler>(new Profiler());
   // }
   LOG(INFO) << "Enable profiler? " << enable_profiler;
+  auto* ds_thread_local = DSThreadEntry::ThreadLocal();
+  ds_thread_local->pinned_array_counter = 0;
+  for(int i = 0; i < N_PINNED_ARRAY; ++i) {
+    ds_thread_local->pinned_array[i] = CreatePinnedArray(DLDataType({kDLInt, 64, 1}), THREAD_LOCAL_PINNED_ARRAY_SIZE);
+  }
 }
 
 DGL_REGISTER_GLOBAL("ds._CAPI_DGLDSInitialize")

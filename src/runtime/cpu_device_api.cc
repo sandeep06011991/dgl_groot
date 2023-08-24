@@ -56,6 +56,20 @@ class CPUDeviceAPI final : public DeviceAPI {
 #endif
   }
 
+
+  void CopyDataFromTo(const void* from,
+                      size_t from_offset,
+                      void* to,
+                      size_t to_offset,
+                      size_t size,
+                      DGLContext ctx_from,
+                      DGLContext ctx_to,
+                      DGLDataType type_hint,
+                      DGLStreamHandle stream) final {
+    memcpy(static_cast<char*>(to) + to_offset,
+           static_cast<const char*>(from) + from_offset,
+           size);
+  }
   void CopyDataFromTo(
       const void* from, size_t from_offset, void* to, size_t to_offset,
       size_t size, DGLContext ctx_from, DGLContext ctx_to,

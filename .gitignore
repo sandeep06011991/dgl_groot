@@ -172,3 +172,9 @@ config.cmake
 
 # model file
 *.pth
+
+cmake-build-debug/
+.vscode/
+_build_cmake_tools/
+
+

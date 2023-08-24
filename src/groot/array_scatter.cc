@@ -12,6 +12,16 @@ namespace dgl{
             });
             return ret;
         }
+
+        IdArray gatherArray(IdArray values, IdArray index, int num_partitions){
+            IdArray ret;
+            ATEN_ID_TYPE_SWITCH(values->dtype, IdType, {
+               ret = impl::gatherIndexFromArray<kDGLCUDA, IdType>( values, index, num_partitions);
+            });
+            return ret;
+
+        }
+
     }
 
 

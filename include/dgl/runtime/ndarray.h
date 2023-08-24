@@ -165,13 +165,14 @@ class NDArray {
   inline void CopyFrom(const NDArray& other);
   inline void CopyTo(DGLArray* other) const;
   inline void CopyTo(const NDArray& other) const;
-
+  inline void CopyTo(const NDArray& other, DGLStreamHandle stream) const;
   /**
    * @brief Copy the data to another context.
    * @param ctx The target context.
    * @return The array under another context.
    */
   inline NDArray CopyTo(const DGLContext& ctx) const;
+  inline NDArray CopyTo(const DGLContext& ctx, DGLStreamHandle stream) const;
 
   /**
    * @brief Return a new array with a copy of the content.
@@ -533,6 +534,8 @@ inline void NDArray::CopyFrom(const NDArray& other) {
   CopyFrom(&(other.data_->dl_tensor));
 }
 
+
+
 inline void NDArray::CopyTo(DGLArray* other) const {
   CHECK(data_ != nullptr);
   CopyFromTo(&(data_->dl_tensor), other);
@@ -566,6 +569,22 @@ inline NDArray NDArray::CopyTo(const DGLContext& ctx) const {
       std::vector<int64_t>(array->shape, array->shape + array->ndim),
       array->dtype, ctx);
   this->CopyTo(ret);
+  return ret;
+}
+
+
+inline void NDArray::CopyTo(const NDArray& other, DGLStreamHandle stream) const {
+  CHECK(data_ != nullptr);
+  CHECK(other.data_ != nullptr);
+  CopyFromTo(&(data_->dl_tensor), &(other.data_->dl_tensor), stream);
+}
+
+inline NDArray NDArray::CopyTo(const DGLContext& ctx, DGLStreamHandle stream) const {
+  CHECK(data_ != nullptr);
+  const DGLArray * dptr = operator->();
+  NDArray ret = Empty(std::vector<int64_t>(dptr->shape, dptr->shape + dptr->ndim),
+                      dptr->dtype, ctx);
+  this->CopyTo(ret, stream);
   return ret;
 }
 

@@ -312,6 +312,12 @@ if (LIBCXX_ENABLE_PARALLEL_ALGORITHMS)
 endif(LIBCXX_ENABLE_PARALLEL_ALGORITHMS)
 
 target_link_libraries(dgl ${DGL_LINKER_LIBS} ${DGL_RUNTIME_LINKER_LIBS})
+list(APPEND CMAKE_PREFIX_PATH "/home/ubuntu/mpich-4.1.2")
+find_package(MPI REQUIRED)
+add_executable(integ src/main.cc)
+#target_link_libraries(integ dgl)
+target_link_libraries(integ PUBLIC dgl MPI::MPI_CXX)
+target_include_directories(integ PRIVATE "include")
 if(MSVC)
   add_custom_command(
     TARGET dgl POST_BUILD COMMAND
