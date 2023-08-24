@@ -224,6 +224,7 @@ target_include_directories(dgl PRIVATE "third_party/nanoflann/include")
 target_include_directories(dgl PRIVATE "third_party/libxsmm/include")
 target_include_directories(dgl PRIVATE "third_party/pcg/include")
 target_include_directories(dgl PRIVATE "third_party/nccl/include")
+target_include_directories(dgl PRIVATE "third_party/NVTX/c/include")
 
 # ZMQ
 find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)

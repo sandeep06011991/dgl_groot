@@ -120,7 +120,7 @@ NDArray IndexSelect(NDArray array, IdArray index) {
   // if array is not pinned, index has the same context as array
   // if array is pinned, op dispatching depends on the context of index
   CHECK_VALID_CONTEXT(array, index);
-  ATEN_XPU_SWITCH_CUDA(index->ctx.device_type, XPU, "IndexSelect", {
+  ATEN_XPU_SWITCH_CUDA(index->ctx.device_type, XPU, "_IndexSelect", {
     ATEN_DTYPE_SWITCH(array->dtype, DType, "values", {
       ATEN_ID_TYPE_SWITCH(index->dtype, IdType, {
         ret = impl::IndexSelect<XPU, DType, IdType>(array, index);
@@ -136,7 +136,7 @@ ValueType IndexSelect(NDArray array, int64_t index) {
   CHECK(index >= 0 && index < array.NumElements())
       << "Index " << index << " is out of bound.";
   ValueType ret = 0;
-  ATEN_XPU_SWITCH_CUDA(array->ctx.device_type, XPU, "IndexSelect", {
+  ATEN_XPU_SWITCH_CUDA(array->ctx.device_type, XPU, "_IndexSelect", {
     ATEN_DTYPE_SWITCH(array->dtype, DType, "values", {
       ret = impl::IndexSelect<XPU, DType>(array, index);
     });

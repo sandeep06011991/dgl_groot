@@ -227,7 +227,7 @@ void CSRRowWiseSamplingUniform(
     cudaStream_t stream) {
   const auto& ctx = rows->ctx;
   auto device = runtime::DeviceAPI::Get(ctx);
-  //  cudaStream_t stream = runtime::getCurrentCUDAStream();
+//  stream = runtime::getCurrentCUDAStream();
 
   const int64_t num_rows = rows->shape[0];
   const IdType* const slice_rows = static_cast<const IdType*>(rows->data);
@@ -239,9 +239,9 @@ void CSRRowWiseSamplingUniform(
   //  IdArray picked_idx =
   //      NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
 
-  NDArray picked_row = block->_row;
-  NDArray picked_col = block->_col;
-  NDArray picked_idx = block->_idx;
+  NDArray& picked_row = block->_row;
+  NDArray& picked_col = block->_col;
+  NDArray& picked_idx = block->_idx;
 
   IdType* const out_rows = static_cast<IdType*>(picked_row->data);
   IdType* const out_cols = static_cast<IdType*>(picked_col->data);
@@ -294,7 +294,7 @@ void CSRRowWiseSamplingUniform(
   //    new_len_tensor = NDArray::Empty(
   //        {1}, DGLDataTypeTraits<IdType>::dtype, DGLContext{kDGLCPU, 0});
   //  }
-  NDArray new_len_tensor = block->_newlen;
+  NDArray& new_len_tensor = block->_newlen;
   // copy using the internal current stream
   CUDA_CALL(cudaMemcpyAsync(
       new_len_tensor->data, out_ptr + num_rows, sizeof(IdType),
@@ -341,6 +341,7 @@ void CSRRowWiseSamplingUniform(
   //
   //  return COOMatrix(
   //      mat.num_rows, mat.num_cols, picked_row, picked_col, picked_idx);
+  device->StreamSync(ctx, stream);
 }
 
 template void CSRRowWiseSamplingUniform<kDGLCUDA, int32_t>(

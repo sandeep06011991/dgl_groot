@@ -25,8 +25,8 @@ struct BlockObject : public runtime::Object {
       int64_t batch_size, DGLDataType dtype) {
     int64_t est_num_src = batch_size;
     int64_t est_num_dst = batch_size;
-    for (int64_t i = 0; i < layer; i++) est_num_src *= fanouts[i];
-    for (int64_t i = 0; i <= layer; i++) est_num_dst *= fanouts[i];
+    for (int64_t i = 0; i < layer; i++) est_num_src *= (fanouts[i] + 1);
+    for (int64_t i = 0; i <= layer; i++) est_num_dst *= (fanouts[i] + 1);
     _row = NDArray::Empty({est_num_dst}, dtype, ctx);
     _new_row = NDArray::Empty({est_num_dst}, dtype, ctx);
     _col = NDArray::Empty({est_num_dst}, dtype, ctx);
@@ -37,7 +37,7 @@ struct BlockObject : public runtime::Object {
     _newlen = NDArray::Empty({1}, dtype, DGLContext{kDGLCPU, 0});
     _newlen.PinMemory_();
   };
-  int64_t num_src, num_dst; // number of src (unique) and destination (not unique)
+  int64_t num_src, num_dst; // number of src (unique) and destination (unique) for buliding the dgl block object
   NDArray _row;  // input nodes in original ids (coo format)
   NDArray _new_row; // input nodes in reindex-ed ids (0 based indexing)
   NDArray _col;  // destination nodes in original ids (coo format)
@@ -102,7 +102,7 @@ struct BlocksObject : public runtime::Object {
     }
 
     int64_t est_output_nodes = batch_size;
-    for (int64_t fanout : fanouts) est_output_nodes *= fanout;
+    for (int64_t fanout : fanouts) est_output_nodes *= (fanout + 1);
     _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
   };
 

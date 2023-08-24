@@ -7,7 +7,6 @@
 #include <cuda_runtime.h>
 #include <dgl/array.h>
 #include <dgl/runtime/c_runtime_api.h>
-
 #include "../../runtime/cuda/cuda_common.h"
 #include "cuda_constant.h"
 
@@ -97,13 +96,13 @@ class OrderedHashTable {
       IdType *const num_unique, cudaStream_t stream);
 
   void FillWithDupRevised(
-      const IdType *const input, const size_t num_input,
+      const IdType *const input, const int64_t num_input,
       // IdType *const unique, IdType *const num_unique,
       cudaStream_t stream);
   void FillWithDupMutable(
       IdType *const input, const size_t num_input, cudaStream_t stream);
   void CopyUnique(IdType *const unique, cudaStream_t stream);
-  void RefUnique(const IdType *&unique, IdType *const num_unique);
+  IdType RefUnique(const IdType *&unique);
   /** add all neighbours of nodes in hashtable to hashtable */
   void FillNeighbours(
       const IdType *const indptr, const IdType *const indices,
@@ -122,7 +121,7 @@ class OrderedHashTable {
   BucketN2O *_n2o_table;
   size_t _o2n_size;
   size_t _n2o_size;
-
+  NDArray _new_element_tensor;
   IdType _version;
   IdType _num_items;
 };
@@ -216,18 +215,16 @@ class CudaHashTable {
       using IdType = int64_t;
       auto _handle =
           static_cast<OrderedHashTable<IdType> *>(_cpu_hash_table_handle);
-      const IdType *unique;
-      IdType num_unique;
-      _handle->RefUnique(unique, &num_unique);
+      const IdType *unique{nullptr};
+      IdType num_unique = _handle->RefUnique(unique);
       return NDArray::CreateFromRaw(
           {num_unique}, _dtype, _ctx, (void *)(unique), false);
     } else if (_dtype.bits == 32) {
-      using IdType = int64_t;
+      using IdType = int32_t;
       auto _handle =
           static_cast<OrderedHashTable<IdType> *>(_cpu_hash_table_handle);
-      const IdType *unique;
-      IdType num_unique;
-      _handle->RefUnique(unique, &num_unique);
+      const IdType *unique{nullptr};
+      IdType num_unique = _handle->RefUnique(unique);
       return NDArray::CreateFromRaw(
           {num_unique}, _dtype, _ctx, (void *)(unique), false);
     } else {

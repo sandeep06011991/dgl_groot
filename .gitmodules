@@ -31,3 +31,6 @@
 [submodule "third_party/nccl"]
 	path = third_party/nccl
 	url = https://github.com/nvidia/nccl
+[submodule "third_party/NVTX"]
+	path = third_party/NVTX
+	url = https://github.com/NVIDIA/NVTX.git

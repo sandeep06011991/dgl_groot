@@ -13,6 +13,23 @@ namespace groot
 {
 namespace impl {
 
+inline std::pair<dim3, dim3> FindUVAKernelConfig(int feat_len, int feat_width, int feat_bytes=4, int CUDA_MAX_THREAD_NUM=1024){
+  CHECK_GE(feat_width, 0);
+  if (feat_width == 0) return std::make_pair(dim3(feat_len), dim3(1));
+  constexpr int warp_size = 32;
+  // TODO can we automatically detach this?
+  constexpr int max_pcie_requests = 256; // PCIe3.0 : 256. PCIe4.0: 768, PCIe 5.0: 768?
+  // round num threads to the nearest 32 that is no larger than CUDA_MAX_THREAD_NUM
+  int num_threads = ((feat_width + warp_size - 1) / warp_size)  * warp_size;
+  int per_block_request = (num_threads * feat_bytes + 127) / 128;;
+  if (num_threads<feat_width) {
+    const int scale = (num_threads + feat_width - 1) / feat_width;
+    per_block_request *= scale;
+  }
+  int num_blocks = (max_pcie_requests + per_block_request - 1) / per_block_request;
+  return std::make_pair(dim3(num_blocks), dim3(num_threads));
+}
+
 template <typename DType, typename IdType>
 __global__ void IndexSelectSingleKernel(
     const DType* array, const IdType* index, const int64_t length,
@@ -81,7 +98,8 @@ __global__ void IndexScatterMultiKernel(
 
 }  // namespace impl
 template <typename DType, typename IdType>
-NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream) {
+NDArray _IndexSelect(NDArray array, IdArray index, cudaStream_t stream) {
+  bool is_pinned = array.IsPinned();
   const int64_t arr_len = array->shape[0];
   const int64_t len = index->shape[0];
   int64_t num_feat = 1;
@@ -104,7 +122,7 @@ NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream) {
     CUDA_KERNEL_CALL(
         impl::IndexSelectSingleKernel, nb, nt, 0, stream, array_data, idx_data, len,
         arr_len, ret_data);
-  } else {
+  } else if (!is_pinned){
     dim3 block(256, 1);
     while (static_cast<int64_t>(block.x) >= 2 * num_feat) {
       block.x /= 2;
@@ -114,42 +132,50 @@ NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream) {
     CUDA_KERNEL_CALL(
         impl::IndexSelectMultiKernel, grid, block, 0, stream, array_data, num_feat,
         idx_data, len, arr_len, ret_data);
+  } else {
+    // array is pinned
+    const auto config = impl::FindUVAKernelConfig(len, num_feat, array->dtype.bits / 8);
+    const auto grid = config.first;
+    const auto block = config.second;
+    CUDA_KERNEL_CALL(
+        impl::IndexSelectMultiKernel, grid, block, 0, stream, array_data, num_feat,
+        idx_data, len, arr_len, ret_data);
   }
   return ret;
 }
-template NDArray IndexSelect<int8_t , int32_t>(
+template NDArray _IndexSelect<int8_t , int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int8_t , int64_t>(
+template NDArray _IndexSelect<int8_t , int64_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int16_t , int32_t>(
+template NDArray _IndexSelect<int16_t , int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int16_t , int64_t>(
+template NDArray _IndexSelect<int16_t , int64_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int32_t, int32_t>(
+template NDArray _IndexSelect<int32_t, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int32_t, int64_t>(
+template NDArray _IndexSelect<int32_t, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int64_t, int32_t>(
+template NDArray _IndexSelect<int64_t, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<int64_t, int64_t>(
+template NDArray _IndexSelect<int64_t, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<__half, int32_t>(
+template NDArray _IndexSelect<__half, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<__half, int64_t>(
+template NDArray _IndexSelect<__half, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
 #if BF16_ENABLED
-template NDArray IndexSelect<__nv_bfloat16, int32_t>(
+template NDArray _IndexSelect<__nv_bfloat16, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<__nv_bfloat16, int64_t>(
+template NDArray _IndexSelect<__nv_bfloat16, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
 #endif  // BF16_ENABLED
-template NDArray IndexSelect<float, int32_t>(
+template NDArray _IndexSelect<float, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<float, int64_t>(
+template NDArray _IndexSelect<float, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<double, int32_t>(
+template NDArray _IndexSelect<double, int32_t>(
     NDArray, IdArray, cudaStream_t stream);
-template NDArray IndexSelect<double, int64_t>(
+template NDArray _IndexSelect<double, int64_t>(
     NDArray, IdArray, cudaStream_t stream);
 }
 }

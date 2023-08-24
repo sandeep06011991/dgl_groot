@@ -682,7 +682,8 @@ OrderedHashTable<IdType>::OrderedHashTable(
       _num_items(0) {
   // make sure we will at least as many buckets as items.
   auto device = runtime::DeviceAPI::Get(_ctx);
-
+  _new_element_tensor = NDArray::Empty({1}, DGLDataTypeTraits<IdType >::dtype, DGLContext{kDGLCPU, 0});
+  _new_element_tensor.PinMemory_();
   _o2n_table = static_cast<BucketO2N *>(
       device->AllocWorkspace(_ctx, sizeof(BucketO2N) * _o2n_size));
   _n2o_table = static_cast<BucketN2O *>(
@@ -692,7 +693,7 @@ OrderedHashTable<IdType>::OrderedHashTable(
       _o2n_table, (int)Constant::kEmptyKey, sizeof(BucketO2N) * _o2n_size));
   CUDA_CALL(cudaMemset(
       _n2o_table, (int)Constant::kEmptyKey, sizeof(BucketN2O) * _n2o_size));
-  // LOG(INFO) << "cuda hashtable init with " << ToReadableSize(_o2n_size) << " O2N table size and " << ToReadableSize(_n2o_size) << " N2O table size";
+   // LOG(INFO) << "cuda hashtable init with " << ToReadableSize(_o2n_size) << " O2N table size and " << ToReadableSize(_n2o_size) << " N2O table size";
 }
 template <typename IdType>
 OrderedHashTable<IdType>::~OrderedHashTable() {
@@ -735,7 +736,7 @@ void OrderedHashTable<IdType>::FillWithDuplicates(
 
   IdType *item_prefix = static_cast<IdType *>(
       device->AllocWorkspace(_ctx, sizeof(IdType) * (grid.x + 1)));
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDuplicates cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDuplicates cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
 
   count_hashmap<IdType, Constant::kCudaBlockSize, Constant::kCudaTileSize>
       <<<grid, block, 0, cu_stream>>>(
@@ -749,7 +750,7 @@ void OrderedHashTable<IdType>::FillWithDuplicates(
   device->StreamSync(_ctx, stream);
 
   void *workspace = device->AllocWorkspace(_ctx, workspace_bytes);
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDuplicates cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (num_input + 1));
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDuplicates cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (num_input + 1));
 
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(
       workspace, workspace_bytes, item_prefix, item_prefix, grid.x + 1,
@@ -758,7 +759,7 @@ void OrderedHashTable<IdType>::FillWithDuplicates(
 
   IdType *gpu_num_unique =
       static_cast<IdType *>(device->AllocWorkspace(_ctx, sizeof(IdType)));
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates cuda gpu_num_unique malloc " << ToReadableSize(sizeof(IdType));
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates cuda gpu_num_unique malloc " << ToReadableSize(sizeof(IdType));
 
   compact_hashmap<IdType, Constant::kCudaBlockSize, Constant::kCudaTileSize>
       <<<grid, block, 0, cu_stream>>>(
@@ -778,8 +779,7 @@ void OrderedHashTable<IdType>::FillWithDuplicates(
     *num_unique = _num_items;
   }
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates num_unique "<< *num_unique;
-
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates num_unique "<< *num_unique;
   device->CopyDataFromTo(
       _n2o_table, 0, unique, 0, sizeof(IdType) * (*num_unique), _ctx, _ctx,
       DGLDataTypeTraits<IdType>::dtype);
@@ -803,26 +803,29 @@ void OrderedHashTable<IdType>::CopyUnique(
   device->StreamSync(_ctx, stream);
 }
 template <typename IdType>
-void OrderedHashTable<IdType>::RefUnique(
-    const IdType *&unique, IdType *const num_unique) {
+IdType OrderedHashTable<IdType>::RefUnique(const IdType *&unique) {
   unique = reinterpret_cast<const IdType *>(_n2o_table);
-  *num_unique = _num_items;
+  return _num_items;
 }
 template <typename IdType>
 void OrderedHashTable<IdType>::FillWithDupRevised(
-    const IdType *const input, const size_t num_input, cudaStream_t stream) {
+    const IdType *const input, const int64_t num_input, cudaStream_t cu_stream) {
   if (num_input == 0) return;
-  const size_t num_tiles = RoundUpDiv(num_input, Constant::kCudaTileSize);
+  CHECK(_new_element_tensor.IsPinned());
+  const int64_t num_tiles = RoundUpDiv(num_input, Constant::kCudaTileSize);
+  // LOG(INFO) << "FillWithDupRevised num_tiles: " << num_tiles;
+
   const dim3 grid(num_tiles);
   const dim3 block(Constant::kCudaBlockSize);
 
   auto device_table = MutableDeviceOrderedHashTable<IdType>(this);
   auto device = runtime::DeviceAPI::Get(_ctx);
-  auto cu_stream = static_cast<cudaStream_t>(stream);
+//  auto stream = static_cast<DGLStreamHandle>(cu_stream);
+  const auto& stream = cu_stream;
 
   IdType *item_prefix = static_cast<IdType *>(
       device->AllocWorkspace(_ctx, sizeof(IdType) * (grid.x + 1)));
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
+   // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
 
   // 1. insert into o2n table, collect each block's new insertion count
   generate_count_hashmap_duplicates<
@@ -831,17 +834,17 @@ void OrderedHashTable<IdType>::FillWithDupRevised(
           input, num_input, device_table, item_prefix, _version);
   device->StreamSync(_ctx, stream);
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised generate_count_hashmap_duplicates with "<< num_input << " inputs";
+   // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised generate_count_hashmap_duplicates with "<< num_input << " inputs";
 
   // 2. partial sum
-  size_t workspace_bytes;
+  size_t workspace_bytes{0};
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(
       nullptr, workspace_bytes, static_cast<IdType *>(nullptr),
       static_cast<IdType *>(nullptr), grid.x + 1, cu_stream));
   device->StreamSync(_ctx, stream);
 
   void *workspace = device->AllocWorkspace(_ctx, workspace_bytes);
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda workspace malloc "<< ToReadableSize(workspace_bytes);
+   // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda workspace malloc "<< ToReadableSize(workspace_bytes);
 
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(
       workspace, workspace_bytes, item_prefix, item_prefix, grid.x + 1,
@@ -854,19 +857,18 @@ void OrderedHashTable<IdType>::FillWithDupRevised(
       <<<grid, block, 0, cu_stream>>>(
           input, num_input, device_table, item_prefix, _num_items, _version);
   device->StreamSync(_ctx, stream);
+
   cudaEvent_t copyEvent;
   CUDA_CALL(cudaEventCreate(&copyEvent));
-
-  IdType tmp{0};
-  device->CopyDataFromTo(
-      item_prefix, grid.x * sizeof(IdType), &tmp, 0, sizeof(IdType), _ctx,
-      DGLContext{kDGLCPU, 0}, DGLDataTypeTraits<IdType>::dtype);
+  CUDA_CALL(cudaMemcpyAsync(_new_element_tensor->data, item_prefix + grid.x, sizeof(IdType), cudaMemcpyDeviceToHost, cu_stream));
   CUDA_CALL(cudaEventRecord(copyEvent, cu_stream));
+  CUDA_CALL(cudaEventSynchronize(copyEvent));
   CUDA_CALL(cudaEventDestroy(copyEvent));
-  // device->StreamSync(_ctx, stream);
-  _num_items += tmp;
-
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised num_unique "<< _num_items;
+  auto new_element = static_cast<const IdType *>(_new_element_tensor->data);
+  _num_items += *new_element;
+  if (_num_items > _n2o_size * 8) {
+    LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised num_unique "<< _num_items << " new elements " << *new_element;
+  }
 
   device->FreeWorkspace(_ctx, item_prefix);
   device->FreeWorkspace(_ctx, workspace);
@@ -888,7 +890,7 @@ void OrderedHashTable<IdType>::FillWithDupMutable(
 
   IdType *item_prefix = static_cast<IdType *>(
       device->AllocWorkspace(_ctx, sizeof(IdType) * (grid.x + 1)));
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * (grid.x + 1));
 
   // 1. insert into o2n table, collect each block's new insertion count
   generate_count_hashmap_duplicates_mutable<
@@ -897,7 +899,7 @@ void OrderedHashTable<IdType>::FillWithDupMutable(
           input, num_input, device_table, item_prefix, _version);
   device->StreamSync(_ctx, stream);
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised generate_count_hashmap_duplicates with "<< num_input << " inputs";
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised generate_count_hashmap_duplicates with "<< num_input << " inputs";
 
   // 2. partial sum
   size_t workspace_bytes;
@@ -907,7 +909,7 @@ void OrderedHashTable<IdType>::FillWithDupMutable(
   device->StreamSync(_ctx, stream);
 
   void *workspace = device->AllocWorkspace(_ctx, workspace_bytes);
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda workspace malloc "<< ToReadableSize(workspace_bytes);
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillWithDupRevised cuda workspace malloc "<< ToReadableSize(workspace_bytes);
 
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(
       workspace, workspace_bytes, item_prefix, item_prefix, grid.x + 1,
@@ -927,7 +929,7 @@ void OrderedHashTable<IdType>::FillWithDupMutable(
   device->StreamSync(_ctx, stream);
   _num_items += tmp;
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised num_unique "<< _num_items;
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDupRevised num_unique "<< _num_items;
 
   device->FreeWorkspace(_ctx, item_prefix);
   device->FreeWorkspace(_ctx, workspace);
@@ -953,7 +955,7 @@ void OrderedHashTable<IdType>::FillNeighbours(
   size_t n_item_prefix = grid.x * block.x + 1;
   IdType *item_prefix = static_cast<IdType *>(
       device->AllocWorkspace(_ctx, sizeof(IdType) * n_item_prefix));
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillNeighbours cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * n_item_prefix);
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillNeighbours cuda item_prefix malloc "<< ToReadableSize(sizeof(IdType) * n_item_prefix);
 
   // 1. insert into o2n table, collect each block's new insertion count
   gen_count_hashmap_neighbour_single_loop<
@@ -971,7 +973,7 @@ void OrderedHashTable<IdType>::FillNeighbours(
   device->StreamSync(_ctx, stream);
 
   void *workspace = device->AllocWorkspace(_ctx, workspace_bytes);
-  // LOG(INFO)<< "OrderedHashTable<IdType>::FillNeighbours cuda item_prefix malloc "<< ToReadableSize(workspace_bytes);
+  // // LOG(INFO)<< "OrderedHashTable<IdType>::FillNeighbours cuda item_prefix malloc "<< ToReadableSize(workspace_bytes);
 
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(
       workspace, workspace_bytes, item_prefix, item_prefix, n_item_prefix,
@@ -995,7 +997,7 @@ void OrderedHashTable<IdType>::FillNeighbours(
     device->StreamSync(_ctx, stream);
   }
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates num_unique "<< _num_items;
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithDuplicates num_unique "<< _num_items;
 
   device->FreeWorkspace(_ctx, gpu_num_unique);
   device->FreeWorkspace(_ctx, item_prefix);
@@ -1023,7 +1025,7 @@ void OrderedHashTable<IdType>::FillWithUnique(
   _version++;
   _num_items += num_input;
 
-  // LOG(INFO) << "OrderedHashTable<IdType>::FillWithUnique insert " << num_input<< " items, now " << _num_items << " in total";
+  // // LOG(INFO) << "OrderedHashTable<IdType>::FillWithUnique insert " << num_input<< " items, now " << _num_items << " in total";
 }
 
 template class OrderedHashTable<int32_t>;
