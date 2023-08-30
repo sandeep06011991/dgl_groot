@@ -240,7 +240,7 @@ namespace dgl {
 
             NDArray &picked_row = block->_row;
             NDArray &picked_col = block->_col;
-            NDArray &picked_idx = block->_idx;
+            NDArray &picked_idx = block->_data_or_idx;
 
             IdType *const out_rows = static_cast<IdType *>(picked_row->data);
             IdType *const out_cols = static_cast<IdType *>(picked_col->data);

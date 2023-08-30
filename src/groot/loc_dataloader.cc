@@ -4,52 +4,39 @@
 
 #include "loc_dataloader.h"
 
-namespace dgl {
-    namespace groot {
-        using namespace runtime;
-        DGL_REGISTER_GLOBAL("groot._CAPI_CreateDataloader")
-        .set_body([](DGLArgs args, DGLRetValue *rv) {
-            int device_id = args[0];
-            DGLContext ctx{kDGLCUDA, device_id};
-            NDArray indptr = args[1];
-            NDArray indices = args[2];
-            NDArray feats = args[3];
-            NDArray labels = args[4];
-            NDArray seeds = args[5];
-            List<Value> fanout_list = args[6];
-            std::vector<int64_t> fanouts;
-            for (const auto &fanout: fanout_list) {
-                fanouts.push_back(static_cast<int64_t>(fanout->data));
-            }
-            int64_t batch_size = args[7];
-            int64_t max_pool_size = args[8];
 
-            auto o = std::make_shared<DataloaderObject>(
-                    ctx, indptr, indices, feats, labels, seeds, fanouts, batch_size,
-                    max_pool_size);
-            *rv = o;
-        });
+    namespace dgl::groot {
+        using namespace runtime;
 
         DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
         .set_body([](DGLArgs args, DGLRetValue *rv) {
-            int64_t device_id = args[0];
-            DGLContext ctx{kDGLCUDA, (int32_t) device_id};
-            NDArray indptr = args[1];
-            NDArray indices = args[2];
-            NDArray feats = args[3];
-            NDArray labels = args[4];
-            NDArray seeds = args[5];
-            List<Value> fanout_list = args[6];
+            int idx = 0;
+            int64_t rank = args[idx++];
+            int64_t world_size = args[idx++];
+            int64_t device_id = args[idx++];
+            List<Value> fanout_list = args[idx++];
+            int64_t batch_size = args[idx++];
+            int64_t max_pool_size = args[idx++];
+
+            NDArray indptr = args[idx++];
+            NDArray indices = args[idx++];
+            NDArray feats = args[idx++];
+            NDArray labels = args[idx++];
+            NDArray train_idx = args[idx++];
+            NDArray valid_idx = args[idx++];
+            NDArray test_idx = args[idx++];
+
             std::vector<int64_t> fanouts;
             for (const auto &fanout: fanout_list) {
-                fanouts.push_back(static_cast<int64_t>(fanout->data));
+                fanouts.insert(fanouts.begin(), static_cast<int64_t>(fanout->data));
             }
-            int64_t batch_size = args[7];
-            int64_t max_pool_size = args[8];
 
+            DGLContext ctx{kDGLCUDA, (int32_t) device_id};
             DataloaderObject::Global()->Init(
-                    ctx, indptr, indices, feats, labels, seeds, fanouts, batch_size,
-                    max_pool_size);
+                    rank, world_size,
+                    ctx, fanouts, batch_size, max_pool_size,
+                    indptr, indices, feats, labels,
+                    train_idx, valid_idx, test_idx);
 
             *rv = DataloaderObject::Global();
         });
@@ -103,6 +90,6 @@ namespace dgl {
             *rv = DataloaderObject::Global()->AwaitGetBlocks(key)->_feats;
         });
 
-    }  // namespace groot
+    } // namespace dgl::groot
 
-}  // namespace dgl
+

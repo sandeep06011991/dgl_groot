@@ -188,6 +188,7 @@ namespace dgl {
                     auto _handle =
                             static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
                     _handle->FillWithUnique(arr.Ptr<IdType>(), num_input, _stream);
+                    runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, _stream);
                 });
             }
 
@@ -196,6 +197,7 @@ namespace dgl {
                     auto _handle =
                             static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
                     _handle->FillWithDupRevised(arr.Ptr<IdType>(), num_input, _stream);
+                    runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, _stream);
                 });
             }
 

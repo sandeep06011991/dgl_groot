@@ -22,30 +22,18 @@ def dgl_uva(config: RunConfig):
     # sample one epoch before profiling
     model = get_dgl_model(config).to(0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    
-    print("pre-heating")
     step = 0
-    for _, _, blocks in dataloader:
-        if not config.sample_only:
-            batch_feat = blocks[0].srcdata["feat"]
-            batch_label = blocks[-1].dstdata["label"]
-            batch_pred = model(blocks, batch_feat)
-            batch_loss = F.cross_entropy(batch_pred, batch_label)
-            optimizer.zero_grad()
-            batch_loss.backward()
-            optimizer.step()
-            
-            if step == 0:
-                print(f"{step=}")
-                print(batch_feat)
-                for block in blocks:
-                    print(block)
-            step += 1
-    print("start training")
     timer = Timer()
     
-    for num_epoch in range(config.num_epoch):
-        print(f"start {num_epoch + 1} epoch")
+    for epoch in range(config.num_epoch + 1):
+        if epoch == 0:
+            print("pre-heating")
+        else:
+            if epoch == 1:
+                torch.cuda.synchronize()    
+                print(f"pre-heating takes {round(timer.passed(), 2)} sec")
+                timer.reset()
+        print(f"start epoch {epoch}")
         for _, _, blocks in dataloader:
             if not config.sample_only:
                 batch_feat = blocks[0].srcdata["feat"]
@@ -55,7 +43,14 @@ def dgl_uva(config: RunConfig):
                 optimizer.zero_grad()
                 batch_loss.backward()
                 optimizer.step()
-
+            if step == 0 and epoch == 0:
+                print(f"{step=}")
+                print(batch_feat)
+                for block in blocks:
+                    print(block)
+            step += 1
+            
+    torch.cuda.synchronize()        
     passed = timer.passed()
     duration = passed / config.num_epoch
     

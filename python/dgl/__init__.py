@@ -23,6 +23,7 @@ from . import (
     random,
     sampling,
     storages,
+    groot,
 )
 from ._ffi.base import __version__, DGLError
 from ._ffi.function import (

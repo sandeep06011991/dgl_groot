@@ -20,7 +20,9 @@ class Timer:
     
 @dataclass
 class RunConfig:
-    system: str = "dgl-uva" # choice of ["pyg", "dgl-cpu", "dgl-uva", "quiver", "groot"]
+    rank: int = 0
+    world_size: int = 1
+    system: str = "dgl-uva" # choice of ["pyg", "dgl-cpu", "dgl-uva", "quiver", "groot-uva", "groot-cache"]
     graph_name: str = "ogbn-products" # choice of ["ogbn-products", "ogbn-papers100M", "mag240m"]
     model_type: str = "graphsage" # choice of ["graphsage", "gat"]
     batch_size: int = 1024
@@ -50,7 +52,7 @@ class DGLDataset:
 def get_parser():
     parser = argparse.ArgumentParser(description='benchmarking script')
     parser.add_argument('--batch', default=1024, type=int, help='Input batch size on each device (default: 1024)')
-    parser.add_argument('--system', default="dgl-uva", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "pyg", "quiver", "groot"])
+    parser.add_argument('--system', default="dgl-uva", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "pyg", "quiver", "groot-uva", "groot-cache"])
     parser.add_argument('--model', default="graphsage", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
     parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
     parser.add_argument('--nprocs', default=1, type=int, help='Number of GPUs')

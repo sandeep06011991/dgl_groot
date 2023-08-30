@@ -30,11 +30,11 @@ namespace dgl {
                 for (int64_t i = 0; i < layer; i++) est_num_src *= (fanouts[i] + 1);
                 for (int64_t i = 0; i <= layer; i++) est_num_dst *= (fanouts[i] + 1);
                 _row = NDArray::Empty({est_num_dst}, dtype, ctx);
-                _new_row = NDArray::Empty({est_num_dst}, dtype, ctx);
                 _col = NDArray::Empty({est_num_dst}, dtype, ctx);
+                _new_row = NDArray::Empty({est_num_dst}, dtype, ctx);
                 _new_col = NDArray::Empty({est_num_dst}, dtype, ctx);
                 _new_len_tensor = NDArray::PinnedEmpty({1}, dtype, DGLContext{kDGLCPU, 0});
-                _idx = NDArray::Empty({est_num_dst}, dtype, ctx);
+                _data_or_idx = NDArray::Empty({est_num_dst}, dtype, ctx);
                 _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
                 _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
             };
@@ -43,7 +43,7 @@ namespace dgl {
             NDArray _new_row; // input nodes in reindex-ed ids (0 based indexing)
             NDArray _col;  // destination nodes in original ids (coo format)
             NDArray _new_col; // destination nodes inreindex-ed ids (coo format)
-            NDArray _idx;  // place holder for storing index (optional)
+            NDArray _data_or_idx;  // storing index / data (optional)
             NDArray _outdeg;
             NDArray _indptr;
             NDArray _new_len_tensor;
@@ -52,7 +52,7 @@ namespace dgl {
             void VisitAttrs(runtime::AttrVisitor *v) final {
                 v->Visit("row", &_row);
                 v->Visit("col", &_col);
-                v->Visit("idx", &_idx);
+                v->Visit("idx", &_data_or_idx);
                 v->Visit("new_col", &_new_col);
                 v->Visit("new_row", &_new_row);
                 v->Visit("indptr", &_indptr);
