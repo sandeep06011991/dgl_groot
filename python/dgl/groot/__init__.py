@@ -20,6 +20,9 @@ def init_groot_dataloader(rank: int, world_size: int, device_id: int, fanouts: l
                                 F.zerocopy_to_dgl_ndarray(valid_idx.to(device_id)),
                                 F.zerocopy_to_dgl_ndarray(test_idx.to(device_id)))
 
+def init_groot_dataloader_cache(cache_idx: Tensor):
+    _CAPI_InitCache(F.to_dgl_nd(cache_idx))
+    
 def get_batch(key: int, layers: int = 3):
     blocks = []
     for i in range(layers):

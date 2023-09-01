@@ -16,14 +16,14 @@
 #include "cuda/cuda_index_select.cuh"
 #include "cuda/cuda_mapping.cuh"
 #include "cuda/rowwise_sampling.cuh"
-
+#include "cuda/gpu_cache.cuh"
 
     namespace dgl::groot {
         class DataloaderObject : public runtime::Object {
         public:
             std::vector<std::shared_ptr<BlocksObject>> _blocks_pool;
             std::vector<cudaStream_t> _sampling_streams;
-            std::vector<cudaStream_t> _cpu_feat_streams;
+            std::vector<cudaStream_t> _uva_feat_streams;
             std::vector<cudaStream_t> _gpu_feat_streams;
             std::vector<bool> _syncflags;
             std::vector<int64_t> _fanouts;
@@ -47,6 +47,7 @@
             DGLDataType _id_type;
             DGLDataType _label_type;
             DGLDataType _feat_type;
+            GpuCache gpu_cache;
             std::vector<cudaStream_t> CreateStreams(size_t len) const {
                 std::vector<cudaStream_t> res;
                 for (size_t i = 0; i < len; i++) {
@@ -75,7 +76,7 @@
                 _blocks_pool.clear();
                 std::vector<std::mutex> mutexes(_max_pool_size);
                 _syncflags.resize(_max_pool_size);
-                _cpu_feat_streams = CreateStreams(_max_pool_size);
+                _uva_feat_streams = CreateStreams(_max_pool_size);
                 _gpu_feat_streams = CreateStreams(_max_pool_size);
                 _sampling_streams = CreateStreams(_max_pool_size);
                 for (int64_t i = 0; i < _max_pool_size; i++) {
@@ -128,6 +129,10 @@
                 LOG(INFO) << "Initialized dataloader at rank " << _rank << " world_size " << _world_size;
             }
 
+            void InitFeatCache(NDArray cached_ids) {
+                gpu_cache.Init(_cpu_feats, cached_ids);
+            }
+
             static std::shared_ptr<DataloaderObject> const Global() {
                 static auto single_instance = std::make_shared<DataloaderObject>();
                 return single_instance;
@@ -153,7 +158,7 @@
                     runtime::DeviceAPI::Get(_ctx)->StreamSync(
                             _ctx, _sampling_streams.at(blk_idx));
                     runtime::DeviceAPI::Get(_ctx)->StreamSync(
-                            _ctx, _cpu_feat_streams.at(blk_idx));
+                            _ctx, _uva_feat_streams.at(blk_idx));
                     runtime::DeviceAPI::Get(_ctx)->StreamSync(
                             _ctx, _gpu_feat_streams.at(blk_idx));
                     // create unit-graph that can be turned into dgl blocks
@@ -232,7 +237,12 @@
 
                 // those two kernels are not sync until later BatchSync is called
                 IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels , _gpu_feat_streams.at(blk_idx));
-                IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,_cpu_feat_streams.at(blk_idx));
+
+                if (gpu_cache.IsInitialized()) {
+                    gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr, _gpu_feat_streams.at(blk_idx), _uva_feat_streams.at(blk_idx));
+                } else {
+                    IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats, _uva_feat_streams.at(blk_idx));
+                }
             }
 
             void VisitAttrs(runtime::AttrVisitor *v) final {

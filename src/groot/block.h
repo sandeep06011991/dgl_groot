@@ -74,6 +74,27 @@ namespace dgl {
             using ContainerType = BlockObject;
         };
 
+        struct GpuCacheQueryBuffer {
+            NDArray _hit_id; // hit id : not very useful but return anyway for debugging
+            NDArray _hit_cidx; // hit id's index in the cache : used for loading from gpu_feat
+            NDArray _hit_qidx; // hit id's index in the query : used for writing cpu_feat to output buffer
+            NDArray _missed_qid; // missed id's in the query : used for loading from cpu_feat
+            NDArray _missed_qidx; // missed id's index in the query : used for writing gpu_feat ot the output buffer
+            GpuCacheQueryBuffer() = default;
+
+            GpuCacheQueryBuffer(int64_t est_num_nodes, DGLDataType dtype, DGLContext ctx) {
+                Init(est_num_nodes, dtype, ctx);
+            }
+
+            void Init(int64_t est_num_nodes, DGLDataType dtype, DGLContext ctx) {
+                _hit_id = NDArray::Empty({est_num_nodes}, dtype, ctx);
+                _missed_qid = NDArray::Empty({est_num_nodes}, dtype, ctx);
+                _hit_cidx = NDArray::Empty({est_num_nodes}, DGLDataType {kDGLInt, 64, 1}, ctx);
+                _hit_qidx = NDArray::Empty({est_num_nodes}, DGLDataType {kDGLInt, 64, 1}, ctx);
+                _missed_qidx = NDArray::Empty({est_num_nodes}, DGLDataType {kDGLInt, 64, 1}, ctx);
+            }
+        };
+
         struct BlocksObject : public runtime::Object {
 
             ~BlocksObject() {
@@ -85,7 +106,9 @@ namespace dgl {
             NDArray _feats;   // feature of output nodes
             NDArray _input_nodes;   // seeds
             NDArray _output_nodes;  // output nodes
+            GpuCacheQueryBuffer _query_buffer; // store indices for query gpu cache
             std::shared_ptr<CudaHashTable> _table;
+            cudaStream_t _stream;
             DGLContext _ctx;
 
             BlocksObject() {};
@@ -100,20 +123,21 @@ namespace dgl {
                     DGLDataType feat_type,
                     cudaStream_t stream) {
                 _ctx = ctx;
+                _feat_width = feat_width;
                 _num_layer = fanouts.size();
-
+                _stream = stream;
                 for (int64_t layer = 0; layer < _num_layer; layer++) {
                     auto block =
                             std::make_shared<BlockObject>(_ctx, fanouts, layer, batch_size, id_type);
                     _blocks.push_back(block);
                 }
 
-    int64_t est_output_nodes = batch_size;
-    for (int64_t fanout : fanouts) est_output_nodes *= (fanout + 1);
-    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
-    _feats = NDArray::Empty({est_output_nodes, feat_width}, feat_type, _ctx);
-    _labels = NDArray::Empty({batch_size}, label_type, _ctx);
-//    LOG(INFO) << "feat memory consumption: " << ToReadableSize(GetSize());
+                int64_t est_output_nodes = batch_size;
+                for (int64_t fanout: fanouts) est_output_nodes *= (fanout + 1);
+                _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
+                _feats = NDArray::Empty({est_output_nodes, _feat_width}, feat_type, _ctx);
+                _labels = NDArray::Empty({batch_size}, label_type, _ctx);
+                _query_buffer.Init(est_output_nodes, id_type, _ctx);
             };
 
             int64_t GetSize() {

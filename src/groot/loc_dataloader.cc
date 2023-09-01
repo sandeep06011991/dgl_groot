@@ -90,6 +90,12 @@
             *rv = DataloaderObject::Global()->AwaitGetBlocks(key)->_feats;
         });
 
+        DGL_REGISTER_GLOBAL("groot._CAPI_InitCache")
+        .set_body([](DGLArgs args, DGLRetValue *rv) {
+            NDArray cached_ids = args[0];
+            DataloaderObject::Global()->InitFeatCache(cached_ids);
+        });
+
     } // namespace dgl::groot
 
 

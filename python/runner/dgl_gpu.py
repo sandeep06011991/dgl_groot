@@ -4,25 +4,25 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from .util import *
 from .dgl_model import get_dgl_model
 
-def dgl_uva(config: RunConfig):
+def dgl_gpu(config: RunConfig):
     # load dgl data graph
     dgl_dataset = load_dgl_dataset(config)    
     assert(config.is_valid())
     print(config)
     
     graph: dgl.DGLGraph = dgl_dataset.graph
-    graph.pin_memory_()
+    graph = graph.to(config.rank)
     sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
     dataloader = dgl.dataloading.DataLoader(graph = graph, 
-                                            indices = dgl_dataset.train_idx,
+                                            indices = dgl_dataset.train_idx.to(config.rank),
                                             graph_sampler = sampler, 
-                                            use_uva=True,
+                                            use_uva=False,
                                             batch_size=config.batch_size)
     
     test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
-                                            indices = dgl_dataset.test_idx,
+                                            indices = dgl_dataset.test_idx.to(config.rank),
                                             graph_sampler = sampler, 
-                                            use_uva=True,
+                                            use_uva=False,
                                             batch_size=config.batch_size)
     # sample one epoch before profiling
     model = get_dgl_model(config).to(0)

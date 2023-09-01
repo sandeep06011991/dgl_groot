@@ -6,6 +6,7 @@ from ogb.nodeproppred import PygNodePropPredDataset, DglNodePropPredDataset
 import dgl
 import argparse
 import time
+import torchmetrics.functional as MF
 
 class Timer:
     def __init__(self) -> None:
@@ -30,9 +31,10 @@ class RunConfig:
     num_layer: int = 3
     num_epoch : int = 3
     sample_only: bool = False
-    in_feat: int = -1 # needs to be set after loading feature data
+    cache_percentage: float = 0.1
+    in_feat: int = -1 # must be set correctly
     num_classes: int = -1 # must be set correctly
-    fanouts: list[int] = None
+    fanouts: list[int] = None # must be set correctly
     def is_valid(self):
         if self.in_feat < 0:
             return False
@@ -52,12 +54,13 @@ class DGLDataset:
 def get_parser():
     parser = argparse.ArgumentParser(description='benchmarking script')
     parser.add_argument('--batch', default=1024, type=int, help='Input batch size on each device (default: 1024)')
-    parser.add_argument('--system', default="dgl-uva", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "pyg", "quiver", "groot-uva", "groot-cache"])
+    parser.add_argument('--system', default="groot-cache", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-uva", "groot-cache"])
     parser.add_argument('--model', default="graphsage", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
     parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
     parser.add_argument('--nprocs', default=1, type=int, help='Number of GPUs')
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
-    parser.add_argument('--sample_only', default=False, type=bool, choices=[True, False])
+    parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
+    parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
     return parser
 
 def get_config():
@@ -69,8 +72,9 @@ def get_config():
     config.model_type = args.model
     config.graph_name = args.graph
     config.hid_feat = args.hid_feat
-    config.fanouts = [5, 10, 15]
     config.sample_only = args.sample_only
+    config.cache_percentage = args.cache_rate
+    config.fanouts = [5, 10, 15]
     return config
 
 def ddp_setup(rank, world_size):
@@ -106,3 +110,43 @@ def load_dgl_dataset(config: RunConfig) -> DGLDataset:
 def load_pyg_graph(config: RunConfig):
     dataset = PygNodePropPredDataset(config.graph_name, root="/data")
     return dataset
+
+def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dgl.dataloading.DataLoader):
+    print("Testing model accuracy")
+    model.eval()
+    ys = []
+    y_hats = []
+    
+    for input_nodes, output_nodes, blocks in dataloader:
+        with torch.no_grad():
+            batch_feat = blocks[0].srcdata["feat"]
+            batch_label = blocks[-1].dstdata["label"]
+            ys.append(batch_label)
+            batch_pred = model(blocks, batch_feat)
+            y_hats.append(batch_pred)
+            
+    acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=config.num_classes)
+    print(f"test accuracy={round(acc.item() * 100, 2)}%")
+    
+    return acc
+
+def get_cache_ids_by_sampling(config: RunConfig, 
+                              graph: dgl.DGLGraph, 
+                              seeds: torch.Tensor):
+    graph.pin_memory_()
+    num_nodes = graph.num_nodes()
+    num_cached = int(config.cache_percentage * num_nodes)
+    sampler = dgl.dataloading.NeighborSampler(config.fanouts)
+    dataloader = dgl.dataloading.DataLoader(graph = graph, 
+                                        indices = seeds,
+                                        graph_sampler = sampler, 
+                                        use_uva=True,
+                                        batch_size=config.batch_size)
+    sample_freq = torch.zeros(num_nodes, dtype=torch.int32, device=config.rank)
+
+    for batch_input, batch_seeds, batch_blocks in dataloader:
+        sample_freq[batch_input] += 1
+    
+    freq, node_id = sample_freq.sort(descending = True)
+    cached_id = node_id[:num_cached]
+    return cached_id

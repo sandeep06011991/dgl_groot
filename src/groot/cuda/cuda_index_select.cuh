@@ -11,9 +11,8 @@
 namespace dgl {
     namespace groot {
         NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream);
-
-        void IndexSelect(NDArray array, IdArray index, NDArray &out, cudaStream_t stream);
-// TODO Implemet this
+        void IndexSelect(NDArray array, IdArray index, NDArray &out_buff, cudaStream_t stream);
+        void IndexSelect(NDArray array, IdArray index, IdArray out_idx, NDArray &out_buff, cudaStream_t stream);
 // template <typename DType, typename IdType>
 // NDArray IndexScatter(NDArray input_arr, NDArray output_arr, IdArray index);
     }  // namespace groot

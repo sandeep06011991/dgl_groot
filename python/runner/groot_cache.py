@@ -5,8 +5,7 @@ from .util import *
 from .dgl_model import get_dgl_model
 from dgl.groot import *
 from dgl.utils import pin_memory_inplace
-
-def groot_uva(config: RunConfig):
+def groot_cache(config: RunConfig):
     # load dgl data graph
     dgl_dataset: DGLDataset = load_dgl_dataset(config)    
     assert(config.is_valid())
@@ -31,6 +30,10 @@ def groot_uva(config: RunConfig):
         indptr, indices, feats, labels,
         dgl_dataset.train_idx, dgl_dataset.valid_idx, dgl_dataset.test_idx
     )
+    
+    cache_id = get_cache_ids_by_sampling(config, graph, dgl_dataset.train_idx)
+    init_groot_dataloader_cache(cache_id)
+    
     # sample one epoch before profiling
     model = get_dgl_model(config).to(0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -100,4 +103,4 @@ def groot_uva(config: RunConfig):
                                             use_uva=True,
                                             batch_size=config.batch_size)
     
-    acc = test_model_accuracy(config, model, test_dataloader)
+    # acc = test_model_accuracy(config, model, test_dataloader)
