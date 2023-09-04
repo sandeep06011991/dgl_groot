@@ -4,11 +4,12 @@
 #include <curand_kernel.h>
 #include <dgl/random.h>
 #include <dgl/runtime/tensordispatch.h>
-
 #include <cub/cub.cuh>
 
 #include "../../array/cuda/atomic.cuh"
+#include "../../array/cuda/utils.h"
 #include "rowwise_sampling.cuh"
+using TensorDispatcher = dgl::runtime::TensorDispatcher;
 
 namespace dgl {
     namespace groot {
@@ -17,7 +18,6 @@ namespace dgl {
 
         namespace impl {
 
-            using TensorDispatcher = dgl::runtime::TensorDispatcher;
 
 /**
  * @brief Compute the size of each row in the sampled CSR, without replacement.
@@ -245,9 +245,24 @@ namespace dgl {
             IdType *const out_rows = static_cast<IdType *>(picked_row->data);
             IdType *const out_cols = static_cast<IdType *>(picked_col->data);
             IdType *const out_idxs = static_cast<IdType *>(picked_idx->data);
+            const IdType *in_ptr;
+            const IdType *in_cols;
 
-            const IdType *in_ptr = static_cast<IdType *>(indptr->data);
-            const IdType *in_cols = static_cast<IdType *>(indices->data);
+            if (indptr.IsPinned()) {
+                void* ptr = indptr->data;
+                CUDA_CALL(cudaHostGetDevicePointer(&ptr, ptr, 0));
+                in_ptr = static_cast<IdType*>(ptr);
+            } else {
+                in_ptr = static_cast<IdType*>(indptr->data);
+            }
+
+            if (indices.IsPinned()) {
+                void* ptr = indices->data;
+                CUDA_CALL(cudaHostGetDevicePointer(&ptr, ptr, 0));
+                in_cols = static_cast<IdType*>(ptr);
+            } else {
+                in_cols = static_cast<IdType*>(indices->data);
+            }
             const IdType *data = nullptr;
 
             // compute degree
