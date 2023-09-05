@@ -5,7 +5,7 @@
 #include "block.h"
 
 namespace dgl {
-    namespace groot {
-        using namespace runtime;
-    }
-}  // namespace dgl
+namespace groot {
+using namespace runtime;
+}
+} // namespace dgl

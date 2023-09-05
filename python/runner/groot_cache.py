@@ -103,4 +103,4 @@ def groot_cache(config: RunConfig):
                                             use_uva=True,
                                             batch_size=config.batch_size)
     
-    # acc = test_model_accuracy(config, model, test_dataloader)
+    acc = test_model_accuracy(config, model, test_dataloader)

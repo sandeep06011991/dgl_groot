@@ -3,10 +3,9 @@
 //
 
 #include "gpu_cache.cuh"
-#include <thrust/set_operations.h>
 #include <nvtx3/nvtx3.hpp>
 #include <thrust/device_ptr.h>
-
+#include <thrust/set_operations.h>
 namespace dgl::groot {
     std::tuple<IdArray, IdArray, IdArray, IdArray, IdArray> GpuCache::Query(NDArray query_ids,
                                                                                     std::shared_ptr<BlocksObject> blocksPtr) const {
@@ -15,7 +14,6 @@ namespace dgl::groot {
         CHECK_EQ(query_ids->ctx.device_type, kDGLCUDA) << "queried ids must on gpu";
         CHECK_EQ(query_ids->ctx.device_id, _cache_ids->ctx.device_id) << "queried ids must be on same device";
         CHECK_EQ(query_ids->dtype, _cache_ids->dtype) << "queried ids must have same dtype with cached ids";
-        auto exec = thrust::cuda::par.on(blocksPtr->_stream);
         auto [sorted_query_ids, sorted_query_idx] = dgl::aten::Sort(query_ids, 0);
         auto& ret_hit_id = blocksPtr->_query_buffer._hit_id;
         auto& ret_hit_cidx = blocksPtr->_query_buffer._hit_cidx;
