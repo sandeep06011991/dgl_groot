@@ -6,7 +6,7 @@ from .dgl_model import get_dgl_model
 from dgl.groot import *
 from dgl.utils import pin_memory_inplace
 
-def groot_uva(config: RunConfig):
+def groot_gpu(config: RunConfig):
     # load dgl data graph
     dgl_dataset: DGLDataset = load_dgl_dataset(config)    
     assert(config.is_valid())
@@ -17,13 +17,18 @@ def groot_uva(config: RunConfig):
     feats = graph.ndata.pop("feat")
     labels = graph.ndata.pop("label")
     
-    feats_handle = pin_memory_inplace(feats)
-    indptr_handle = pin_memory_inplace(indptr)
-    indices_handle = pin_memory_inplace(indices)
-    edge_id_handle = pin_memory_inplace(edge_id)
-    labels_id_handle = pin_memory_inplace(labels)
+    # feats_handle = pin_memory_inplace(feats)
+    # indptr_handle = pin_memory_inplace(indptr)
+    # indices_handle = pin_memory_inplace(indices)
+    # edge_id_handle = pin_memory_inplace(edge_id)
+    # labels_id_handle = pin_memory_inplace(labels)
 
-
+    feats = feats.to(config.rank)
+    indptr = indptr.to(config.rank)
+    indices = indices.to(config.rank)
+    # edge_id = edge_id.to(config.rank)
+    labels = labels.to(config.rank)
+    
     max_pool_size = 2    
     dataloader = init_groot_dataloader(
         config.rank, config.world_size, config.rank, config.fanouts,
@@ -60,8 +65,6 @@ def groot_uva(config: RunConfig):
             blocks, batch_feat, batch_label = get_batch(key)
             # prefetch next mini-batch
             key = sample_batch_async()
-            
-            # blocks, batch_feat, batch_label = get_batch(sample_batch_sync())            
             if config.sample_only:
                 continue
             
@@ -91,14 +94,17 @@ def groot_uva(config: RunConfig):
     
     print(f"duration={round(duration,2)} secs / epoch")
     
-    graph.ndata["feat"] = feats
-    graph.ndata["label"] = labels
-    graph.pin_memory_()
-    sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
-    test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
-                                            indices = dgl_dataset.test_idx,
-                                            graph_sampler = sampler, 
-                                            use_uva=True,
-                                            batch_size=config.batch_size)
-    
-    acc = test_model_accuracy(config, model, test_dataloader)
+    if config.test_acc:
+        del indptr
+        del indices
+        graph = graph.to(config.rank)
+        graph.ndata["feat"] = feats
+        graph.ndata["label"] = labels
+        sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
+        test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
+                                                indices = dgl_dataset.test_idx.to(config.rank),
+                                                graph_sampler = sampler, 
+                                                use_uva=False,
+                                                batch_size=config.batch_size)
+        
+        acc = test_model_accuracy(config, model, test_dataloader)

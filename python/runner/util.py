@@ -31,6 +31,7 @@ class RunConfig:
     num_layer: int = 3
     num_epoch : int = 3
     sample_only: bool = False
+    test_acc: bool = False
     cache_percentage: float = 0.1
     in_feat: int = -1 # must be set correctly
     num_classes: int = -1 # must be set correctly
@@ -54,13 +55,14 @@ class DGLDataset:
 def get_parser():
     parser = argparse.ArgumentParser(description='benchmarking script')
     parser.add_argument('--batch', default=1024, type=int, help='Input batch size on each device (default: 1024)')
-    parser.add_argument('--system', default="groot-cache", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-uva", "groot-cache"])
+    parser.add_argument('--system', default="groot-cache", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-gpu", "groot-uva", "groot-cache"])
     parser.add_argument('--model', default="graphsage", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
     parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
     parser.add_argument('--nprocs', default=1, type=int, help='Number of GPUs')
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
     parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
     parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
+    parser.add_argument('--test_acc', default=False, type=bool, help="whether test model accuracy", choices=[True, False])
     return parser
 
 def get_config():
@@ -74,6 +76,7 @@ def get_config():
     config.hid_feat = args.hid_feat
     config.sample_only = args.sample_only
     config.cache_percentage = args.cache_rate
+    config.test_acc = args.test_acc
     config.fanouts = [5, 10, 15]
     return config
 
@@ -87,7 +90,7 @@ def ddp_exit():
     destroy_process_group()
 
 def load_dgl_dataset(config: RunConfig) -> DGLDataset:
-    dataset = DglNodePropPredDataset(config.graph_name, root="/data")
+    dataset = DglNodePropPredDataset(config.graph_name, root="/data/ogbn")
     graph: dgl.DGLGraph = dataset[0][0]
     label: torch.tensor = dataset[0][1]
     label = torch.flatten(label).type(torch.int64)
@@ -112,6 +115,10 @@ def load_pyg_graph(config: RunConfig):
     return dataset
 
 def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dgl.dataloading.DataLoader):
+    if config.test_acc == False:
+        print("Skip model accuracy test")
+        return
+    
     print("Testing model accuracy")
     model.eval()
     ys = []
@@ -127,7 +134,6 @@ def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dg
             
     acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=config.num_classes)
     print(f"test accuracy={round(acc.item() * 100, 2)}%")
-    
     return acc
 
 def get_cache_ids_by_sampling(config: RunConfig, 

@@ -15,6 +15,7 @@ include(cmake/util/FindCUDA.cmake)
 
 # TODO(#5475): Clean up the old flags after CI and regression framework adopt to the new setup.
 if (NOT DEFINED BUILD_TYPE)
+  MESSAGE(STATUS "Config correctly")
   dgl_option(USE_CUDA "Build with CUDA" ON)
   dgl_option(USE_SYSTEM_NCCL "Build with system NCCL" ON) # turn it OFF if the nccl library is not installed in NCCL_ROOT
   dgl_option(USE_OPENMP "Build with OpenMP" ON)
@@ -30,6 +31,8 @@ if (NOT DEFINED BUILD_TYPE)
   dgl_option(BUILD_GRAPHBOLT "Build Graphbolt library" OFF)
   dgl_option(TORCH_PYTHON_INTERPS "Python interpreter used to build tensoradapter and DGL sparse library" python3)
 else()
+  MESSAGE(STATUS "Config incorrectly")
+
   # Options for building DGL.
   # NOTE: do not modify this file to change option values.
   # Use bash script/build_dgl.sh -e '-DOPTION=VALUE' through command-line.
@@ -255,7 +258,13 @@ if(USE_CUDA)
     include(cmake/modules/NCCL.cmake)
     cuda_include_directories(BEFORE ${NCCL_INCLUDE_DIR})
   endif()
-  cuda_add_library(dgl SHARED ${DGL_SRC})
+  cuda_add_library(dgl SHARED ${DGL_SRC}
+          src/groot/cuda/cuda_hashtable.cu
+          src/groot/cuda/cuda_index_select.cu
+          src/groot/cuda/cuda_mapping.cu
+          src/groot/cuda/gpu_cache.cu
+          src/groot/cuda/rowwise_sampling.cu
+  )
 else(USE_CUDA)
   add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)

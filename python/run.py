@@ -3,6 +3,7 @@ from runner.dgl_uva import dgl_uva
 from runner.dgl_gpu import dgl_gpu
 from runner.groot_uva import groot_uva
 from runner.groot_cache import groot_cache
+from runner.groot_gpu import groot_gpu
 
 if __name__ == "__main__":
     config = get_config()
@@ -16,3 +17,5 @@ if __name__ == "__main__":
         groot_uva(config)
     elif config.system == "groot-cache":
         groot_cache(config)
+    elif config.system == "groot-gpu":
+        groot_gpu(config)

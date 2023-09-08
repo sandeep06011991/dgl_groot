@@ -50,9 +50,9 @@ public:
   GpuCache gpu_cache;
   std::vector<cudaStream_t> CreateStreams(size_t len) const {
     std::vector<cudaStream_t> res;
+    auto stream = static_cast<cudaStream_t>(
+        runtime::DeviceAPI::Get(_ctx)->CreateStream(_ctx));
     for (size_t i = 0; i < len; i++) {
-      auto stream = static_cast<cudaStream_t>(
-          runtime::DeviceAPI::Get(_ctx)->CreateStream(_ctx));
       res.push_back(stream);
     }
     return res;
@@ -60,8 +60,9 @@ public:
 
   DataloaderObject() = default;
   ~DataloaderObject() {
-    for (auto& worker : _workers) {
-      if (worker.joinable()) worker.join();
+    for (auto &worker : _workers) {
+      if (worker.joinable())
+        worker.join();
     }
   }
   DataloaderObject(int64_t rank, int64_t world_size, DGLContext ctx,
@@ -149,210 +150,201 @@ public:
   // Q: shall we sample multiple instances or only the top two layers
   // more fine-grained pipelining might be needed
   int64_t AsyncSample() {
-    //                int64_t key = _next_key++;
-    //                AsyncSampleOnce(key);
-    //                return key;
+                    int64_t key = _next_key++;
+                    AsyncSampleOnce(key);
+                    return key;
 
-    int64_t key = _next_key++;
-//    LOG(INFO) << "launch task " << key;
-    int64_t blk_idx = key % _max_pool_size;
-    _syncflags.at(blk_idx) = false;
-    _workers.at(blk_idx) = std::thread(&DataloaderObject::SampleOnce, this, key);
-    return key;
+//    int64_t key = _next_key++;
+//    //    LOG(INFO) << "launch task " << key;
+//    int64_t blk_idx = key % _max_pool_size;
+//    _syncflags.at(blk_idx) = false;
+//    _workers.at(blk_idx) =
+//        std::thread(&DataloaderObject::SampleOnce, this, key);
+//    return key;
   }
 
   void SyncBlocks(int64_t key) {
-    //                int blk_idx = key % _max_pool_size;
-    //                if (_syncflags.at(blk_idx) == false) {
-    //                    runtime::DeviceAPI::Get(_ctx)->StreamSync(
-    //                            _ctx, _sampling_streams.at(blk_idx));
-    //                    runtime::DeviceAPI::Get(_ctx)->StreamSync(
-    //                            _ctx, _uva_feat_streams.at(blk_idx));
-    //                    runtime::DeviceAPI::Get(_ctx)->StreamSync(
-    //                            _ctx, _gpu_feat_streams.at(blk_idx));
-    //                    // create unit-graph that can be turned into dgl
-    //                    blocks for (int64_t layer = 0; layer < (int64_t)
-    //                    _fanouts.size(); layer++) {
-    //                        auto blockPtr =
-    //                        _blocks_pool.at(blk_idx)->GetBlock(layer);
-    //                        dgl_format_code_t code = COO_CODE; // COO_CODE |
-    //                        CSR_CODE | CSC_CODE auto graph_idx =
-    //                        CreateFromCOO(2,
-    //                                                       blockPtr->num_src,
-    //                                                       blockPtr->num_dst,
-    //                                                       blockPtr->_new_col,
-    //                                                       blockPtr->_new_row,
-    //                                                       false,
-    //                                                       false,
-    //                                                       code);
-    //                        blockPtr->_block_ref = HeteroGraphRef{graph_idx};
-    //                    }
-    //                    _syncflags.at(blk_idx) = true;
-    //
-    int64_t blk_idx = key % _max_pool_size;
+    int blk_idx = key % _max_pool_size;
     if (_syncflags.at(blk_idx) == false) {
-//      LOG(INFO) << "synchronizing " << key;
-      _workers.at(blk_idx).join();
+      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx,
+                                                _sampling_streams.at(blk_idx));
+      //      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, _uva_feat_streams.at(blk_idx));
+      //      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx,_gpu_feat_streams.at(blk_idx));
+      // create unit-graph that can be turned into dgl blocks
       _syncflags.at(blk_idx) = true;
+
+      //    int64_t blk_idx = key % _max_pool_size;
+      //    if (_syncflags.at(blk_idx) == false) {
+      ////      LOG(INFO) << "synchronizing " << key;
+      //      _workers.at(blk_idx).join();
+      //      _syncflags.at(blk_idx) = true;
+      //    }
     }
   }
-
-  // TODO sample multiple instance at once
-  // Q: shall we sample mutiple instances or only the top two layers
-  // more fine grained pipelining might be needed
-  int64_t SyncSample() {
-    //                int64_t key = _next_key++;
-    //                AsyncSampleOnce(key);
-    //                SyncBlocks(key);
-    //                return key;
-    int64_t key = _next_key++;
-    _syncflags.at(key % _max_pool_size) = true;
-    SampleOnce(key);
-    return key;
-  }
-
-  // TODO: shuffle the seeds for every epoch
-  NDArray GetNextSeeds(int64_t key) {
-    const int64_t start_idx = key * _batch_size % _train_idx.NumElements();
-    const int64_t end_idx =
-        std::min(_train_idx.NumElements(), start_idx + _batch_size);
-    return _train_idx.CreateView({end_idx - start_idx}, _id_type,
-                                 start_idx * _id_type.bits / 8);
-  }
-
-  void SampleOnce(int64_t key) {
-//    LOG(INFO) << "start sampling " << key;
-    int blk_idx = key % _max_pool_size;
-    cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
-    NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
-    auto blocksPtr = _blocks_pool.at(blk_idx);
-    blocksPtr->_input_nodes = frontier;
-    auto table = blocksPtr->_table;
-    table->Reset();
-    table->FillWithUnique(frontier, frontier->shape[0]);
-    for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-      int64_t num_picks = _fanouts.at(layer);
-      std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
-      blockPtr->num_dst = frontier->shape[0];
-      ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
-        CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(_indptr, _indices, frontier,
-                                                    num_picks, false, blockPtr,
-                                                    sampling_stream);
-      });
-      // get the unique rows as frontier
-      table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
-      frontier = table->RefUnique();
-      blockPtr->num_src = frontier.NumElements();
+    // TODO sample multiple instance at once
+    // Q: shall we sample mutiple instances or only the top two layers
+    // more fine grained pipelining might be needed
+    int64_t SyncSample() {
+                      int64_t key = _next_key++;
+                      AsyncSampleOnce(key);
+                      SyncBlocks(key);
+                      return key;
+//      int64_t key = _next_key++;
+//      _syncflags.at(key % _max_pool_size) = true;
+//      SampleOnce(key);
+//      return key;
     }
 
-    runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
-    // must wait for the sampling_stream to be done before starting Mapping and
-    // Feature extraction
-    blocksPtr->_output_nodes = table->RefUnique();
-    // MapEdges to 0 based indexing
-    for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-      auto blockPtr = blocksPtr->GetBlock(layer);
-      GPUMapEdges(blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
-                  blockPtr->_new_col, table, sampling_stream);
+    // TODO: shuffle the seeds for every epoch
+    NDArray GetNextSeeds(int64_t key) {
+      const int64_t start_idx = key * _batch_size % _train_idx.NumElements();
+      const int64_t end_idx =
+          std::min(_train_idx.NumElements(), start_idx + _batch_size);
+      return _train_idx.CreateView({end_idx - start_idx}, _id_type,
+                                   start_idx * _id_type.bits / 8);
     }
 
-    // those two kernels are not sync until later BatchSync is called
-    IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
-                sampling_stream);
+    void SampleOnce(int64_t key) {
+      //    LOG(INFO) << "start sampling " << key;
+      int blk_idx = key % _max_pool_size;
+      NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
+      cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
+      auto blocksPtr = _blocks_pool.at(blk_idx);
+      blocksPtr->_input_nodes = frontier;
+      auto table = blocksPtr->_table;
+      table->Reset();
+      table->FillWithUnique(frontier, frontier->shape[0]);
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        int64_t num_picks = _fanouts.at(layer);
+        std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
+        blockPtr->num_dst = frontier->shape[0];
+        ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
+          CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(
+              _indptr, _indices, frontier, num_picks, false, blockPtr,
+              sampling_stream);
+        });
+        // get the unique rows as frontier
+        table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+        frontier = table->RefUnique();
+        blockPtr->num_src = frontier.NumElements();
+      }
 
-    if (gpu_cache.IsInitialized()) {
-      gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
-                                          sampling_stream, sampling_stream);
-    } else {
-      IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+      // must wait for the sampling_stream to be done before starting Mapping
+      // and Feature extraction
+      blocksPtr->_output_nodes = table->RefUnique();
+      // MapEdges to 0 based indexing
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        auto blockPtr = blocksPtr->GetBlock(layer);
+        GPUMapEdges(blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
+                    blockPtr->_new_col, table, sampling_stream);
+      }
+
+      // those two kernels are not sync until later BatchSync is called
+      IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                   sampling_stream);
-    }
-    runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
-    for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-      auto blockPtr = blocksPtr->GetBlock(layer);
-      dgl_format_code_t code = COO_CODE; // COO_CODE | CSR_CODE | CSC_CODE
-      auto graph_idx = CreateFromCOO(2, blockPtr->num_src, blockPtr->num_dst,
-                                     blockPtr->_new_col, blockPtr->_new_row,
-                                     false, false, code);
-      blockPtr->_block_ref = HeteroGraphRef{graph_idx};
-    }
-//    LOG(INFO) << "finished sampling " << key;
-  }
 
-  // old
-  void AsyncSampleOnce(int64_t key) {
-    int blk_idx = key % _max_pool_size;
-    _syncflags.at(blk_idx) = false;
-    cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
-
-    NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
-    auto blocksPtr = _blocks_pool.at(blk_idx);
-    blocksPtr->_input_nodes = frontier;
-    auto table = blocksPtr->_table;
-    table->Reset();
-    table->FillWithUnique(frontier, frontier->shape[0]);
-    for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-      int64_t num_picks = _fanouts.at(layer);
-      std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
-      blockPtr->num_dst = frontier->shape[0];
-      ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
-        CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(_indptr, _indices, frontier,
-                                                    num_picks, false, blockPtr,
-                                                    sampling_stream);
-      });
-      // get the unique rows as frontier
-      table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
-      frontier = table->RefUnique();
-      blockPtr->num_src = frontier.NumElements();
+      if (gpu_cache.IsInitialized()) {
+        gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
+                                            sampling_stream, sampling_stream);
+      } else {
+        IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+                    sampling_stream);
+      }
+      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        auto blockPtr = blocksPtr->GetBlock(layer);
+        dgl_format_code_t code = COO_CODE; // COO_CODE | CSR_CODE | CSC_CODE
+        auto graph_idx = CreateFromCOO(2, blockPtr->num_src, blockPtr->num_dst,
+                                       blockPtr->_new_col, blockPtr->_new_row,
+                                       false, false, code);
+        blockPtr->_block_ref = HeteroGraphRef{graph_idx};
+      }
+      //    LOG(INFO) << "finished sampling " << key;
     }
 
-    runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
-    // must wait for the sampling_stream to be done before starting Mapping and
-    // Feature extraction
-    blocksPtr->_output_nodes = table->RefUnique();
-    // MapEdges to 0 based indexing
-    for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-      auto blockPtr = blocksPtr->GetBlock(layer);
-      GPUMapEdges(blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
-                  blockPtr->_new_col, table, sampling_stream);
+    // old
+    void AsyncSampleOnce(int64_t key) {
+      int blk_idx = key % _max_pool_size;
+      _syncflags.at(blk_idx) = false;
+      cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
+
+      NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
+      auto blocksPtr = _blocks_pool.at(blk_idx);
+      blocksPtr->_input_nodes = frontier;
+      auto table = blocksPtr->_table;
+      table->Reset();
+      table->FillWithUnique(frontier, frontier->shape[0]);
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        int64_t num_picks = _fanouts.at(layer);
+        std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
+        blockPtr->num_dst = frontier->shape[0];
+        ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
+          CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(
+              _indptr, _indices, frontier, num_picks, false, blockPtr,
+              sampling_stream);
+        });
+        // get the unique rows as frontier
+        table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+        frontier = table->RefUnique();
+        blockPtr->num_src = frontier.NumElements();
+      }
+      // must wait for the sampling_stream to be done before starting Mapping
+      // and Feature extraction
+      blocksPtr->_output_nodes = table->RefUnique();
+      // MapEdges to 0 based indexing
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        auto blockPtr = blocksPtr->GetBlock(layer);
+        GPUMapEdges(blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
+                    blockPtr->_new_col, table, sampling_stream);
+      }
+
+      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
+        auto blockPtr = _blocks_pool.at(blk_idx)->GetBlock(layer);
+        dgl_format_code_t code = COO_CODE; // COO_CODE | CSR_CODE | CSC_CODE
+        auto graph_idx = CreateFromCOO(2, blockPtr->num_src, blockPtr->num_dst,
+                                       blockPtr->_new_col, blockPtr->_new_row,
+                                       false, false, code);
+        blockPtr->_block_ref = HeteroGraphRef{graph_idx};
+      }
+
+      // those two kernels are not sync until later BatchSync is called
+      IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
+                  _gpu_feat_streams.at(blk_idx));
+
+      if (gpu_cache.IsInitialized()) {
+        gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
+                                            _gpu_feat_streams.at(blk_idx),
+                                            _uva_feat_streams.at(blk_idx));
+      } else {
+        IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+                    _uva_feat_streams.at(blk_idx));
+      }
     }
 
-    // those two kernels are not sync until later BatchSync is called
-    IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
-                _gpu_feat_streams.at(blk_idx));
-
-    if (gpu_cache.IsInitialized()) {
-      gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
-                                          _gpu_feat_streams.at(blk_idx),
-                                          _uva_feat_streams.at(blk_idx));
-    } else {
-      IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
-                  _uva_feat_streams.at(blk_idx));
+    void VisitAttrs(runtime::AttrVisitor * v) final {
+      v->Visit("indptr", &_indptr);
+      v->Visit("indices", &_indices);
+      v->Visit("labels", &_labels);
+      v->Visit("feats", &_cpu_feats);
+      v->Visit("seeds", &_train_idx);
+      v->Visit("max_pool_size", &_max_pool_size);
     }
-  }
 
-  void VisitAttrs(runtime::AttrVisitor *v) final {
-    v->Visit("indptr", &_indptr);
-    v->Visit("indices", &_indices);
-    v->Visit("labels", &_labels);
-    v->Visit("feats", &_cpu_feats);
-    v->Visit("seeds", &_train_idx);
-    v->Visit("max_pool_size", &_max_pool_size);
-  }
+    static constexpr const char *_type_key = "LocDataloader";
 
-  static constexpr const char *_type_key = "LocDataloader";
+    DGL_DECLARE_OBJECT_TYPE_INFO(DataloaderObject, Object);
+  }; // DataloaderObject
 
-  DGL_DECLARE_OBJECT_TYPE_INFO(DataloaderObject, Object);
-}; // DataloaderObject
+  class LocDataloader : public runtime::ObjectRef {
+  public:
+    const DataloaderObject *operator->() const {
+      return static_cast<const DataloaderObject *>(obj_.get());
+    }
 
-class LocDataloader : public runtime::ObjectRef {
-public:
-  const DataloaderObject *operator->() const {
-    return static_cast<const DataloaderObject *>(obj_.get());
-  }
-
-  using ContainerType = DataloaderObject;
-};
+    using ContainerType = DataloaderObject;
+  };
 } // namespace dgl::groot
 
 #endif // DGL_LOC_DATALOADER_H

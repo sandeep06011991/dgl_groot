@@ -63,7 +63,7 @@ def groot_cache(config: RunConfig):
             blocks, batch_feat, batch_label = get_batch(key)
             # prefetch next mini-batch
             key = sample_batch_async()
-            
+            # blocks, batch_feat, batch_label = get_batch(sample_batch_sync())            
             if config.sample_only:
                 continue
             
@@ -92,15 +92,15 @@ def groot_cache(config: RunConfig):
     duration = passed / config.num_epoch
     
     print(f"duration={round(duration,2)} secs / epoch")
-    
-    graph.ndata["feat"] = feats
-    graph.ndata["label"] = labels
-    graph.pin_memory_()
-    sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
-    test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
-                                            indices = dgl_dataset.test_idx,
-                                            graph_sampler = sampler, 
-                                            use_uva=True,
-                                            batch_size=config.batch_size)
-    
-    acc = test_model_accuracy(config, model, test_dataloader)
+    if config.test_acc:
+        graph.ndata["feat"] = feats
+        graph.ndata["label"] = labels
+        graph.pin_memory_()
+        sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
+        test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
+                                                indices = dgl_dataset.test_idx,
+                                                graph_sampler = sampler, 
+                                                use_uva=True,
+                                                batch_size=config.batch_size)
+        
+        acc = test_model_accuracy(config, model, test_dataloader)

@@ -11,12 +11,11 @@
 #include "cuda_hashtable.cuh"
 
 namespace dgl {
-    namespace groot {
+namespace groot {
 
-        void GPUMapEdges(
-                NDArray row, NDArray ret_row, NDArray col, NDArray ret_col,
-                std::shared_ptr<CudaHashTable> mapping, cudaStream_t stream);
-    }
+void GPUMapEdges(NDArray row, NDArray ret_row, NDArray col, NDArray ret_col,
+                 std::shared_ptr<CudaHashTable> mapping, cudaStream_t stream);
+}
 
-}  // namespace dgl
-#endif  // DGL_CUDA_MAPPING_CUH
+} // namespace dgl
+#endif // DGL_CUDA_MAPPING_CUH
