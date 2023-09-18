@@ -15,6 +15,7 @@
 #include "cuda/cuda_index_select.cuh"
 #include "cuda/cuda_mapping.cuh"
 #include "cuda/rowwise_sampling.cuh"
+#include "../groot/array_scatter.h"
 
 namespace dgl {
 namespace groot {
@@ -33,6 +34,9 @@ class DataloaderObject : public runtime::Object {
   NDArray _cpu_feats;
   NDArray _gpu_feats;
   NDArray _labels;
+
+//Data structures required for slicing
+  NDArray _partition_map;
 
   int64_t _max_pool_size;
   int64_t _batch_size;
@@ -62,16 +66,16 @@ class DataloaderObject : public runtime::Object {
 
   DataloaderObject(
       DGLContext ctx, NDArray indptr, NDArray indices, NDArray feats,
-      NDArray labels, NDArray seeds, std::vector<int64_t> fanouts,
+      NDArray labels, NDArray seeds, NDArray pmap, std::vector<int64_t> fanouts,
       int64_t batch_size, int64_t max_pool_size) {
     Init(
-        ctx, indptr, indices, feats, labels, seeds, fanouts, batch_size,
+        ctx, indptr, indices, feats, labels, seeds, pmap,  fanouts, batch_size,
         max_pool_size);
   };
 
   void Init(
       DGLContext ctx, NDArray indptr, NDArray indices, NDArray feats,
-      NDArray labels, NDArray seeds, std::vector<int64_t> fanouts,
+      NDArray labels, NDArray seeds, NDArray pmap, std::vector<int64_t> fanouts,
       int64_t batch_size, int64_t max_pool_size) {
     LOG(INFO) << "Creating DataloaderObject with init function";
 
@@ -83,6 +87,8 @@ class DataloaderObject : public runtime::Object {
     _labels = labels;
     _label_type = labels->dtype;
     _seeds = seeds;
+    _partition_map = pmap;
+    CHECK_EQ(pmap->shape[0] , (indptr->shape[0] - 1));
     _num_seeds = _seeds.NumElements();
     _fanouts = fanouts;
     _batch_size = batch_size;
@@ -171,23 +177,64 @@ class DataloaderObject : public runtime::Object {
     auto blocksPtr = _blocks_pool.at(blk_idx);
     NDArray frontier = GetNextSeeds(key);  // seeds to sample subgraph
     blocksPtr->_input_nodes = frontier;
-    auto table = blocksPtr->_table;
-    table->Reset();
-    table->FillWithUnique(frontier, frontier->shape[0]);
-//    cudaStream_t sampling_stream = _reindex_streams.at(blk_idx);
+
     cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
+    int num_partitions = 4;
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       int64_t num_picks = _fanouts.at(layer);
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
-      blockPtr->num_dst = frontier->shape[0];
+      auto blockTable  = blockPtr->_table;
+      auto scattered_frontier = blockPtr->_scattered_frontier;
+      auto scattered_src = blockPtr->_scattered_src;
+      auto scattered_dest = blockPtr->_scattered_dest;
+      blockTable->Reset();
+      auto blockType = blocksPtr->_blockTypes.at(layer);
+      if(blockType != BlocksObject::BlockType::DATA_PARALLEL) {
+        if(layer != 0 && blocksPtr->_blockTypes.at(layer-1) != BlocksObject::BlockType::DATA_PARALLEL){
+          blockPtr->_scattered_frontier = blocksPtr->_blocks.at(layer-1)->_scattered_src;
+          scattered_frontier = blockPtr->_scattered_frontier;
+        }else {
+          Scatter(scattered_frontier, frontier, _partition_map, num_partitions);
+        }
+        frontier = scattered_frontier->unique_array;
+      }
+
+      //    output of the scattered array is the new frontier.
       ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
         CSRRowWiseSamplingUniform<kDGLCUDA, IdType >(
             _indptr, _indices, frontier, num_picks, false, blockPtr,
             sampling_stream);
       });
-      // get the unique rows as frontier
-      table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
-      frontier = table->GetUnique();
+
+     if(blockType  == BlocksObject::BlockType::DEST_TO_SRC) {
+        NDArray p_map =
+            IndexSelect(blockPtr->_col, _partition_map, sampling_stream);
+        ScatterWithDuplicates(
+            scattered_src, blockPtr->_col, p_map, num_partitions);
+        ScatterWithDuplicates(
+            scattered_dest, blockPtr->_row, p_map, num_partitions);
+        blockPtr->_col = scattered_src->shuffled_array;
+        blockPtr->_row = scattered_dest->shuffled_array;
+        // Use a new table
+        blockTable->FillWithDuplicates(
+            blockPtr->_row, blockPtr->_row.NumElements());
+        // Todo compute num_dest
+        blockTable->FillWithDuplicates(
+            blockPtr->_col, blockPtr->_col.NumElements());
+      }
+      if(blockType == BlocksObject::BlockType::SRC_TO_DEST){
+        blockTable->FillWithDuplicates(blockPtr->_row, blockPtr->_row.NumElements());
+        blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+ ;      frontier = blockTable->GetUnique();
+        Scatter(scattered_src, frontier, _partition_map, num_partitions);
+      }
+      if(blockType == BlocksObject::BlockType::DATA_PARALLEL){
+        blockTable->Reset();
+	blockTable->FillWithDuplicates(blockPtr->_row, blockPtr->_row.NumElements());
+        blockPtr->num_dst = blockTable->GetUnique().NumElements();
+	blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+        frontier = blockTable->GetUnique();
+      }
       blockPtr->num_src = frontier.NumElements();
     }
 
@@ -195,7 +242,7 @@ class DataloaderObject : public runtime::Object {
     // since the hash table must be populated correctly to provide the mapping and unique nodes
     runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
     // fetch feature data and label data0
-    blocksPtr->_output_nodes = table->GetUnique();
+    blocksPtr->_output_nodes = blocksPtr->_blocks.at(_fanouts.size()-1)->_table->GetUnique();
     blocksPtr->_labels = IndexSelect(_labels, blocksPtr->_input_nodes, _gpu_feat_streams.at(blk_idx));
     blocksPtr->_feats = IndexSelect(_cpu_feats, blocksPtr->_output_nodes, _cpu_feat_streams.at(blk_idx));
 
@@ -204,7 +251,7 @@ class DataloaderObject : public runtime::Object {
       auto blockPtr = blocksPtr->GetBlock(layer);
       GPUMapEdges(
           blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
-          blockPtr->_new_col, blocksPtr->_table, _reindex_streams.at(blk_idx));
+          blockPtr->_new_col, blockPtr->_table, _reindex_streams.at(blk_idx));
     }
   }
 

@@ -14,7 +14,7 @@
 #include "../graph/heterograph.h"
 #include "../c_api_common.h"
 #include "./cuda/cuda_hashtable.cuh"
-
+#include "../groot/array_scatter.h"
 namespace dgl {
 namespace groot {
 
@@ -37,7 +37,11 @@ struct BlockObject : public runtime::Object {
     _newlen = NDArray::Empty({1}, dtype, DGLContext{kDGLCPU, 0});
     _newlen.PinMemory_();
   };
+
   int64_t num_src, num_dst; // number of src (unique) and destination (unique) for buliding the dgl block object
+
+  std::shared_ptr<CudaHashTable> _table;
+
   NDArray _row;  // input nodes in original ids (coo format)
   NDArray _new_row; // input nodes in reindex-ed ids (0 based indexing)
   NDArray _col;  // destination nodes in original ids (coo format)
@@ -47,6 +51,10 @@ struct BlockObject : public runtime::Object {
   NDArray _indptr;
   NDArray _newlen;
   HeteroGraphRef _block_ref;
+  ScatteredArray _scattered_frontier;
+  ScatteredArray _scattered_src;
+  ScatteredArray _scattered_dest;
+
   void VisitAttrs(runtime::AttrVisitor *v) final {
     v->Visit("row", &_row);
     v->Visit("col", &_col);
@@ -56,6 +64,9 @@ struct BlockObject : public runtime::Object {
     v->Visit("indptr", &_indptr);
     v->Visit("outdeg", &_outdeg);
     v->Visit("gidx", &_block_ref);
+    v->Visit("scattered_frontier", &_scattered_frontier);
+    v->Visit("scattered_src", &_scattered_src);
+    v->Visit("scattered_dest", &_scattered_dest);
   }
 
   static constexpr const char * _type_key = "Block";
@@ -71,17 +82,25 @@ class Block : public runtime::ObjectRef {
 };
 
 struct BlocksObject : public runtime::Object {
-
+  enum BlockType{
+     DATA_PARALLEL,
+     SRC_TO_DEST,
+     DEST_TO_SRC
+  };
   ~BlocksObject(){
     LOG(INFO) << "Calling Blocks Object destructor";
   };
   int64_t key, _num_layer;
   std::vector<std::shared_ptr<BlockObject>> _blocks;
+
   NDArray _labels;  // labels of input nodes
   NDArray _feats;   // feature of output nodes
   NDArray _input_nodes;   // seeds
   NDArray _output_nodes;  // output nodes
-  std::shared_ptr<CudaHashTable> _table;
+//  std::shared_ptr<CudaHashTable> _table;
+// Data structures for slicing.
+  std::vector<BlockType> _blockTypes;
+
   DGLContext _ctx;
   BlocksObject(){};
   BlocksObject(
@@ -103,7 +122,7 @@ struct BlocksObject : public runtime::Object {
 
     int64_t est_output_nodes = batch_size;
     for (int64_t fanout : fanouts) est_output_nodes *= (fanout + 1);
-    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
+//    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
   };
 
   std::shared_ptr<BlockObject > GetBlock(int64_t layer){

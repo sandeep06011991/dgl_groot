@@ -22,6 +22,13 @@ namespace dgl{
 
         }
 
+
+        void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions){}
+
+        void ScatterWithDuplicates(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions){}
+
+
+
     }
 
 

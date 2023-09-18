@@ -1,4 +1,4 @@
-//
+ //
 // Created by juelin on 8/6/23.
 //
 
@@ -15,16 +15,17 @@ DGL_REGISTER_GLOBAL("groot._CAPI_CreateLocDataloader")
       NDArray feats = args[3];
       NDArray labels = args[4];
       NDArray seeds = args[5];
-      List<Value> fanout_list = args[6];
+      NDArray partition_map = args[6];
+      List<Value> fanout_list = args[7];
       std::vector<int64_t> fanouts;
       for (const auto& fanout : fanout_list) {
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
-      int64_t batch_size = args[7];
-      int64_t max_pool_size = args[8];
+      int64_t batch_size = args[8];
+      int64_t max_pool_size = args[9];
 
       auto o = std::make_shared<DataloaderObject>(
-          ctx, indptr, indices, feats, labels, seeds, fanouts, batch_size,
+          ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
           max_pool_size);
       *rv = o;
     });
@@ -38,16 +39,17 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitLocDataloader")
       NDArray feats = args[3];
       NDArray labels = args[4];
       NDArray seeds = args[5];
-      List<Value> fanout_list = args[6];
+      NDArray partition_map = args[6];
+      List<Value> fanout_list = args[7];
       std::vector<int64_t> fanouts;
       for (const auto& fanout : fanout_list) {
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
-      int64_t batch_size = args[7];
-      int64_t max_pool_size = args[8];
+      int64_t batch_size = args[8];
+      int64_t max_pool_size = args[9];
 
       DataloaderObject::Global()->Init(
-          ctx, indptr, indices, feats, labels, seeds, fanouts, batch_size,
+          ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
           max_pool_size);
 
       *rv = DataloaderObject::Global();

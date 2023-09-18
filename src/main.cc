@@ -25,6 +25,10 @@ using namespace dgl::aten;
 using namespace dgl::runtime;
 
 
+
+// Unit Test 1
+//Single Layer Unit Test SRC-> DEST
+
 /*
 template<typename T>
 using Vec3d = std::vector<std::vector<std::vector<T>>>;
@@ -267,20 +271,20 @@ int main_v1(){
 
     LOG(INFO) << "Using null streams";
 
-    int64_t low = 0;
-    int64_t high = 10;
-    uint8_t nbits = 32;
-
-    DGLContext ctx = DGLContext{kDGLCPU, world_rank};
-    auto array = aten::Range( low,  high,  nbits,  ctx);
-    srand(110);
-    int size = 40000000;
-    if(world_rank == 0)LOG(INFO) << "Elements, Bytes, Latency, Bandwitdth\n";
-        //    int size = GetEnvParam("ALLTOALL_BENCHMARK_SIZE", 100000);
-    for(int i = 1024 ; i < 100000000; i = i * 5){
-      size = i;
-      _AlltoallBenchmark<int64_t>(world_rank, world_size, size);
-    }
+//    int64_t low = 0;
+//    int64_t high = 10;
+//    uint8_t nbits = 32;
+//
+//    DGLContext ctx = DGLContext{kDGLCPU, world_rank};
+//    auto array = aten::Range( low,  high,  nbits,  ctx);
+//    srand(110);
+//    int size = 40000000;
+//    if(world_rank == 0)LOG(INFO) << "Elements, Bytes, Latency, Bandwitdth\n";
+//        //    int size = GetEnvParam("ALLTOALL_BENCHMARK_SIZE", 100000);
+//    for(int i = 1024 ; i < 100000000; i = i * 5){
+//      size = i;
+//      _AlltoallBenchmark<int64_t>(world_rank, world_size, size);
+//    }
 
     //    _AlltoallBenchmark<int>(world_rank, world_size, size);
     std::cout << "Successfuly complete\n";

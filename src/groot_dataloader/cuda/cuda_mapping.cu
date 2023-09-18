@@ -30,7 +30,7 @@ __global__ void map_edge_ids(
     const IdType *const global_dst, IdType *const new_global_dst,
     const size_t num_edges, DeviceOrderedHashTable<IdType> table) {
   assert(BLOCK_SIZE == blockDim.x);
-  assert(2 == gridDim.y);
+//  assert(2 == gridDim.y);
 
   if (blockIdx.y == 0) {
     map_node_ids<IdType, BLOCK_SIZE, TILE_SIZE>(
@@ -38,6 +38,41 @@ __global__ void map_edge_ids(
   } else {
     map_node_ids<IdType, BLOCK_SIZE, TILE_SIZE>(
         global_dst, new_global_dst, num_edges, table);
+  }
+}
+
+
+void GPUMapNodes(NDArray row, NDArray ret_row, \
+                  std::shared_ptr<CudaHashTable> mapping, cudaStream_t stream){
+  int64_t num_edges = row.NumElements();
+  const size_t num_tiles =
+      (num_edges + Constant::kCudaTileSize - 1) / Constant::kCudaTileSize;
+  const dim3 grid(num_tiles, 1);
+  const dim3 block(Constant::kCudaBlockSize);
+  CHECK(row->dtype == ret_row->dtype);
+  if (DGLDataTypeTraits<int32_t>().dtype == row->dtype) {
+    using IdType = int32_t;
+    const IdType *const global_src = row.Ptr<IdType>();
+    IdType *const new_global_src = ret_row.Ptr<IdType>();
+    const IdType *const global_dst = nullptr;
+    IdType *const new_global_dst = nullptr;
+    auto table = mapping->DeviceHandle<IdType>();
+    map_edge_ids<IdType, Constant::kCudaBlockSize, Constant::kCudaTileSize>
+        <<<grid, block, 0, stream>>>(
+            global_src, new_global_src, global_dst, new_global_dst, num_edges,
+            table);
+  }else{
+    using IdType = int32_t;
+    const IdType *const global_src = row.Ptr<IdType>();
+    IdType *const new_global_src = ret_row.Ptr<IdType>();
+    const IdType *const global_dst = nullptr;
+    IdType *const new_global_dst = nullptr;
+    auto table = mapping->DeviceHandle<IdType>();
+    map_edge_ids<IdType, Constant::kCudaBlockSize, Constant::kCudaTileSize>
+        <<<grid, block, 0, stream>>>(
+            global_src, new_global_src, global_dst, new_global_dst, num_edges,
+            table);
+
   }
 }
 

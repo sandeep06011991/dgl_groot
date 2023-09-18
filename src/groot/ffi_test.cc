@@ -12,75 +12,10 @@
 #include <vector>
 
 using namespace dgl::runtime;
-// Todo difference between IDArray and NDArray 
-// Is it  the same thing. ?
 
 namespace dgl{
     namespace groot{
-        class ScatteredArrayObject : public Object {
-            public:
-                IdArray source_array;
-                IdArray partition_map;
-                IdArray index;
-                IdArray sizes;
-                int num_partitions;
-                List<Value>  scattered_arrays;
 
-                List<Value> csum;
-
-                List<Value> scatter_inverse;
-                //  List<Value> list;           // works
-                //  *     list.push_back(Value(MakeValue(1)));  // works
-                //  *     list.push_back(Value(MakeValue(NDArray::Empty(shape, dtype, ctx))));  //
-                List<Value>  scatter_sizes;
-                // TODO:
-                //  FFI does not need to have all this logic
-                ScatteredArrayObject(IdArray source, IdArray partition, int num_partitions){
-                    this->source_array = source;
-                    this->partition_map = partition; 
-                    this->num_partitions = num_partitions;
-                    DGLContext ctx = source->ctx;
-                    CHECK_EQ(source->ctx , partition->ctx);
-                    CHECK_EQ(source->ctx.device_type, DGLDeviceType::kDGLCUDA);
-                    index = impl::scatter_index(partition, num_partitions);
-                    sizes = getBoundaryOffsets(index, num_partitions);
-                    std::vector<IdArray> partitioned;
-                    std::vector<IdArray> indexes;
-                    for(int64_t i = 0; i < num_partitions; i ++ ){
-                        IdArray index_out = aten::NewIdArray(aten::IndexSelect<int>(sizes, i), \
-                        partition->ctx, 32);
-                        IdArray partitioned_out = aten::NewIdArray(aten::IndexSelect<int>(sizes, i), \
-                        partition->ctx, 32);
-                        partitioned.push_back(partitioned_out);
-                        indexes.push_back(index_out);
-                    }
-                }
-
-                void VisitAttrs(AttrVisitor *v) final {
-                    v->Visit("source_array", &source_array);
-                    v->Visit("partition_map", &partition_map);
-                    v->Visit("sizes", &sizes);
-                    v->Visit("index", &index);
-                    v->Visit("num_partitions", &num_partitions);
-                    v->Visit("scattered_arrays", &scattered_arrays);
-                    v->Visit("scatter_inverse", &scatter_inverse);
-                    v->Visit("scatter_sizes", &scatter_sizes);
-                }
-
-            static constexpr const char* _type_key = "ScatteredArray";
-            DGL_DECLARE_OBJECT_TYPE_INFO(ScatteredArrayObject, Object);
-        };
-
-        class ScatteredArray : public ObjectRef {
-        public:
-            const ScatteredArrayObject* operator->() const {
-                return static_cast<const ScatteredArrayObject*>(obj_.get());
-            }
-            using ContainerType = ScatteredArrayObject;
-        };
-        void testSocket(){
-
-        }
 
       struct TestObject{
         int a = 0;

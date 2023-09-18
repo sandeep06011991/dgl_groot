@@ -13,6 +13,8 @@
 namespace dgl {
 namespace groot {
 
+void GPUMapNodes(NDArray row, NDArray ret_row, std::shared_ptr<CudaHashTable> mapping, cudaStream_t stream );
+
 void GPUMapEdges(
     NDArray row, NDArray ret_row, NDArray col, NDArray ret_col,
     std::shared_ptr<CudaHashTable> mapping, cudaStream_t stream);
