@@ -12,6 +12,7 @@
 #include <dgl/packed_func_ext.h>
 #include <memory>
 #include "./cuda/array_scatter.h"
+#include "../groot_dataloader/cuda/cuda_hashtable.cuh"
 
 using namespace dgl::runtime;
 
@@ -19,25 +20,30 @@ namespace dgl{
     namespace groot{
     IdArray getBoundaryOffsets(IdArray index_cum_sums, int num_partitions);
 
-    IdArray gatherArray(IdArray values, IdArray index, int num_partitions);
+    IdArray gatherArray(IdArray values, IdArray index, IdArray out_idx, int num_partitions);
+
+    IdArray scatter_index(IdArray partition_map,int num_partitions);
 
     namespace impl{
-    template<DGLDeviceType XPU, typename  IdType>
-    IdArray gatherIndexFromArray(IdArray values, IdArray index, int num_partitions);
+      template<DGLDeviceType XPU, typename  IdType>
+      IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx, int num_partitions);
 
-    template<DGLDeviceType XPU, typename IdType>
-    IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
+      template<DGLDeviceType XPU, typename IdType>
+      IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
+
+      template<DGLDeviceType XPU, typename  IdType>
+      IdArray scatter_index(IdArray partition_map,int num_partitions);
     }
 
-    void ScatterIndex();
 
     class ScatteredArrayObject : public runtime::Object {
 
      public:
       ScatteredArrayObject(){}
       ScatteredArrayObject(NDArray a, NDArray b, int num_partitions){
-
+        std::cout << "Fix me !\n";
       }
+       bool isScattered;
       //original array has no duplicates
        NDArray originalArray;
        // Partition map does not refer to global IDS, this is local here so that when we move blocks, 
@@ -58,9 +64,11 @@ namespace dgl{
        NDArray shuffled_array;
        NDArray shuffled_recv_offsets;
 
-       // Possible recved array after shuffling has  has duplicates
+       // Possible received array after shuffling has duplicates
+       std::shared_ptr<CudaHashTable> table;
        NDArray unique_array;
        NDArray idx_unique_to_shuffled;
+
        int num_partitions;
 
       void shuffle_forward(NDArray array){}
@@ -83,19 +91,16 @@ namespace dgl{
     class ScatteredArray : public ObjectRef {
      public:
       DGL_DEFINE_OBJECT_REF_METHODS(ScatteredArray,runtime::ObjectRef, ScatteredArrayObject);
-
+       static ScatteredArray Create() {
+            return ScatteredArray(std::make_shared<ScatteredArrayObject>());
+      }
     };
 
-    void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions);
+    void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions,\
+                  int rank , int world_size);
 
-    void ScatterWithDuplicates(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions);
 
 
-    class ScatterBlockEdges{
-           public:
-//            Circular dependecy
-              ScatterBlockEdges(NDArray row, NDArray col, NDArray partition_map){}
-        };
 
 
     }

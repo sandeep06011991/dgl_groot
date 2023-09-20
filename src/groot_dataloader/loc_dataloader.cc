@@ -21,12 +21,14 @@ DGL_REGISTER_GLOBAL("groot._CAPI_CreateLocDataloader")
       for (const auto& fanout : fanout_list) {
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
+      BlocksObject::BlockType blocktypes;
+      std::cout << "How to pass python enums here ?\n";
       int64_t batch_size = args[8];
       int64_t max_pool_size = args[9];
-
+      int64_t n_redundant_layers = args[10];
       auto o = std::make_shared<DataloaderObject>(
           ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
-          max_pool_size);
+          max_pool_size, blocktypes, n_redundant_layers);
       *rv = o;
     });
 
@@ -42,15 +44,19 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitLocDataloader")
       NDArray partition_map = args[6];
       List<Value> fanout_list = args[7];
       std::vector<int64_t> fanouts;
+      BlocksObject::BlockType blocktypes;
+      std::cout << "How to pass python enums here ?\n";
+
       for (const auto& fanout : fanout_list) {
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
       int64_t batch_size = args[8];
       int64_t max_pool_size = args[9];
 
+      int64_t n_redundant_layers = args[10];
       DataloaderObject::Global()->Init(
           ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
-          max_pool_size);
+          max_pool_size, blocktypes, n_redundant_layers);
 
       *rv = DataloaderObject::Global();
     });

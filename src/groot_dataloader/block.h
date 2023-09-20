@@ -51,7 +51,8 @@ struct BlockObject : public runtime::Object {
   NDArray _indptr;
   NDArray _newlen;
   HeteroGraphRef _block_ref;
-  ScatteredArray _scattered_frontier;
+
+  // Depending on wheter they are scattered src or dest
   ScatteredArray _scattered_src;
   ScatteredArray _scattered_dest;
 
@@ -64,7 +65,6 @@ struct BlockObject : public runtime::Object {
     v->Visit("indptr", &_indptr);
     v->Visit("outdeg", &_outdeg);
     v->Visit("gidx", &_block_ref);
-    v->Visit("scattered_frontier", &_scattered_frontier);
     v->Visit("scattered_src", &_scattered_src);
     v->Visit("scattered_dest", &_scattered_dest);
   }
@@ -97,9 +97,12 @@ struct BlocksObject : public runtime::Object {
   NDArray _feats;   // feature of output nodes
   NDArray _input_nodes;   // seeds
   NDArray _output_nodes;  // output nodes
-//  std::shared_ptr<CudaHashTable> _table;
+// std::shared_ptr<CudaHashTable> _table;
 // Data structures for slicing.
-  std::vector<BlockType> _blockTypes;
+  BlockType _blockType;
+  int switch_layer;
+  ScatteredArray _scattered_frontier;
+
 
   DGLContext _ctx;
   BlocksObject(){};
