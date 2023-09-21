@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.5)
 project(dgl_sparse C CXX)
-
+set (CMAKE_CXX_STANDARD 17)
 # Find PyTorch cmake files and PyTorch versions with the python interpreter $PYTHON_INTERP
 # ("python3" or "python" if empty)
 if(NOT PYTHON_INTERP)

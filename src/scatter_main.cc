@@ -158,7 +158,7 @@ int main_v2(){
 
 
 
-int main(){
+int main_v1(){
   MPI_Init(NULL, NULL);
   // // Get the number of processes
   int world_size;

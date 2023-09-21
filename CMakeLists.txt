@@ -7,7 +7,8 @@ message(STATUS "Start configuring project ${PROJECT_NAME}")
 
 #Adding to have better vs code support
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON CACHE INTERNAL "")
-
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # cmake utils
 include(cmake/util/Util.cmake)
 include(cmake/util/MshadowUtil.cmake)
@@ -91,9 +92,9 @@ if(MSVC)
 else(MSVC)
   include(CheckCXXCompilerFlag)
   # tensorpipe's dependencies require C++14
-  check_cxx_compiler_flag("-std=c++14"    SUPPORT_CXX14)
+  check_cxx_compiler_flag("-std=c++17"    SUPPORT_CXX17)
   set(CMAKE_C_FLAGS "-O2 -Wall -fPIC ${CMAKE_C_FLAGS}")
-  set(CMAKE_CXX_FLAGS "-O2 -Wall -fPIC -std=c++14 ${CMAKE_CXX_FLAGS}")
+  set(CMAKE_CXX_FLAGS "-O2 -Wall -fPIC -std=c++17 ${CMAKE_CXX_FLAGS}")
   if(NOT APPLE)
     set(CMAKE_SHARED_LINKER_FLAGS "-Wl,--warn-common ${CMAKE_SHARED_LINKER_FLAGS}")
   endif(NOT APPLE)
@@ -212,7 +213,7 @@ target_include_directories(groot_main PRIVATE "include")
 #   add_library(dgl SHARED ${DGL_SRC})
 # endif(USE_CUDA)
 
-set_property(TARGET dgl PROPERTY CXX_STANDARD 14)
+set_property(TARGET dgl PROPERTY CXX_STANDARD 17)
 
 # include directories
 target_include_directories(dgl PRIVATE "include")

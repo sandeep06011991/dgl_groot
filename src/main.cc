@@ -244,7 +244,8 @@ void _AlltoallBenchmark(int rank, int world_size, int size, int expand_size=1) {
   auto bytes = size * world_size * sizeof(T) / 1e9;
 
   auto time_in_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end_ts - start_ts).count();
-//  bool use_nccl = GetEnvParam("USE_NCCL", 0);
+	std::cout << "time to transfer is " << time_in_ms <<"\n";
+  //  bool use_nccl = GetEnvParam("USE_NCCL", 0);
   bool use_nccl = 0;
 //  LOG(INFO) << "Alltoall(NCCL?: " << use_nccl << ") " << "Benchmark: #send size of each GPU: " << bytes << " GB, # element size: " << sizeof(T) << " bytes, # alltoall time: " << time_in_ms / num_iters << " ms, # speeds: " << bytes / time_in_ms * 1000 * num_iters << " GB/s";
   if(rank == 0) LOG(INFO) <<  size <<","<<  bytes << " GB," << time_in_ms  * 1.0 / ( num_iters) << " ms," << bytes / time_in_ms * 1000 * num_iters << " GB/s";
@@ -253,7 +254,7 @@ void _AlltoallBenchmark(int rank, int world_size, int size, int expand_size=1) {
 
 #include "groot/core.h"
 
-int main_v1(){
+int main(){
     MPI_Init(NULL, NULL);
     // // Get the number of processes
     int world_size;
@@ -278,15 +279,15 @@ int main_v1(){
 //    DGLContext ctx = DGLContext{kDGLCPU, world_rank};
 //    auto array = aten::Range( low,  high,  nbits,  ctx);
 //    srand(110);
-//    int size = 40000000;
+    int size = 40000000;
 //    if(world_rank == 0)LOG(INFO) << "Elements, Bytes, Latency, Bandwitdth\n";
 //        //    int size = GetEnvParam("ALLTOALL_BENCHMARK_SIZE", 100000);
-//    for(int i = 1024 ; i < 100000000; i = i * 5){
-//      size = i;
-//      _AlltoallBenchmark<int64_t>(world_rank, world_size, size);
+//        for(int i = 1024 ; i < 100000000; i = i * 5){
+     // size = i;
+     // _AlltoallBenchmark<int64_t>(world_rank, world_size, size);
 //    }
 
-    //    _AlltoallBenchmark<int>(world_rank, world_size, size);
+        _AlltoallBenchmark<int>(world_rank, world_size, size);
     std::cout << "Successfuly complete\n";
 }
 

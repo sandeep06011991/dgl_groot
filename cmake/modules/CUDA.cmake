@@ -8,7 +8,7 @@ endif()
 ###### Borrowed from MSHADOW project
 
 include(CheckCXXCompilerFlag)
-check_cxx_compiler_flag("-std=c++14"   SUPPORT_CXX14)
+check_cxx_compiler_flag("-std=c++17"   SUPPORT_CXX17)
 
 set(dgl_known_gpu_archs "35" "50" "60" "70")
 set(dgl_cuda_arch_ptx "70")
@@ -306,10 +306,11 @@ macro(dgl_config_cuda out_variable)
 
 
   # 3. CUDA 11 requires c++14 by default
+  # [Since we are using CUDA-12.2. upgrading standards]
   include(CheckCXXCompilerFlag)
-  check_cxx_compiler_flag("-std=c++14"    SUPPORT_CXX14)
+  check_cxx_compiler_flag("-std=c++17"    SUPPORT_CXX17)
   string(REPLACE "-std=c++11" "" CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS}")
-  list(APPEND CUDA_NVCC_FLAGS "-std=c++14")
+  list(APPEND CUDA_NVCC_FLAGS "-std=c++17")
 
   message(STATUS "CUDA flags: ${CUDA_NVCC_FLAGS}")
 
