@@ -14,7 +14,7 @@
 #include "runtime/cuda/cuda_common.h"
 #include "groot_dataloader/loc_dataloader.h"
 #include <memory>
-
+#include "groot/cuda/alltoall.h"
 #include "groot_dataloader/cuda/cuda_hashtable.cuh"
 #include "groot_dataloader/cuda/cuda_mapping.cuh"
 #include <mpi.h>
@@ -145,6 +145,9 @@ int main_v2(){
 
 }
 
+#include "groot/context.h"
+#include "groot/core.h"
+
 
 int main(){
   MPI_Init(NULL, NULL);
@@ -156,12 +159,21 @@ int main(){
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   int rank = world_rank;
   std::cout << "World rank " << rank <<"\n";
+  cudaSetDevice(rank);
   auto context = DGLContext ({kDGLCUDA, rank});
   auto device_api = DeviceAPI::Get(context);
   CUDAThreadEntry::ThreadLocal()->stream =  static_cast<cudaStream_t>(device_api->CreateStream(context));
   cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+  CUDAThreadEntry::ThreadLocal()->thread_id=0;
 
-  cudaSetDevice(rank);
+  int thread_num = 1;
+  bool enable_kernel_control = false;
+  bool enable_comm_control = false;
+  bool enable_profiler = false;
+
+  ds::Initialize(world_rank, world_size, thread_num, \
+                 enable_kernel_control, enable_comm_control, enable_profiler);
+
   ScatteredArray array = ScatteredArray::Create();
   std::vector<long> _frontier_v {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
   NDArray frontier = NDArray::FromVector<int64_t>(_frontier_v).CopyTo(context, stream);
@@ -173,6 +185,12 @@ int main(){
   std::cout << "Start scatterring \n";
   cudaStreamSynchronize(stream);
   std::cout << "Stream synchronize ok !\n";
+
+  std::vector<long> _offsets {0,4,8,12,16};
+  NDArray offsets = NDArray::FromVector(_offsets).CopyTo(context,stream);
+  cudaStreamSynchronize(stream);
+
+  cudaDeviceSynchronize();
   groot::Scatter(array, frontier, partition_map, num_partitions, rank, world_size);
   cudaDeviceSynchronize();
   std::cout << "All done\n";

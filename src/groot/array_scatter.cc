@@ -40,34 +40,23 @@ namespace dgl{
 
         void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions,\
                           int rank, int world_size){
-            std::cout << "inside scatter \n";
+            std::cout << "Todo: Using dtype of array and frontier seems a bit broken\n";
             array->originalArray = frontier;
             array->partitionMap = _partition_map;
             // Compute partition continuos array
-            std::cout << "Start scattering index\n";
             assert(frontier->dtype.bits == _partition_map->dtype.bits);
             NDArray scattered_index = scatter_index(array->partitionMap, num_partitions);
-
-            std::cout << "gather array\n";
 
             array->idx_original_to_part_cont = NDArray::Empty(\
                   std::vector<int64_t>{frontier->shape[0]}, frontier->dtype, frontier->ctx);
             assert(frontier->dtype.bits == scattered_index->dtype.bits);
             array->partitionContinuousArray = gatherArray(frontier, scattered_index, array->idx_original_to_part_cont,  num_partitions);
 
-            std::cout << "Error os here \n";
             array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], frontier->dtype.bits, frontier->ctx), scattered_index,\
                                                               array->idx_original_to_part_cont,
                                                             num_partitions);
-            std::cout << "Boundary offsets \n";
-
             array->to_send_offsets_partition_continuous_array = getBoundaryOffsets(scattered_index, num_partitions);
-
             NDArray boundary_offsets = getBoundaryOffsets(scattered_index, num_partitions);
-//
-            std::cout << "shuffled  size\n";
-            std::cout << array->partitionContinuousArray->shape[0] << "\n";
-            std::cout << boundary_offsets <<"\n";
             CUDACHECK(cudaDeviceSynchronize());
             std::tie(array->shuffled_array,array->shuffled_recv_offsets) = \
                 ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
@@ -75,25 +64,25 @@ namespace dgl{
 
             CUDACHECK(cudaDeviceSynchronize());
             bool reindex = true;
-            std::cout << "shuffle ok \n";
+            cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
             if(reindex) {
-              array->table = std::make_shared<CudaHashTable>();
+              std::cout << "Todo:Creating new table everytime is wrong \n";
+              array->table = std::make_shared<CudaHashTable>(array->shuffled_array->dtype,
+                                     array->shuffled_array->ctx, 1000, stream);
 
               array->table->Reset();
               array->table->FillWithDuplicates(
                   array->shuffled_array, array->shuffled_array->shape[0]);
               array->unique_array = array->table->GetUnique();
-              cudaStream_t stream = dgl::runtime::getCurrentCUDAStream();
               array->idx_unique_to_shuffled = IdArray::Empty(
                   std::vector<int64_t>{array->shuffled_array->shape[0]},
                   array->shuffled_array->dtype, array->shuffled_array->ctx);
+
               GPUMapNodes(
                   array->shuffled_array, array->idx_unique_to_shuffled,
                   array->table, stream);
-              std::cout << "Printing unique array for RANK"
-                        << array->unique_array << "\n";
               cudaStreamSynchronize(stream);
-              std::cout << "Hello wosrld of scatter entry  \n";
+              std::cout << "Todo Stream synchornize not cleaned\n";
             }
         }
     }

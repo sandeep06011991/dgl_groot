@@ -62,7 +62,7 @@ void GPUMapNodes(NDArray row, NDArray ret_row, \
             global_src, new_global_src, global_dst, new_global_dst, num_edges,
             table);
   }else{
-    using IdType = int32_t;
+    using IdType = int64_t;
     const IdType *const global_src = row.Ptr<IdType>();
     IdType *const new_global_src = ret_row.Ptr<IdType>();
     const IdType *const global_dst = nullptr;

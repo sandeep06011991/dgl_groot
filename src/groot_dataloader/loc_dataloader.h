@@ -226,19 +226,6 @@ class DataloaderObject : public runtime::Object {
                     blockPtr->_col = blockPtr->_scattered_dest->shuffled_array;
                     blockPtr->_row = blockPtr->_scattered_dest->shuffled_array;
                     blockTable->FillWithDuplicates(blockPtr->_row, blockPtr->_row.NumElements());
-                    //        ScatterWithDuplicates(
-                  //            scattered_src, blockPtr->_col, p_map, num_partitions);
-                  //        ScatterWithDuplicates(
-                  //            scattered_dest, blockPtr->_row, p_map, num_partitions);
-                  //        blockPtr->_col = scattered_src->shuffled_array;
-                  //        blockPtr->_row = scattered_dest->shuffled_array;
-                  //        // Use a new table
-                  //        blockTable->FillWithDuplicates(
-                  //            blockPtr->_row, blockPtr->_row.NumElements());
-                  //        // Todo compute num_dest
-                  //        blockTable->FillWithDuplicates(
-                  //            blockPtr->_col, blockPtr->_col.NumElements());
-                  //      }
          }
       }else{
          blockTable->Reset();
