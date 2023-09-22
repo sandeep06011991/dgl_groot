@@ -24,6 +24,8 @@ using namespace dgl::aten;
 using namespace dgl::groot;
 using namespace dgl;
 //    Test CUDAHashTable
+
+
 int test_hash_table(){
   int rank = 0;
   auto context = DGLContext ({kDGLCUDA, rank});
@@ -125,9 +127,9 @@ int main_v2(){
     array[i] = i ;
     pmap[i] = i % num_partitions;
   }
-  auto dgl_array = IdArray::FromVector(array).CopyTo(context, stream);
-  auto dgl_array_idx = IdArray::FromVector(array).CopyTo(context, stream);
-  auto dgl_pmap = IdArray::FromVector(pmap).CopyTo(context, stream);
+  auto dgl_array = IdArray::FromVector<int32_t>(array).CopyTo(context, stream);
+  auto dgl_array_idx = IdArray::FromVector<int32_t>(array).CopyTo(context, stream);
+  auto dgl_pmap = IdArray::FromVector<int32_t>(pmap).CopyTo(context, stream);
   std::cout << "check\n";
   auto scattered_index = groot::scatter_index(dgl_pmap, 4);
   std::cout << scattered_index <<"\n";
@@ -144,21 +146,7 @@ int main_v2(){
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-int main_v1(){
+int main(){
   MPI_Init(NULL, NULL);
   // // Get the number of processes
   int world_size;
@@ -175,11 +163,13 @@ int main_v1(){
 
   cudaSetDevice(rank);
   ScatteredArray array = ScatteredArray::Create();
-  std::vector<int> _frontier_v {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
-  NDArray frontier = NDArray::FromVector(_frontier_v).CopyTo(context, stream);
-  NDArray partition_map = dgl::runtime::NDArray::FromVector(std::vector<int>{0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3}).\
+  std::vector<long> _frontier_v {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
+  NDArray frontier = NDArray::FromVector<int64_t>(_frontier_v).CopyTo(context, stream);
+  NDArray partition_map = dgl::runtime::NDArray::FromVector<int64_t>(std::vector<long>{0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3}).\
                             CopyTo(context, stream);;
   int num_partitions = 4;
+  assert(partition_map->dtype.bits == 64);
+  std::cout << "XXXXXXXXXXXX" << partition_map->dtype.bits <<"\n";
   std::cout << "Start scatterring \n";
   cudaStreamSynchronize(stream);
   std::cout << "Stream synchronize ok !\n";

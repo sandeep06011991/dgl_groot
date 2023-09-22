@@ -64,7 +64,7 @@ void get_boundary_offsets_kernel(
         int tx = blockIdx.x * blockDim.x + threadIdx.x;
         int stride_x = gridDim.x * blockDim.x;
         while (tx < num_partitions) {
-            index_out[tx] = index_cum[partition_map_size -1 + tx * partition_map_size];
+            index_out[tx + 1] = index_cum[partition_map_size -1 + tx * partition_map_size];
             tx += stride_x;
     }
 }
@@ -75,14 +75,15 @@ IdArray scatter_index(IdArray partition_map,int num_partitions){
     // uint8_t nbits = 32;
     std::cout << "Start partition in \n";
     auto nbits = partition_map->dtype.bits;
+    std::cout << "n bits " << nbits <<"\n";
 
-    IdArray index_out = aten::Full(0, partition_map->shape[0] * num_partitions, nbits, \
+    IdArray index_out = aten::Full<IdType>(0, partition_map->shape[0] * num_partitions, \
             partition_map->ctx);
     size_t partition_map_size = partition_map->shape[0];
     const IdType* partition_map_idx = partition_map.Ptr<IdType>();
     IdType* index_out_idx = index_out.Ptr<IdType>();
     std::cout << "Trying to get a stream  " << partition_map_size << "total size \n";
-    cudaStream_t stream = runtime::getCurrentCUDAStream();
+    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
 
     std::cout << "successfully got a stream \n";
     const int nt = cuda::FindNumThreads(partition_map_size);
@@ -103,6 +104,7 @@ IdArray scatter_index(IdArray partition_map,int num_partitions){
     device->FreeWorkspace(index_out->ctx, workspace);
     std::cout << "returning \n";
     cudaStreamSynchronize(stream);
+    std::cout <<  index_out <<"\n";
     std::cout << "Stream sync success\n";
     return index_out;
 }
@@ -110,7 +112,7 @@ IdArray scatter_index(IdArray partition_map,int num_partitions){
 
 template<DGLDeviceType XPU, typename IdType>
 IdArray  getBoundaryOffsetsLocal(IdArray index_cum_sums,int num_partitions){    
-    IdArray index_out = aten::Full(0,  num_partitions, index_cum_sums->dtype.bits, \
+    IdArray index_out = aten::Full(0,  num_partitions + 1, index_cum_sums->dtype.bits, \
             index_cum_sums->ctx);
 
     const IdType* index_cum_sums_idx = index_cum_sums.Ptr<IdType>();
@@ -121,7 +123,8 @@ IdArray  getBoundaryOffsetsLocal(IdArray index_cum_sums,int num_partitions){
     CUDA_KERNEL_CALL(get_boundary_offsets_kernel, nb, nt, 0, stream,\
         index_cum_sums_idx, num_partitions, index_cum_sums->shape[0]/num_partitions, index_out_idx);
 //  Todo Use Pinned memory. save on memory copy
-    return index_out.CopyTo(DGLContext{kDGLCPU, 0});  
+    return index_out;
+//    .CopyTo(DGLContext{kDGLCPU, 0});
 }
 
 

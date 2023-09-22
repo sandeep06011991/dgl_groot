@@ -23,11 +23,20 @@ namespace dgl{
         }
 
         IdArray scatter_index(IdArray partition_map,int num_partitions){
-            IdArray ret;
+            IdArray  ret;
             ATEN_ID_TYPE_SWITCH(partition_map->dtype, IdType, {
               ret = impl::scatter_index<kDGLCUDA, IdType>( partition_map , num_partitions);
             });
+            return ret;
         }
+
+        #define CUDACHECK(cmd)                                      \
+          do {                                                      \
+            cudaError_t e = cmd;                                    \
+            if (e != cudaSuccess) {                                 \
+              LOG(FATAL) << "Cuda error " << cudaGetErrorString(e); \
+            }                                                       \
+          } while (false);
 
         void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions,\
                           int rank, int world_size){
@@ -36,27 +45,37 @@ namespace dgl{
             array->partitionMap = _partition_map;
             // Compute partition continuos array
             std::cout << "Start scattering index\n";
+            assert(frontier->dtype.bits == _partition_map->dtype.bits);
             NDArray scattered_index = scatter_index(array->partitionMap, num_partitions);
-            return;
 
             std::cout << "gather array\n";
 
             array->idx_original_to_part_cont = NDArray::Empty(\
                   std::vector<int64_t>{frontier->shape[0]}, frontier->dtype, frontier->ctx);
+            assert(frontier->dtype.bits == scattered_index->dtype.bits);
             array->partitionContinuousArray = gatherArray(frontier, scattered_index, array->idx_original_to_part_cont,  num_partitions);
 
-            array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], 32, frontier->ctx), scattered_index, array->idx_original_to_part_cont,
+            std::cout << "Error os here \n";
+            array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], frontier->dtype.bits, frontier->ctx), scattered_index,\
+                                                              array->idx_original_to_part_cont,
                                                             num_partitions);
             std::cout << "Boundary offsets \n";
 
             array->to_send_offsets_partition_continuous_array = getBoundaryOffsets(scattered_index, num_partitions);
 
             NDArray boundary_offsets = getBoundaryOffsets(scattered_index, num_partitions);
-
+//
             std::cout << "shuffled  size\n";
-            std::tie(array->shuffled_array,array->shuffled_recv_offsets) = ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
+            std::cout << array->partitionContinuousArray->shape[0] << "\n";
+            std::cout << boundary_offsets <<"\n";
+            CUDACHECK(cudaDeviceSynchronize());
+            std::tie(array->shuffled_array,array->shuffled_recv_offsets) = \
+                ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
                                                           , 1, rank, world_size);
+
+            CUDACHECK(cudaDeviceSynchronize());
             bool reindex = true;
+            std::cout << "shuffle ok \n";
             if(reindex) {
               array->table = std::make_shared<CudaHashTable>();
 

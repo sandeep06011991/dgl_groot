@@ -254,7 +254,7 @@ void _AlltoallBenchmark(int rank, int world_size, int size, int expand_size=1) {
 
 #include "groot/core.h"
 
-int main(){
+int main_V1(){
     MPI_Init(NULL, NULL);
     // // Get the number of processes
     int world_size;
