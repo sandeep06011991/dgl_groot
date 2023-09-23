@@ -3,13 +3,8 @@
 #include <dgl/runtime/device_api.h>
 #include <dgl/array.h>
 #include <gtest/gtest.h>
-#include <cstdlib>
-#include <chrono>
-#include <thread>
-#include "groot/cuda/array_scatter.h"
 #include "groot/array_scatter.h"
 #include "groot/utils.h"
-//#include "./test_utils.h"
 #include "groot/context.h"
 #include "runtime/cuda/cuda_common.h"
 #include "groot_dataloader/loc_dataloader.h"
@@ -18,6 +13,9 @@
 #include "groot_dataloader/cuda/cuda_hashtable.cuh"
 #include "groot_dataloader/cuda/cuda_mapping.cuh"
 #include <mpi.h>
+#include "groot/context.h"
+#include "groot/core.h"
+
 
 using namespace dgl::ds;
 using namespace dgl::aten;
@@ -46,7 +44,7 @@ int test_hash_table(){
   std::cout << "testing.. hash_table \n";
 }
 
-int main_v3(){
+int test_graph_sampling(){
   MPI_Init(NULL, NULL);
   // // Get the number of processes
   int world_size;
@@ -55,18 +53,26 @@ int main_v3(){
   int world_rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
   int rank = world_rank;
-  std::cout << "World rank " << rank <<"\n";
   auto context = DGLContext ({kDGLCUDA, rank});
   auto device_api = DeviceAPI::Get(context);
   CUDAThreadEntry::ThreadLocal()->stream =  static_cast<cudaStream_t>(device_api->CreateStream(context));
+  CUDAThreadEntry::ThreadLocal()->thread_id=0;
   cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+  int thread_num = 1;
+  bool enable_kernel_control = false;
+  bool enable_comm_control = false;
+  bool enable_profiler = false;
 
-  std::vector<int> _indptrv;
-  std::vector<int> _indicesv;
+  ds::Initialize(world_rank, world_size, thread_num, \
+                 enable_kernel_control, enable_comm_control, enable_profiler);
+
+
+  std::vector<long> _indptrv;
+  std::vector<long> _indicesv;
   std::vector<float> _featv;
-  std::vector<int> _labelsv;
-  std::vector<int> _seedsv;
-  std::vector<int> _pmapv;
+  std::vector<long> _labelsv;
+  std::vector<long> _seedsv;
+  std::vector<long> _pmapv;
   int max_pool_size = 1;
   int num_nodes = 8;
 
@@ -101,55 +107,21 @@ int main_v3(){
   NDArray pmap = IdArray::FromVector(_pmapv).CopyTo(context, stream);
   std::cout << pmap <<"\n";
    auto blockType = BlocksObject::BlockType::SRC_TO_DEST;
-
   groot::DataloaderObject obj(
       context, indptr, indices, feat, labels, seeds, pmap,\
-          std::vector<int64_t>{10}, batch_size, max_pool_size, blockType, 1);
-          std::cout << "Object created Check ! \n";
-//  auto key = obj.SyncSample();
-//  auto blocks = obj.AwaitGetBlocks(key);
+          std::vector<int64_t>{10,10}, batch_size, max_pool_size, blockType, 1);
+  std::cout << "Object created Check ! \n";
+  auto key = obj.SyncSample();
+  auto blocks = obj.AwaitGetBlocks(key);
+  std::cout << blocks->_output_nodes <<"\n";
 //  std::cout << "All done for single layer sample\n";
+  MPI_Finalize();
+  return 0;
 }
 
-int main_v2(){
-  int rank  = 0;
-  std::cout << "Hello World\n";
-  //Create an array of 100000 Elements NDARray
-  auto context = DGLContext ({kDGLCUDA, rank});
-  auto device_api = DeviceAPI::Get(context);
-  CUDAThreadEntry::ThreadLocal()->stream =  static_cast<cudaStream_t>(device_api->CreateStream(context));
-  cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
-  int size = 1000;
-  int num_partitions = 4;
-  std::vector<int32_t> array(size, 0);
-  std::vector<int32_t> pmap(size, 0);
-  for(int i = 0; i < size; ++i) {
-    array[i] = i ;
-    pmap[i] = i % num_partitions;
-  }
-  auto dgl_array = IdArray::FromVector<int32_t>(array).CopyTo(context, stream);
-  auto dgl_array_idx = IdArray::FromVector<int32_t>(array).CopyTo(context, stream);
-  auto dgl_pmap = IdArray::FromVector<int32_t>(pmap).CopyTo(context, stream);
-  std::cout << "check\n";
-  auto scattered_index = groot::scatter_index(dgl_pmap, 4);
-  std::cout << scattered_index <<"\n";
-
-  auto partitioned_out = groot::gatherArray(dgl_array, scattered_index, dgl_array_idx,  num_partitions);
-  auto offsets = groot::getBoundaryOffsets(scattered_index, num_partitions);
-  cudaDeviceSynchronize();
-//  std::cout << "Start index select" << offsets <<"\n";
-  std::cout << partitioned_out <<"\n";
-
-  //Call functional required object
-  std::cout << "all done\n";
-
-}
-
-#include "groot/context.h"
-#include "groot/core.h"
 
 
-int main(){
+int test_scatter(){
   MPI_Init(NULL, NULL);
   // // Get the number of processes
   int world_size;
@@ -174,7 +146,7 @@ int main(){
   ds::Initialize(world_rank, world_size, thread_num, \
                  enable_kernel_control, enable_comm_control, enable_profiler);
 
-  ScatteredArray array = ScatteredArray::Create();
+  ScatteredArray array = ScatteredArray::Create(100, 4 , context, DGLDataType {0 , 64, 1}, stream);
   std::vector<long> _frontier_v {0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15};
   NDArray frontier = NDArray::FromVector<int64_t>(_frontier_v).CopyTo(context, stream);
   NDArray partition_map = dgl::runtime::NDArray::FromVector<int64_t>(std::vector<long>{0,1,2,3,0,1,2,3,0,1,2,3,0,1,2,3}).\
@@ -203,6 +175,9 @@ int main(){
 
 
 
-
+int main(){
+  test_graph_sampling();
+  return 0;
+}
 
 

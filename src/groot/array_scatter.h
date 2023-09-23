@@ -39,10 +39,25 @@ namespace dgl{
     class ScatteredArrayObject : public runtime::Object {
 
      public:
-      ScatteredArrayObject(){}
-      ScatteredArrayObject(NDArray a, NDArray b, int num_partitions){
-        std::cout << "Fix me !\n";
-      }
+       DGLDataType  dtype;
+       DGLContext  ctx;
+       int num_partitions;
+       cudaStream_t stream;
+       int expectedSize;
+       ~ScatteredArrayObject(){
+          LOG(INFO) << "Destructor called on scattered object" << this->expectedSize <<"\n";
+       }
+       ScatteredArrayObject(int expectedSize, int num_partitions, DGLContext ctx,
+                            DGLDataType dtype, cudaStream_t stream){
+         this->dtype = dtype;
+         this->ctx = ctx;
+         this->num_partitions = num_partitions;
+         this->stream = stream;
+         this->expectedSize = expectedSize;
+         this->table = std::make_shared<CudaHashTable>(
+                         dtype, ctx, expectedSize, stream
+                         );
+       }
        bool isScattered;
       //original array has no duplicates
        NDArray originalArray;
@@ -69,8 +84,6 @@ namespace dgl{
        NDArray unique_array;
        NDArray idx_unique_to_shuffled;
 
-       int num_partitions;
-
       void shuffle_forward(NDArray array){}
 	
       void shuffle_backward(NDArray array){}
@@ -91,8 +104,10 @@ namespace dgl{
     class ScatteredArray : public ObjectRef {
      public:
       DGL_DEFINE_OBJECT_REF_METHODS(ScatteredArray,runtime::ObjectRef, ScatteredArrayObject);
-       static ScatteredArray Create() {
-            return ScatteredArray(std::make_shared<ScatteredArrayObject>());
+       static ScatteredArray Create(int expectedSize, int num_partitions, DGLContext ctx,
+                                   DGLDataType dtype, cudaStream_t stream) {
+            return ScatteredArray(std::make_shared<ScatteredArrayObject>\
+                                  (expectedSize, num_partitions, ctx, dtype, stream));
       }
     };
 

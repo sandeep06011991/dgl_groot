@@ -40,15 +40,7 @@ namespace dgl{
 
 
 
-     DGL_REGISTER_GLOBAL("groot._CAPI_ScatterObjectCreate")
-        .set_body([](DGLArgs args, DGLRetValue* rv) {
-        IdArray src_array = args[0];
-        IdArray partition = args[1];
-        int num_partitions = args[2];
-        CHECK_EQ(src_array->shape[0], partition->shape[0]);
-        auto ob = std::make_shared<ScatteredArrayObject>(src_array, partition, num_partitions);
-        *rv = ob;
-        });
+
     }
 
 }

@@ -2,22 +2,13 @@
 #include <iostream>
 #include <dgl/runtime/c_runtime_api.h>
 #include <dgl/runtime/device_api.h>
-
 #include <dgl/array.h>
 #include <mpi.h>
 #include "groot/cuda/alltoall.h"
-
-
-#include <gtest/gtest.h>
-#include <cstdlib>
 #include <chrono>
-#include <thread>
-#include "mpi.h"
-
-//#include "groot/utils.h"
-//#include "./test_utils.h"
 #include "groot/context.h"
 #include "runtime/cuda/cuda_common.h"
+#include "groot/core.h"
 
 using namespace dgl::ds;
 using namespace dgl;
@@ -32,7 +23,7 @@ using namespace dgl::runtime;
     if (e != cudaSuccess) {                                 \
       LOG(FATAL) << "Cuda error " << cudaGetErrorString(e); \
     }                                                       \
-  } while (false);
+ } while (false);
 
 template<typename T>
 void _AlltoallBenchmark(int rank, int world_size, int size, int expand_size=1) {
@@ -88,9 +79,8 @@ void _AlltoallBenchmark(int rank, int world_size, int size, int expand_size=1) {
 
 }
 
-#include "groot/core.h"
 
-int main123(){
+int test_all2all_bandwidth(){
     MPI_Init(NULL, NULL);
     // // Get the number of processes
     int world_size;
@@ -108,22 +98,8 @@ int main123(){
 
     LOG(INFO) << "Using null streams";
 
-//    int64_t low = 0;
-//    int64_t high = 10;
-//    uint8_t nbits = 32;
-//
-//    DGLContext ctx = DGLContext{kDGLCPU, world_rank};
-//    auto array = aten::Range( low,  high,  nbits,  ctx);
-//    srand(110);
     int size = 40000000;
-//    if(world_rank == 0)LOG(INFO) << "Elements, Bytes, Latency, Bandwitdth\n";
-//        //    int size = GetEnvParam("ALLTOALL_BENCHMARK_SIZE", 100000);
-//        for(int i = 1024 ; i < 100000000; i = i * 5){
-     // size = i;
-     // _AlltoallBenchmark<int64_t>(world_rank, world_size, size);
-//    }
-
-        _AlltoallBenchmark<int>(world_rank, world_size, size);
+    _AlltoallBenchmark<int>(world_rank, world_size, size);
     std::cout << "Successfuly complete\n";
 }
 

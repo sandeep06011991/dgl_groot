@@ -50,7 +50,11 @@ namespace dgl{
             array->idx_original_to_part_cont = NDArray::Empty(\
                   std::vector<int64_t>{frontier->shape[0]}, frontier->dtype, frontier->ctx);
             assert(frontier->dtype.bits == scattered_index->dtype.bits);
+            std::cout << "check 3\n";
+
             array->partitionContinuousArray = gatherArray(frontier, scattered_index, array->idx_original_to_part_cont,  num_partitions);
+
+            std::cout << "check 4\n";
 
             array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], frontier->dtype.bits, frontier->ctx), scattered_index,\
                                                               array->idx_original_to_part_cont,
@@ -58,18 +62,18 @@ namespace dgl{
             array->to_send_offsets_partition_continuous_array = getBoundaryOffsets(scattered_index, num_partitions);
             NDArray boundary_offsets = getBoundaryOffsets(scattered_index, num_partitions);
             CUDACHECK(cudaDeviceSynchronize());
+            std::cout << "check 5\n";
+
             std::tie(array->shuffled_array,array->shuffled_recv_offsets) = \
                 ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
                                                           , 1, rank, world_size);
 
             CUDACHECK(cudaDeviceSynchronize());
+            std::cout << "check 6\n";
+
             bool reindex = true;
             cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
             if(reindex) {
-              std::cout << "Todo:Creating new table everytime is wrong \n";
-              array->table = std::make_shared<CudaHashTable>(array->shuffled_array->dtype,
-                                     array->shuffled_array->ctx, 1000, stream);
-
               array->table->Reset();
               array->table->FillWithDuplicates(
                   array->shuffled_array, array->shuffled_array->shape[0]);

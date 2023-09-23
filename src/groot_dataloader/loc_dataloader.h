@@ -109,7 +109,7 @@ class DataloaderObject : public runtime::Object {
     for (int64_t i = 0; i < _max_pool_size; i++) {
       _blocks_syncflags.at(i) = false;
       auto blocks = std::make_shared<BlocksObject>(
-          _ctx, _fanouts, _batch_size, _id_type, _label_type, sampling_stream);
+          _ctx, _fanouts, _batch_size, _id_type, _label_type, sampling_stream, BlocksObject::SRC_TO_DEST);
       _blocks_pool.push_back(blocks);
     }
     _next_key = 0;
@@ -184,7 +184,7 @@ class DataloaderObject : public runtime::Object {
     auto blocksPtr = _blocks_pool.at(blk_idx);
     NDArray frontier = GetNextSeeds(key);  // seeds to sample subgraph
     blocksPtr->_input_nodes = frontier;
-
+    std::cout << frontier << "\n";
     cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
     int num_partitions = 4;
     int world_size = num_partitions;
@@ -198,24 +198,35 @@ class DataloaderObject : public runtime::Object {
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
       auto blockTable  = blockPtr->_table;
       if(layer == _num_redundant_layers){
-        auto partition_index = IndexSelect(frontier, _partition_map, sampling_stream);
+        std::cout << "Check 1 \n";
+        std::cout << _partition_map <<"\n";
+        auto partition_index = IndexSelect(_partition_map, frontier,  sampling_stream);
+        std::cout << partition_index <<"\n";
+        std::cout << "Check 3 \n";
         Scatter(blocksPtr->_scattered_frontier, frontier,  partition_index, num_partitions, rank, world_size );
       }
-
+      std::cout << "Attempt sampling \n";
       ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
         CSRRowWiseSamplingUniform<kDGLCUDA, IdType >(
             _indptr, _indices, frontier, num_picks, false, blockPtr,
             sampling_stream);
       });
+      cudaDeviceSynchronize();
+      std::cout << "Sampling ok !\n";
       if(layer >= _num_redundant_layers){
-         if(blocksPtr->_blockType == BlocksObject::BlockType::SRC_TO_DEST){
+        std::cout << "inside redudnat layers \n";
+        if(blocksPtr->_blockType == BlocksObject::BlockType::SRC_TO_DEST){
             // Todo:: Formally verify this method of insertion
+            std::cout << "Try resetting\n";
             blockTable->Reset();
+            std::cout << "Starting here \n";
             blockTable->FillWithDuplicates(blockPtr->_row, blockPtr->_row->shape[0]);
+
             blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col->shape[0]);
+
             auto unique_src = blockTable->GetUnique();
-            auto partition_index = IndexSelect(unique_src, _partition_map, sampling_stream);
-            Scatter(blockPtr->_scattered_src, frontier,  partition_index, num_partitions, rank, world_size );
+            auto partition_index = IndexSelect(_partition_map, unique_src, sampling_stream);
+            Scatter(blockPtr->_scattered_src,  unique_src,  partition_index, num_partitions, rank, world_size );
             frontier = blockPtr->_scattered_src->unique_array;
          }
          if(blocksPtr->_blockType == BlocksObject::BlockType::DEST_TO_SRC){
@@ -241,11 +252,13 @@ class DataloaderObject : public runtime::Object {
     // since the hash table must be populated correctly to provide the mapping and unique nodes
     runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
     // fetch feature data and label data0
+    std::cout << "Todo check feature extraction \n";
     blocksPtr->_output_nodes = blocksPtr->_blocks.at(_fanouts.size()-1)->_scattered_src->originalArray;
     blocksPtr->_labels = IndexSelect(_labels, blocksPtr->_input_nodes, _gpu_feat_streams.at(blk_idx));
     blocksPtr->_feats = IndexSelect(_cpu_feats, blocksPtr->_output_nodes, _cpu_feat_streams.at(blk_idx));
 
     // MapEdges to 0 based indexing
+    std::cout << "Todo: Check remapping \n";
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       auto blockPtr = blocksPtr->GetBlock(layer);
       GPUMapEdges(

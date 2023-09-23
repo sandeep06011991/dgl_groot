@@ -20,9 +20,10 @@ namespace groot {
 
 struct BlockObject : public runtime::Object {
   BlockObject(){};
+  ~BlockObject(){LOG(INFO) << "Calling blocks destructor \n" ;}
   BlockObject(
       DGLContext ctx, const std::vector<int64_t>& fanouts, int64_t layer,
-      int64_t batch_size, DGLDataType dtype) {
+      int64_t batch_size, DGLDataType dtype, cudaStream_t stream) {
     int64_t est_num_src = batch_size;
     int64_t est_num_dst = batch_size;
     for (int64_t i = 0; i < layer; i++) est_num_src *= (fanouts[i] + 1);
@@ -35,6 +36,10 @@ struct BlockObject : public runtime::Object {
     _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
     _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
     _newlen = NDArray::Empty({1}, dtype, DGLContext{kDGLCPU, 0});
+    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst, stream);
+    // Todo SRC to DEST data strucutures are not needed for redudnant blocks
+    _scattered_dest = ScatteredArray::Create(est_num_dst, 4, ctx, dtype, stream);
+    _scattered_src = ScatteredArray::Create(est_num_src, 4, ctx, dtype, stream);
     _newlen.PinMemory_();
   };
 
@@ -91,6 +96,7 @@ struct BlocksObject : public runtime::Object {
     LOG(INFO) << "Calling Blocks Object destructor";
   };
   int64_t key, _num_layer;
+  // Todo this must be ref.
   std::vector<std::shared_ptr<BlockObject>> _blocks;
 
   NDArray _labels;  // labels of input nodes
@@ -112,19 +118,21 @@ struct BlocksObject : public runtime::Object {
       int64_t batch_size,
       DGLDataType id_type,
       DGLDataType label_type,
-      cudaStream_t stream) {
+      cudaStream_t stream, BlocksObject::BlockType type) {
     _ctx = ctx;
     _labels = NDArray::Empty({batch_size}, label_type, _ctx);
     _num_layer = fanouts.size();
-
+    int expected_frontier_size = batch_size * 100;
     for (int64_t layer = 0; layer < _num_layer; layer++) {
       auto block =
-          std::make_shared<BlockObject>(_ctx, fanouts, layer, batch_size, id_type);
+          std::make_shared<BlockObject>(_ctx, fanouts, layer, batch_size, id_type, stream);
       _blocks.push_back(block);
     }
-
+    // todo: scattered frontier creation is it correct.
+    _scattered_frontier = ScatteredArray::Create(expected_frontier_size, 4, ctx, id_type, stream);
     int64_t est_output_nodes = batch_size;
     for (int64_t fanout : fanouts) est_output_nodes *= (fanout + 1);
+    _blockType = type;
 //    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes, stream);
   };
 
