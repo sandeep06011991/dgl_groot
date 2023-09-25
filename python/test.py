@@ -91,7 +91,7 @@ def get_batch(key: int, layers:int = 3):
 
 
 def main(graph_name="ogbn-products"):
-    dataset = DglNodePropPredDataset(graph_name, root="/home/juelin/dataset")
+    dataset = DglNodePropPredDataset(graph_name, root="/data/sandeep/")
     graph = dataset.graph[0]
     feats = graph.srcdata["feat"]
     train_idx = dataset.get_idx_split()["train"]
