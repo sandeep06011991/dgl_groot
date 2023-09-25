@@ -176,5 +176,5 @@ config.cmake
 cmake-build-debug/
 .vscode/
 _build_cmake_tools/
-
-
+cmake/
+CMakeFiles/

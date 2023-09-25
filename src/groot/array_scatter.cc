@@ -41,40 +41,39 @@ namespace dgl{
         void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map, int num_partitions,\
                           int rank, int world_size){
             std::cout << "Todo: Using dtype of array and frontier seems a bit broken\n";
+            assert(array->dtype == frontier->dtype);
             array->originalArray = frontier;
             array->partitionMap = _partition_map;
             // Compute partition continuos array
             assert(frontier->dtype.bits == _partition_map->dtype.bits);
             NDArray scattered_index = scatter_index(array->partitionMap, num_partitions);
 
+            // idx always in 64 bits
             array->idx_original_to_part_cont = NDArray::Empty(\
                   std::vector<int64_t>{frontier->shape[0]}, frontier->dtype, frontier->ctx);
             assert(frontier->dtype.bits == scattered_index->dtype.bits);
-            std::cout << "check 3\n";
 
             array->partitionContinuousArray = gatherArray(frontier, scattered_index, array->idx_original_to_part_cont,  num_partitions);
-
-            std::cout << "check 4\n";
-
             array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], frontier->dtype.bits, frontier->ctx), scattered_index,\
                                                               array->idx_original_to_part_cont,
                                                             num_partitions);
             array->to_send_offsets_partition_continuous_array = getBoundaryOffsets(scattered_index, num_partitions);
             NDArray boundary_offsets = getBoundaryOffsets(scattered_index, num_partitions);
             CUDACHECK(cudaDeviceSynchronize());
-            std::cout << "check 5\n";
 
             std::tie(array->shuffled_array,array->shuffled_recv_offsets) = \
                 ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
                                                           , 1, rank, world_size);
 
             CUDACHECK(cudaDeviceSynchronize());
-            std::cout << "check 6\n";
 
             bool reindex = true;
             cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+            std::cout << "Using thread local stream \n";
             if(reindex) {
               array->table->Reset();
+              // TODO: Why is table stream different from CUDA stream.
+              cudaStreamSynchronize(stream);
               array->table->FillWithDuplicates(
                   array->shuffled_array, array->shuffled_array->shape[0]);
               array->unique_array = array->table->GetUnique();
@@ -85,8 +84,6 @@ namespace dgl{
               GPUMapNodes(
                   array->shuffled_array, array->idx_unique_to_shuffled,
                   array->table, stream);
-              cudaStreamSynchronize(stream);
-              std::cout << "Todo Stream synchornize not cleaned\n";
             }
         }
     }
