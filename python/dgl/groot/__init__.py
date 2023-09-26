@@ -4,6 +4,7 @@ _init_api("dgl.groot", __name__)
 import dgl.backend as F
 from torch import Tensor
 from ..heterograph import DGLBlock
+import torch
 
 def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id: int, fanouts: list[int],
                     batch_size: int, num_redundant_layers: int, max_pool_size: int,

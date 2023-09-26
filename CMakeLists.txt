@@ -229,7 +229,9 @@ file(GLOB DGL_SRC
   src/geometry/cpu/*.cc
   src/partition/*.cc
         src/groot/*.cc
-#        src/groot/comm/*.cc
+        src/groot/comm/*.cc
+        src/groot/conn/*.cc
+        src/groot/base/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1

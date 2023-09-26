@@ -26,6 +26,7 @@ def train_cache(rank: int, config: RunConfig, dgl_dataset: DGLDataset):
     num_redundant_layer = len(config.fanouts) - 1
     block_type = get_block_type("src_to_dst")
     partition_map = None
+    dgl_dataset.train_idx = torch.split(dgl_dataset.train_idx, dgl_dataset.train_idx.shape[0] // config.world_size)[rank]
     dataloader = init_groot_dataloader(
         config.rank, config.world_size, block_type, config.rank, config.fanouts,
         config.batch_size,num_redundant_layer, max_pool_size, 

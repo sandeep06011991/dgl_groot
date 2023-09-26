@@ -58,7 +58,7 @@ def get_parser():
     parser.add_argument('--system', default="groot-cache", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-gpu", "groot-uva", "groot-cache"])
     parser.add_argument('--model', default="graphsage", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
     parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
-    parser.add_argument('--nprocs', default=1, type=int, help='Number of GPUs')
+    parser.add_argument('--world_size', default=1, type=int, help='Number of GPUs')
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
     parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
     parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
@@ -78,6 +78,7 @@ def get_config():
     config.cache_percentage = args.cache_rate
     config.test_acc = args.test_acc
     config.fanouts = [5, 10, 15]
+    config.world_size = args.world_size
     return config
 
 def get_block_type(type:str):
