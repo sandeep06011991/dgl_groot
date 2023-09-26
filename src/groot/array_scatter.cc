@@ -52,23 +52,17 @@ namespace dgl{
             array->idx_original_to_part_cont = NDArray::Empty(\
                   std::vector<int64_t>{frontier->shape[0]}, frontier->dtype, frontier->ctx);
             assert(frontier->dtype.bits == scattered_index->dtype.bits);
-            std::cout << "Start gathering \n";
             array->partitionContinuousArray = gatherArray(frontier, scattered_index, array->idx_original_to_part_cont,  num_partitions);
             array->idx_part_cont_to_original = gatherArray(aten::Range(0,frontier->shape[0], frontier->dtype.bits, frontier->ctx), scattered_index,\
                                                               array->idx_original_to_part_cont,
                                                             num_partitions);
-            std::cout << "found boundaries\n";
             array->to_send_offsets_partition_continuous_array = getBoundaryOffsets(scattered_index, num_partitions);
             NDArray boundary_offsets = getBoundaryOffsets(scattered_index, num_partitions);
-            CUDACHECK(cudaDeviceSynchronize());
-            std::cout << "All 2 all "<< rank << " " << world_size <<"\n";
-            std::cout << boundary_offsets <<"\n";
-            std::cout << array->partitionContinuousArray->shape[0] <<"\n";
+//            CUDACHECK(cudaDeviceSynchronize());
             std::tie(array->shuffled_array,array->shuffled_recv_offsets) = \
                 ds::Alltoall(array->partitionContinuousArray, boundary_offsets\
                                                           , 1, rank, world_size);
-            std::cout << "Done \n";
-            CUDACHECK(cudaDeviceSynchronize());
+//            CUDACHECK(cudaDeviceSynchronize());
 
             bool reindex = true;
             cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;

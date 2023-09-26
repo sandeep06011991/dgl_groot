@@ -188,16 +188,11 @@ class DataloaderObject : public runtime::Object {
   }
 
   void AsyncSampleOnce(int64_t key) {
-    std::cout << "Ask asynca " << key << " " << _max_pool_size <<"\n";
     int blk_idx = key % _max_pool_size;
-    std::cout << blk_idx << "\n";
     _blocks_syncflags.at(blk_idx) = false;
-    std::cout << "get blocks\n";
     auto blocksPtr = _blocks_pool.at(blk_idx);
-    std::cout << "Get blocks \n";
     NDArray frontier = GetNextSeeds(key);  // seeds to sample subgraph
     blocksPtr->_input_nodes = frontier;
-    std::cout << "Reached !!!!!!!!!!!!111" << _fanouts.size() << "\n";
     cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
 
     int num_partitions = 4;
@@ -212,11 +207,9 @@ class DataloaderObject : public runtime::Object {
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
       auto blockTable  = blockPtr->_table;
       if(layer == _num_redundant_layers){
-        std::cout << "shifting to no redundancy sampling\n";
         auto partition_index = IndexSelect(_partition_map, frontier,  sampling_stream);
         Scatter(blocksPtr->_scattered_frontier, frontier,  partition_index, num_partitions, rank, world_size );
         frontier = blocksPtr->_scattered_frontier->unique_array;
-        std::cout << "got a unique frontier " << frontier->shape[0] <<"\n";
       }
       ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
         CSRRowWiseSamplingUniform<kDGLCUDA, IdType >(
@@ -224,9 +217,7 @@ class DataloaderObject : public runtime::Object {
             sampling_stream);
       });
       cudaDeviceSynchronize();
-      std::cout << "current layer" << layer << " red layer" << _num_redundant_layers <<"\n";
       if(layer >= _num_redundant_layers){
-        std::cout << "inside redudnat layers \n";
         if(blocksPtr->_blockType == BlocksObject::BlockType::SRC_TO_DEST){
             // Todo:: Formally verify this method of insertion
             blockTable->Reset();
@@ -260,13 +251,11 @@ class DataloaderObject : public runtime::Object {
     // must wait for the sampling_stream to be done before starting Mapping and Feature extraction
     // since the hash table must be populated correctly to provide the mapping and unique nodes
     runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
-    std::cout << "Label and feat extraction \n";
     // fetch feature data and label data0
     blocksPtr->_output_nodes =frontier;
     blocksPtr->_labels = IndexSelect(_labels, blocksPtr->_input_nodes, _gpu_feat_streams.at(blk_idx));
     blocksPtr->_feats = IndexSelect(_cpu_feats, blocksPtr->_output_nodes, _cpu_feat_streams.at(blk_idx));
 
-    std::cout << "Remap edges \n";
     // MapEdges to 0 based indexing
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       auto blockPtr = blocksPtr->GetBlock(layer);

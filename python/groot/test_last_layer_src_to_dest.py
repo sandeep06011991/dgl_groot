@@ -119,6 +119,7 @@ def train(rank, world_size, data):
     pool_size = 1
     n_redundant_layers = 2
     block_type = 1
+    print("Train idx splitting is wrong, ignores last unequal batch")
     train_idx = torch.split(train_idx, train_idx.shape[0]// 4)[rank]
     dataloader = init_dataloader(rank, indptr, indices, feats, labels, train_idx, partition_map,  \
                                     [15, 10, 5], batch_size, pool_size, n_redundant_layers, block_type)
@@ -142,13 +143,8 @@ def train(rank, world_size, data):
             # blocks, batch_feat, batch_labels = get_batch(key)
             # key = _CAPI_NextAsync()
             # key_uninitialized = False
-            print("REAched here !!!!!!! try sync")
             key = _CAPI_NextSync()
-            print("Got key")
             blocks, batch_feat, batch_labels = get_batch(key)
-            print("get batch")
-            print("sampling ok")
-            continue
             pred = model(blocks, batch_feat)
             loss = cross_entropy(pred, batch_labels)
             optimizer.zero_grad()
