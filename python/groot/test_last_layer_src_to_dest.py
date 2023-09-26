@@ -10,9 +10,10 @@ import torch.nn as nn
 import torch.distributed as dist
 from torch.nn.functional import cross_entropy
 import time
+from torch import multiprocessing
 
 _init_api("dgl.groot", __name__)
-
+_init_api("dgl.ds", __name__)
 
 class Sage(nn.Module):
     def __init__(self, in_feats: int, hid_feats: int, num_layers: int, out_feats: int):
@@ -64,19 +65,23 @@ def init_dataloader(rank: int,
                           feats: torch.Tensor,
                           labels: torch.Tensor,
                           seeds: torch.Tensor,
+                          partition_map: torch.Tensor,
                           fanouts: list[int],
                           batch_size: int,
-                          max_pool_size: int = 2):
-    
-    return _CAPI_InitLocDataloader(rank, 
+                          max_pool_size: int ,
+                          n_redundant_layers: int,
+                          block_type: int
+                    ):
+    return _CAPI_InitLocDataloader(rank,
                                     F.zerocopy_to_dgl_ndarray(indptr),
                                     F.zerocopy_to_dgl_ndarray(indices),
                                     F.zerocopy_to_dgl_ndarray(feats),
                                     F.zerocopy_to_dgl_ndarray(labels.flatten().to(rank)),
                                     F.zerocopy_to_dgl_ndarray(seeds.to(rank)),
+                                    F.zerocopy_to_dgl_ndarray(partition_map.to(rank)),
                                     fanouts,
                                     batch_size,
-                                    max_pool_size)
+                                    max_pool_size, n_redundant_layers, block_type)
 
 def get_batch(key: int, layers:int = 3):
     blocks = []
@@ -90,28 +95,35 @@ def get_batch(key: int, layers:int = 3):
     return blocks, F.from_dgl_nd(feat), F.from_dgl_nd(labels)
 
 
-def main(graph_name="ogbn-products"):
-    dataset = DglNodePropPredDataset(graph_name, root="/home/juelin/dataset")
-    graph = dataset.graph[0]
-    feats = graph.srcdata["feat"]
-    train_idx = dataset.get_idx_split()["train"]
-    indptr, indices, edge_id = graph.adj_tensors('csc')
-    labels = dataset.labels
-
+def train(rank, world_size, data):
+    feats, indptr, indices, labels,  train_idx, edge_id, batch_size, partition_map, fanout, n_redundant_layers, block_type, num_classes = data
     feats_handle = pin_memory_inplace(feats)
     indptr_handle = pin_memory_inplace(indptr)
     indices_handle = pin_memory_inplace(indices)
     edge_id_handle = pin_memory_inplace(edge_id)
+
     # feats = feats.to(0)
     # indptr = indptr.to(0)
     # indices = indices.to(0)
     # edge_id = edge_id.to(0)
-    
+    thread_num = 1
+    enable_kernel_control = False
+    enable_comm_control = False
+    enable_profiler = False
+
+    _CAPI_DGLDSInitialize(rank, world_size, thread_num, \
+        enable_kernel_control, enable_comm_control, enable_profiler)
+
+
     batch_size = 1024
-    pool_size = 2
-    dataloader = init_dataloader(0, indptr, indices, feats, labels, train_idx, [15, 10, 5], batch_size, pool_size)
-    model = Sage(in_feats=feats.shape[1], hid_feats=256, num_layers=3, out_feats=dataset.num_classes)
-    model = model.to(0)
+    pool_size = 1
+    n_redundant_layers = 2
+    block_type = 1
+    train_idx = torch.split(train_idx, train_idx.shape[0]// 4)[rank]
+    dataloader = init_dataloader(rank, indptr, indices, feats, labels, train_idx, partition_map,  \
+                                    [15, 10, 5], batch_size, pool_size, n_redundant_layers, block_type)
+    model = Sage(in_feats=feats.shape[1], hid_feats=256, num_layers=3, out_feats=num_classes)
+    model = model.to(rank)
 
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     step = train_idx.shape[0] / batch_size
@@ -130,9 +142,13 @@ def main(graph_name="ogbn-products"):
             # blocks, batch_feat, batch_labels = get_batch(key)
             # key = _CAPI_NextAsync()
             # key_uninitialized = False
+            print("REAched here !!!!!!! try sync")
             key = _CAPI_NextSync()
+            print("Got key")
             blocks, batch_feat, batch_labels = get_batch(key)
-
+            print("get batch")
+            print("sampling ok")
+            continue
             pred = model(blocks, batch_feat)
             loss = cross_entropy(pred, batch_labels)
             optimizer.zero_grad()
@@ -152,4 +168,28 @@ def main(graph_name="ogbn-products"):
     print(f"fetching feature data {round(feat_size_in_mb)} MB; bandwidth {round(feat_size_in_mb / duration_in_s)} MB/s")
     
 if __name__ == "__main__":
-    main()
+    import multiprocessing as mp
+    mp.set_start_method('spawn')
+    processes = []
+    num_processes = 4
+    graph_name = "ogbn-arxiv"
+    dataset = DglNodePropPredDataset(graph_name, root="/data/sandeep")
+    graph = dataset.graph[0]
+    feats = graph.srcdata["feat"]
+    train_idx = dataset.get_idx_split()["train"]
+    indptr, indices, edge_id = graph.adj_tensors('csc')
+    labels = dataset.labels
+    partition_map = torch.randint(0,4, (indptr.shape[0] - 1,))
+
+    batch_size = 1024
+    n_redundant_layers = 2
+    block_type = 1
+    fanout = [10,10,10]
+    num_classes = dataset.num_classes
+    data = feats, indptr, indices, labels, train_idx, edge_id, batch_size, partition_map, fanout, n_redundant_layers, block_type, num_classes
+    for rank in range(num_processes):
+        p = mp.Process(target=train, args=(rank, num_processes, data))
+        p.start()
+        processes.append(p)
+    for p in processes:
+        p.join()

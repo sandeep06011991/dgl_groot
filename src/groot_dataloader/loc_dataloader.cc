@@ -6,6 +6,11 @@
 namespace dgl {
 namespace groot {
 using namespace runtime;
+
+
+std::shared_ptr<DataloaderObject> DataloaderObject::single_instance = std::make_shared<DataloaderObject>();
+
+
 DGL_REGISTER_GLOBAL("groot._CAPI_CreateLocDataloader")
     .set_body([](DGLArgs args, DGLRetValue* rv) {
       int device_id = args[0];
@@ -22,10 +27,25 @@ DGL_REGISTER_GLOBAL("groot._CAPI_CreateLocDataloader")
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
       BlocksObject::BlockType blocktypes;
-      std::cout << "How to pass python enums here ?\n";
+
       int64_t batch_size = args[8];
       int64_t max_pool_size = args[9];
       int64_t n_redundant_layers = args[10];
+      int64_t block_type = args[11];
+      if(block_type == 0){
+        std::cout << "Creating block object data parallel \n";
+        blocktypes = BlocksObject::BlockType::DATA_PARALLEL;
+      }
+      if(block_type == 1){
+        std::cout << "Creating src to dest \n";
+        blocktypes = BlocksObject::BlockType::SRC_TO_DEST;
+      }
+      if(block_type == 1) {
+        blocktypes == BlocksObject::BlockType::DEST_TO_SRC;
+      }
+
+      auto device_api = DeviceAPI::Get(ctx);
+      CUDAThreadEntry::ThreadLocal()->stream =  static_cast<cudaStream_t>(device_api->CreateStream(ctx));
       auto o = std::make_shared<DataloaderObject>(
           ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
           max_pool_size, blocktypes, n_redundant_layers);
@@ -51,9 +71,24 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitLocDataloader")
         fanouts.push_back(static_cast<int64_t>(fanout->data));
       }
       int64_t batch_size = args[8];
-      int64_t max_pool_size = args[9];
 
+      int64_t max_pool_size = args[9];
       int64_t n_redundant_layers = args[10];
+      int64_t block_type = args[11];
+      if(block_type == 0){
+        std::cout << "Creating block object data parallel \n";
+        blocktypes = BlocksObject::BlockType::DATA_PARALLEL;
+      }
+      if(block_type == 1){
+        std::cout << "Creating src to dest \n";
+        blocktypes = BlocksObject::BlockType::SRC_TO_DEST;
+      }
+      if(block_type == 1) {
+        blocktypes == BlocksObject::BlockType::DEST_TO_SRC;
+      }
+
+      auto device_api = DeviceAPI::Get(ctx);
+      CUDAThreadEntry::ThreadLocal()->stream =  static_cast<cudaStream_t>(device_api->CreateStream(ctx));
       DataloaderObject::Global()->Init(
           ctx, indptr, indices, feats, labels, seeds, partition_map, fanouts, batch_size,
           max_pool_size, blocktypes, n_redundant_layers);

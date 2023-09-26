@@ -20,6 +20,9 @@
 namespace dgl {
 namespace groot {
 class DataloaderObject : public runtime::Object {
+
+
+
  public:
   std::vector<std::shared_ptr<BlocksObject>> _blocks_pool;
   std::vector<cudaStream_t> _reindex_streams;
@@ -66,15 +69,6 @@ class DataloaderObject : public runtime::Object {
     LOG(INFO) << "Calling DataloaderObject default deconstructor";
   }
 
-  DataloaderObject(
-      DGLContext ctx, NDArray indptr, NDArray indices, NDArray feats,
-      NDArray labels, NDArray seeds, NDArray pmap, std::vector<int64_t> fanouts,
-      int64_t batch_size, int64_t max_pool_size, BlocksObject::BlockType blockType,\
-              int numRedundantLayers) {
-    Init(
-        ctx, indptr, indices, feats, labels, seeds, pmap,  fanouts, batch_size,
-        max_pool_size, blockType, numRedundantLayers);
-  };
 
   void Init(
       DGLContext ctx, NDArray indptr, NDArray indices, NDArray feats,
@@ -99,6 +93,7 @@ class DataloaderObject : public runtime::Object {
     _fanouts = fanouts;
     _batch_size = batch_size;
     _max_pool_size = max_pool_size;
+    CHECK_NE(_max_pool_size,0);
     _blocks_pool.clear();
     std::vector<std::mutex> mutexes(_max_pool_size);
     _blocks_syncflags.resize(_max_pool_size);
@@ -115,10 +110,24 @@ class DataloaderObject : public runtime::Object {
     _next_key = 0;
   }
 
+  DataloaderObject(
+      DGLContext ctx, NDArray indptr, NDArray indices, NDArray feats,
+      NDArray labels, NDArray seeds, NDArray pmap, std::vector<int64_t> fanouts,
+      int64_t batch_size, int64_t max_pool_size, BlocksObject::BlockType blockType,\
+      int numRedundantLayers) {
+    Init(
+        ctx, indptr, indices, feats, labels, seeds, pmap,  fanouts, batch_size,
+        max_pool_size, blockType, numRedundantLayers);
+  };
+
+  static std::shared_ptr<DataloaderObject> single_instance;
+
   static std::shared_ptr<DataloaderObject> const Global() {
-    LOG(INFO) << "Creating DataLoader object suspecting duplication \n";
-    static auto single_instance = std::make_shared<DataloaderObject>();
-    return single_instance;
+//    if(single_instance == nullptr) {
+//      LOG(INFO) << "Creating DataLoader object suspecting duplication \n";
+//      single_instance = std::make_shared<DataloaderObject>();
+//    }
+    return DataloaderObject::single_instance;
   }
 
   std::shared_ptr<BlocksObject> AwaitGetBlocks(int64_t key) {
@@ -179,12 +188,18 @@ class DataloaderObject : public runtime::Object {
   }
 
   void AsyncSampleOnce(int64_t key) {
+    std::cout << "Ask asynca " << key << " " << _max_pool_size <<"\n";
     int blk_idx = key % _max_pool_size;
+    std::cout << blk_idx << "\n";
     _blocks_syncflags.at(blk_idx) = false;
+    std::cout << "get blocks\n";
     auto blocksPtr = _blocks_pool.at(blk_idx);
+    std::cout << "Get blocks \n";
     NDArray frontier = GetNextSeeds(key);  // seeds to sample subgraph
     blocksPtr->_input_nodes = frontier;
+    std::cout << "Reached !!!!!!!!!!!!111" << _fanouts.size() << "\n";
     cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
+
     int num_partitions = 4;
     int world_size = num_partitions;
     int rank = _ctx.device_id;
@@ -197,9 +212,11 @@ class DataloaderObject : public runtime::Object {
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
       auto blockTable  = blockPtr->_table;
       if(layer == _num_redundant_layers){
+        std::cout << "shifting to no redundancy sampling\n";
         auto partition_index = IndexSelect(_partition_map, frontier,  sampling_stream);
         Scatter(blocksPtr->_scattered_frontier, frontier,  partition_index, num_partitions, rank, world_size );
         frontier = blocksPtr->_scattered_frontier->unique_array;
+        std::cout << "got a unique frontier " << frontier->shape[0] <<"\n";
       }
       ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
         CSRRowWiseSamplingUniform<kDGLCUDA, IdType >(
@@ -207,6 +224,7 @@ class DataloaderObject : public runtime::Object {
             sampling_stream);
       });
       cudaDeviceSynchronize();
+      std::cout << "current layer" << layer << " red layer" << _num_redundant_layers <<"\n";
       if(layer >= _num_redundant_layers){
         std::cout << "inside redudnat layers \n";
         if(blocksPtr->_blockType == BlocksObject::BlockType::SRC_TO_DEST){
@@ -242,11 +260,13 @@ class DataloaderObject : public runtime::Object {
     // must wait for the sampling_stream to be done before starting Mapping and Feature extraction
     // since the hash table must be populated correctly to provide the mapping and unique nodes
     runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+    std::cout << "Label and feat extraction \n";
     // fetch feature data and label data0
     blocksPtr->_output_nodes =frontier;
     blocksPtr->_labels = IndexSelect(_labels, blocksPtr->_input_nodes, _gpu_feat_streams.at(blk_idx));
     blocksPtr->_feats = IndexSelect(_cpu_feats, blocksPtr->_output_nodes, _cpu_feat_streams.at(blk_idx));
 
+    std::cout << "Remap edges \n";
     // MapEdges to 0 based indexing
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       auto blockPtr = blocksPtr->GetBlock(layer);
@@ -266,7 +286,7 @@ class DataloaderObject : public runtime::Object {
   }
   static constexpr const char *_type_key = "LocDataloader";
   DGL_DECLARE_OBJECT_TYPE_INFO(DataloaderObject, Object);
-};  // DataloaderObject
+};
 
 class LocDataloader : public runtime::ObjectRef {
  public:
