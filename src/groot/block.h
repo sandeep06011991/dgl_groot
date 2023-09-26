@@ -9,6 +9,8 @@
 #include "../graph/heterograph.h"
 #include "../graph/unit_graph.h"
 #include "./cuda/cuda_hashtable.cuh"
+#include "array_scatter.h"
+
 #include <dgl/array.h>
 #include <dgl/immutable_graph.h>
 #include <dgl/packed_func_ext.h>
@@ -19,11 +21,18 @@
 namespace dgl {
 namespace groot {
 
+enum BlockType{
+  DATA_PARALLEL,
+  SRC_TO_DEST,
+  DEST_TO_SRC
+};
+
 struct BlockObject : public runtime::Object {
   BlockObject(){};
 
-  BlockObject(DGLContext ctx, const std::vector<int64_t> &fanouts,
-              int64_t layer, int64_t batch_size, DGLDataType dtype) {
+  BlockObject(DGLContext ctx, int64_t num_partitions,
+              const std::vector<int64_t> &fanouts, int64_t layer,
+              int64_t batch_size, DGLDataType dtype, cudaStream_t stream) {
     int64_t est_num_src = batch_size;
     int64_t est_num_dst = batch_size;
     for (int64_t i = 0; i < layer; i++)
@@ -38,6 +47,13 @@ struct BlockObject : public runtime::Object {
     _data_or_idx = NDArray::Empty({est_num_dst}, dtype, ctx);
     _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
     _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
+
+    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst, stream);
+    // Todo SRC to DEST data strucutures are not needed for redudnant blocks
+    _scattered_dest =
+        ScatteredArray::Create(est_num_dst, num_partitions, ctx, dtype, stream);
+    _scattered_src =
+        ScatteredArray::Create(est_num_src, num_partitions, ctx, dtype, stream);
   };
   int64_t num_src, num_dst; // number of src (unique) and destination (unique)
                             // for buliding the dgl block object
@@ -50,6 +66,10 @@ struct BlockObject : public runtime::Object {
   NDArray _indptr;
   NDArray _new_len_tensor;
   HeteroGraphRef _block_ref;
+  std::shared_ptr<CudaHashTable> _table;
+  // Depending on wheter they are scattered src or dest
+  ScatteredArray _scattered_src;
+  ScatteredArray _scattered_dest;
 
   void VisitAttrs(runtime::AttrVisitor *v) final {
     v->Visit("row", &_row);
@@ -78,12 +98,10 @@ public:
 
 struct GpuCacheQueryBuffer {
   NDArray _hit_id; // hit id : not very useful but return anyway for debugging
-  NDArray
-      _hit_cidx; // hit id's index in the cache : used for loading from gpu_feat
+  NDArray _hit_cidx; // hit id's index in the cache : used for loading from gpu_feat
   NDArray _hit_qidx; // hit id's index in the query : used for writing cpu_feat
                      // to output buffer
-  NDArray
-      _missed_qid; // missed id's in the query : used for loading from cpu_feat
+  NDArray _missed_qid; // missed id's in the query : used for loading from cpu_feat
   NDArray _missed_qidx; // missed id's index in the query : used for writing
                         // gpu_feat ot the output buffer
   GpuCacheQueryBuffer() = default;
@@ -108,7 +126,7 @@ struct GpuCacheQueryBuffer {
 struct BlocksObject : public runtime::Object {
 
   ~BlocksObject() { LOG(INFO) << "Calling Blocks Object destructor"; };
-  int64_t key, _num_layer, _feat_width;
+  int64_t key, _num_layer, _feat_width, _num_redundant_layers;
   std::vector<std::shared_ptr<BlockObject>> _blocks;
   NDArray _labels;                   // labels of input nodes
   NDArray _feats;                    // feature of output nodes
@@ -118,21 +136,29 @@ struct BlocksObject : public runtime::Object {
   std::shared_ptr<CudaHashTable> _table;
   cudaStream_t _stream;
   DGLContext _ctx;
+  BlockType _blockType;
+  ScatteredArray _scattered_frontier;
 
   BlocksObject(){};
 
-  BlocksObject(DGLContext ctx, std::vector<int64_t> fanouts, int64_t batch_size,
+  BlocksObject(DGLContext ctx, int64_t num_partitions, int num_redundant_layers,
+               std::vector<int64_t> fanouts, int64_t batch_size,
                int64_t feat_width, DGLDataType id_type, DGLDataType label_type,
-               DGLDataType feat_type, cudaStream_t stream) {
+               DGLDataType feat_type, BlockType block_type, cudaStream_t stream) {
     _ctx = ctx;
     _feat_width = feat_width;
     _num_layer = fanouts.size();
     _stream = stream;
+    _blockType = block_type;
     for (int64_t layer = 0; layer < _num_layer; layer++) {
-      auto block = std::make_shared<BlockObject>(_ctx, fanouts, layer,
-                                                 batch_size, id_type);
+      auto block = std::make_shared<BlockObject>(
+          _ctx, num_partitions, fanouts, layer, batch_size, id_type, stream);
       _blocks.push_back(block);
     }
+
+    int exp_frontier_size = batch_size;
+    for (int i = 0; i < num_redundant_layers; i++) exp_frontier_size *= fanouts[i] + 1;
+    _scattered_frontier = ScatteredArray::Create(exp_frontier_size, num_partitions, ctx, id_type, stream);
 
     int64_t est_output_nodes = batch_size;
     for (int64_t fanout : fanouts)

@@ -5,20 +5,27 @@ import dgl.backend as F
 from torch import Tensor
 from ..heterograph import DGLBlock
 
-def init_groot_dataloader(rank: int, world_size: int, device_id: int, fanouts: list[int],
-                    batch_size: int, max_pool_size: int,
+def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id: int, fanouts: list[int],
+                    batch_size: int, num_redundant_layers: int, max_pool_size: int,
                     indptr: Tensor, indices: Tensor, feats: Tensor, labels: Tensor,
-                    train_idx: Tensor, valid_idx: Tensor, test_idx: Tensor):
-    
-    return _CAPI_InitDataloader(rank, world_size, device_id, 
-                                fanouts, batch_size, max_pool_size,
+                    train_idx: Tensor, valid_idx: Tensor, test_idx: Tensor, partition_map: Tensor):
+    if partition_map is None:
+        partition_map = torch.randint(0, world_size, (indptr.shape[0] - 1,))
+    if num_redundant_layers == len(fanouts):
+        assert(block_type == 0)
+    else:
+        assert(block_type == 1 or block_type == 2)
+        
+    return _CAPI_InitDataloader(rank, world_size, block_type, device_id, 
+                                fanouts, batch_size, num_redundant_layers, max_pool_size,
                                 F.zerocopy_to_dgl_ndarray(indptr),
                                 F.zerocopy_to_dgl_ndarray(indices),
                                 F.zerocopy_to_dgl_ndarray(feats),
                                 F.zerocopy_to_dgl_ndarray(labels),
                                 F.zerocopy_to_dgl_ndarray(train_idx.to(device_id)),
                                 F.zerocopy_to_dgl_ndarray(valid_idx.to(device_id)),
-                                F.zerocopy_to_dgl_ndarray(test_idx.to(device_id)))
+                                F.zerocopy_to_dgl_ndarray(test_idx.to(device_id)),
+                                F.zerocopy_to_dgl_ndarray(partition_map.to(device_id)))
 
 def init_groot_dataloader_cache(cache_idx: Tensor):
     _CAPI_InitCache(F.to_dgl_nd(cache_idx))

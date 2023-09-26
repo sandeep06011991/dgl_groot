@@ -229,6 +229,7 @@ file(GLOB DGL_SRC
   src/geometry/cpu/*.cc
   src/partition/*.cc
         src/groot/*.cc
+#        src/groot/comm/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1
@@ -258,17 +259,33 @@ if(USE_CUDA)
     include(cmake/modules/NCCL.cmake)
     cuda_include_directories(BEFORE ${NCCL_INCLUDE_DIR})
   endif()
+  list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
+  list(APPEND DGL_LINKER_LIBS $ENV{CUDA_HOME}/targets/x86_64-linux/lib/stubs/libnvidia-ml.so)
   cuda_add_library(dgl SHARED ${DGL_SRC}
           src/groot/cuda/cuda_hashtable.cu
           src/groot/cuda/cuda_index_select.cu
           src/groot/cuda/cuda_mapping.cu
           src/groot/cuda/gpu_cache.cu
           src/groot/cuda/rowwise_sampling.cu
+          src/groot/cuda/alltoall.cu
+          src/groot/cuda/array_scatter.cu
   )
 else(USE_CUDA)
   add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)
 
+find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)
+find_library(ZMQ_LIBRARY NAMES zmq)
+
+if(ZMQ_INCLUDE_DIR AND ZMQ_LIBRARY)
+  message(STATUS "Found ZeroMQ:")
+  message(STATUS "  (Headers) ${ZMQ_INCLUDE_DIR}")
+  message(STATUS "  (Library) ${ZMQ_LIBRARY}")
+else()
+  message(FATAL_ERROR "ZeorMQ not found")
+endif()
+target_include_directories(dgl PRIVATE ${ZMQ_INCLUDE_DIR})
+list(APPEND DGL_LINKER_LIBS ${ZMQ_LIBRARY})
 # include directories
 target_include_directories(dgl PRIVATE "include")
 target_include_directories(dgl PRIVATE "third_party/dlpack/include")

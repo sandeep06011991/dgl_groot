@@ -80,6 +80,17 @@ def get_config():
     config.fanouts = [5, 10, 15]
     return config
 
+def get_block_type(type:str):
+    if type.lower() == "dp":
+        return 0
+    elif type.lower() == "src_to_dst":
+        return 1
+    elif type.lower() == "dst_to_src":
+        return 2
+    else:
+        print("block type must be one of: dp / src_to_dst / dst_to_src")
+        exit(-1) 
+        
 def ddp_setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"

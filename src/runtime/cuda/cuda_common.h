@@ -246,6 +246,8 @@ class CUDAThreadEntry {
   cublasHandle_t cublas_handle{nullptr};
   /** @brief thread local pool*/
   WorkspacePool pool;
+  cudaStream_t stream, data_copy_stream;
+  int32_t thread_id, role;
   /** @brief constructor */
   CUDAThreadEntry();
   // get the threadlocal workspace

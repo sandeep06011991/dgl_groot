@@ -24,12 +24,15 @@ def groot_uva(config: RunConfig):
     labels_id_handle = pin_memory_inplace(labels)
 
 
-    max_pool_size = 2    
+    max_pool_size = 2   
+    num_redundant_layer = len(config.fanouts) - 1
+    block_type = get_block_type("src_to_dst")
+    partition_map = None
     dataloader = init_groot_dataloader(
-        config.rank, config.world_size, config.rank, config.fanouts,
-        config.batch_size, max_pool_size, 
+        config.rank, config.world_size, block_type, config.rank, config.fanouts,
+        config.batch_size,num_redundant_layer, max_pool_size, 
         indptr, indices, feats, labels,
-        dgl_dataset.train_idx, dgl_dataset.valid_idx, dgl_dataset.test_idx
+        dgl_dataset.train_idx, dgl_dataset.valid_idx, dgl_dataset.test_idx, partition_map
     )
     # sample one epoch before profiling
     model = get_dgl_model(config).to(0)
@@ -89,7 +92,7 @@ def groot_uva(config: RunConfig):
     passed = timer.passed()
     duration = passed / config.num_epoch
     
-    print(f"duration={round(duration,2)} secs / epoch")
+    print(f"{config.rank} duration={round(duration,2)} secs / epoch")
     
     graph.ndata["feat"] = feats
     graph.ndata["label"] = labels

@@ -12,9 +12,11 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
       int idx = 0;
       int64_t rank = args[idx++];
       int64_t world_size = args[idx++];
+      int64_t block_type = args[idx++];
       int64_t device_id = args[idx++];
       List<Value> fanout_list = args[idx++];
       int64_t batch_size = args[idx++];
+      int64_t num_redundant_layers = args[idx++];
       int64_t max_pool_size = args[idx++];
 
       NDArray indptr = args[idx++];
@@ -24,6 +26,7 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
       NDArray train_idx = args[idx++];
       NDArray valid_idx = args[idx++];
       NDArray test_idx = args[idx++];
+      NDArray partition_map = args[idx++];
 
       std::vector<int64_t> fanouts;
       for (const auto &fanout : fanout_list) {
@@ -32,8 +35,8 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
 
       DGLContext ctx{kDGLCUDA, (int32_t)device_id};
       DataloaderObject::Global()->Init(
-          rank, world_size, ctx, fanouts, batch_size, max_pool_size, indptr,
-          indices, feats, labels, train_idx, valid_idx, test_idx);
+          rank, world_size, block_type, ctx, fanouts, batch_size, num_redundant_layers, max_pool_size, indptr,
+          indices, feats, labels, train_idx, valid_idx, test_idx, partition_map);
 
       *rv = DataloaderObject::Global();
     });
