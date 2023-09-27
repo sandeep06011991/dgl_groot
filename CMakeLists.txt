@@ -270,10 +270,10 @@ if(USE_CUDA)
           src/groot/cuda/gpu_cache.cu
           src/groot/cuda/rowwise_sampling.cu
           src/groot/cuda/alltoall.cu
-          src/groot/cuda/array_scatter.cu
+          src/groot/cuda/partition_continuous.cu
+          src/groot/cuda/array_gather.cu
   )
 else(USE_CUDA)
-  add_library(dgl SHARED ${DGL_SRC})
 endif(USE_CUDA)
 
 find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)

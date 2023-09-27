@@ -67,7 +67,7 @@ class DGLGat(nn.Module):
                 self.layers.append(GATConv(
                     in_feats=hid_feats * num_heads, out_feats=out_feats, num_heads=1))
 
-    def forward(self, blocks, feat):
+    def forward(self, blocks, feat, inference = False):
         hid_feats = feat
         l1_start = torch.cuda.Event(enable_timing=True)
         l1_start.record()

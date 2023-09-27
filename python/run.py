@@ -1,3 +1,4 @@
+import dgl
 from runner.util import *
 from runner.dgl_uva import dgl_uva
 from runner.dgl_gpu import dgl_gpu
@@ -7,7 +8,13 @@ from runner.groot_gpu import groot_gpu
 
 if __name__ == "__main__":
     config = get_config()
-    config.fanouts = [15, 10, 5]
+    config.fanouts = [15,10]
+    config.system = "groot-cache"
+    config.batch_size = 128
+    config.graph_name = "ogbn-papers100M"
+    config.test_acc = True
+    config.num_epoch = 2
+    config.cache_percentage = .01
     if config.system == "dgl-uva":
         dgl_uva(config)
     elif config.system == "dgl-gpu":

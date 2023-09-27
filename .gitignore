@@ -174,3 +174,10 @@ cscope.*
 _build_cmake_tools/
 
 ../src/CMakeFiles/
+
+src/CMakeCache.txt
+src/third_party/
+src/*.a
+src/CMakeFiles
+src/cmake/
+src/cmake_install.cmake

@@ -78,7 +78,7 @@ public:
 
   inline __device__ IteratorN2O GetMutableN2O(const IdType pos) {
     if(pos >= this->_n2o_size){
-      printf( "overflowing expected size of %ld\n", this->_n2o_size);
+      printf("overflowing expected size of %ld\n", this->_n2o_size);
     }
     assert(pos < this->_n2o_size);
     return const_cast<IteratorN2O>(this->_n2o_table + pos);

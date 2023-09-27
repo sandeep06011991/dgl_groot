@@ -3,7 +3,7 @@
 
 #include "../c_api_common.h"
 #include "../groot/cuda/cuda_hashtable.cuh"
-#include "./cuda/array_scatter.h"
+
 #include <dgl/array.h>
 #include <dgl/packed_func_ext.h>
 #include <dgl/runtime/container.h>
@@ -13,40 +13,42 @@
 #include <memory>
 #include <vector>
 
+#include "cuda/alltoall.h"
+
 using namespace dgl::runtime;
 
 namespace dgl {
 namespace groot {
-IdArray getBoundaryOffsets(IdArray index_cum_sums, int num_partitions);
 
-IdArray gatherArray(IdArray values, IdArray index, IdArray out_idx,
-                    int num_partitions);
-
-IdArray scatter_index(IdArray partition_map, int num_partitions);
 
 namespace impl {
-template <DGLDeviceType XPU, typename IdType>
-IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx,
-                             int num_partitions);
 
-template <DGLDeviceType XPU, typename IdType>
-IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
+template <DGLDeviceType XPU, typename IdType, typename IndexType>
+IdArray  gather_atomic_accumulate(IdArray accumulated_grads,IdArray idx_unique_to_shuffled,\
+                                IdArray grad_shuffled_reshape, cudaStream_t stream);
 
-template <DGLDeviceType XPU, typename IdType>
-IdArray scatter_index(IdArray partition_map, int num_partitions);
+
+template <DGLDeviceType XPU, typename  IdType, typename IndexType>
+std::tuple<IdArray,IdArray,IdArray>
+compute_partition_continuous_indices(IdArray partition_map, int num_partitions,cudaStream_t stream);
+
 } // namespace impl
 
 class ScatteredArrayObject : public runtime::Object {
 
 public:
+  size_t scattered_tensor_dim;
+  size_t unique_tensor_dim;
+
   DGLDataType dtype;
   DGLContext ctx;
   int num_partitions;
   cudaStream_t stream;
   int expectedSize;
+  bool debug = false;
   ~ScatteredArrayObject() {
-    LOG(INFO) << "Destructor called on scattered object" << this->expectedSize
-              << "\n";
+//    LOG(INFO) << "Destructor called on scattered object" << this->expectedSize
+//              << "\n";
   }
   ScatteredArrayObject(int expectedSize, int num_partitions, DGLContext ctx,
                        DGLDataType dtype, cudaStream_t stream) {
@@ -60,6 +62,7 @@ public:
   }
   bool isScattered;
   // original array has no duplicates
+  // original array is partition discontinuous
   NDArray originalArray;
   // Partition map does not refer to global IDS, this is local here so that when
   // we move blocks, partition map compute for dest vertices can be reused
@@ -68,13 +71,12 @@ public:
   // original array is scattered such that partitions are contiguous, resulting
   // in partitionContinuos array
   NDArray partitionContinuousArray;
+  NDArray partitionContinuousOffsets;
   bool computeIdx;
   // Idx are only needed when moving Vertices, edges dont require this.
+  NDArray gather_idx_in_part_disc_cont;// shape of original array
+  NDArray scatter_idx_in_part_disc_cont; // shape of scattered array
 
-  NDArray idx_original_to_part_cont; // shape of original array
-  NDArray idx_part_cont_to_original; // shape of scattered array
-  // to send offsets
-  NDArray to_send_offsets_partition_continuous_array;
 
   // After NCCL Comm
   NDArray shuffled_array;
@@ -83,19 +85,22 @@ public:
   // Possible received array after shuffling has duplicates
   std::shared_ptr<CudaHashTable> table;
   NDArray unique_array;
-  NDArray idx_unique_to_shuffled;
+  NDArray gather_idx_in_unique_out_shuffled;
 
-  void shuffle_forward(NDArray array) {}
+  NDArray shuffle_forward(NDArray feat, int rank, int world_size);
 
-  void shuffle_backward(NDArray array) {}
+  NDArray shuffle_backward(NDArray back_grad, int rank,int world_size);
 
   void VisitAttrs(AttrVisitor *v) final {
     v->Visit("original_array", &originalArray);
     v->Visit("partition_map", &partitionMap);
     v->Visit("partitionContinuousArray", &partitionContinuousArray);
-    v->Visit("idx_original_to_part_cont", &idx_original_to_part_cont);
-    v->Visit("to_send_offsets_partition_continuos_array",
-             &to_send_offsets_partition_continuous_array);
+    v->Visit("gather_idx_in_part_disc_cont", &gather_idx_in_part_disc_cont);
+    v->Visit("scatter_idx_in_part_disc_cont", & scatter_idx_in_part_disc_cont);
+    v->Visit("partition_continuous_offsets",
+             &partitionContinuousOffsets);
+    v->Visit("unique_array", &unique_array);
+    v->Visit("gather_idx_in_unique_out_shuffled", &gather_idx_in_unique_out_shuffled);
   }
 
   static constexpr const char *_type_key = "ScatteredArray";
@@ -109,6 +114,7 @@ public:
   static ScatteredArray Create(int expectedSize, int num_partitions,
                                DGLContext ctx, DGLDataType dtype,
                                cudaStream_t stream) {
+    std::cout << "Creating scattered object with expected size " << expectedSize <<"\n";
     return ScatteredArray(std::make_shared<ScatteredArrayObject>(
         expectedSize, num_partitions, ctx, dtype, stream));
   }
@@ -117,7 +123,7 @@ public:
 void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
              int num_partitions, int rank, int world_size);
 
-} // namespace groot
+  } // namespace groot
 } // namespace dgl
 
 #endif // DGL_GROOT_ARRAY_SCATTER_H_

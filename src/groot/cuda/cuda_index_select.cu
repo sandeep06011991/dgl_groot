@@ -193,6 +193,7 @@ template <typename DType, typename IdType>
 void _IndexSelect(NDArray array, IdArray index, NDArray &ret,
                   cudaStream_t stream) {
   bool is_pinned = array.IsPinned();
+  CHECK_EQ(array->ndim , ret->ndim);
   const int64_t arr_len = array->shape[0];
   const int64_t len = index->shape[0];
   int64_t num_feat = 1;

@@ -1,6 +1,5 @@
 #include "../c_api_common.h"
 #include "array_scatter.h"
-#include "cuda/array_scatter.h"
 #include <dgl/array.h>
 #include <dgl/packed_func_ext.h>
 #include <dgl/runtime/container.h>

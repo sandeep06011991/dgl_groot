@@ -31,11 +31,13 @@ enum FeatMode {
 #define LOADER_ROLE 1
 
 #define THREAD_LOCAL_PINNED_ARRAY_SIZE 256
-#define N_PINNED_ARRAY 3
+#define N_PINNED_ARRAY 10
 
 struct DSThreadEntry {
   IdArray pinned_array[N_PINNED_ARRAY];
   int pinned_array_counter;
+  int check_point  = 0;
+
   static DSThreadEntry *ThreadLocal();
 };
 

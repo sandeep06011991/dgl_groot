@@ -12,7 +12,8 @@ def dgl_gpu(config: RunConfig):
     
     graph: dgl.DGLGraph = dgl_dataset.graph
     graph = graph.to(config.rank)
-    sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
+    sampler = dgl.dataloading.NeighborSampler(\
+            config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
     dataloader = dgl.dataloading.DataLoader(graph = graph, 
                                             indices = dgl_dataset.train_idx.to(config.rank),
                                             graph_sampler = sampler, 
@@ -61,3 +62,4 @@ def dgl_gpu(config: RunConfig):
     
     # test model accuracy
     acc = test_model_accuracy(config, model, test_dataloader)
+    print("Accuracy", acc)
