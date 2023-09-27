@@ -172,3 +172,5 @@ cscope.*
 # model file
 *.pth
 _build_cmake_tools/
+
+../src/CMakeFiles/

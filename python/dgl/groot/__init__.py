@@ -11,7 +11,9 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
                     indptr: Tensor, indices: Tensor, feats: Tensor, labels: Tensor,
                     train_idx: Tensor, valid_idx: Tensor, test_idx: Tensor, partition_map: Tensor):
     if partition_map is None:
-        partition_map = torch.randint(0, world_size, (indptr.shape[0] - 1,))
+        # todo: partition map should be read from disk
+        # or partition map must be consistent with others
+        partition_map = torch.arange(indptr.shape[0] - 1) % world_size
     if num_redundant_layers == len(fanouts):
         assert(block_type == 0)
     else:

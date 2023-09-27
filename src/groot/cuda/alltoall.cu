@@ -81,6 +81,7 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
     auto host_dgl_context = DGLContext{kDGLCPU, 0};
     int comm_token = CUDAThreadEntry::ThreadLocal()->thread_id;
     int thread_id = CUDAThreadEntry::ThreadLocal()->thread_id;
+
     ncclComm_t nccl_comm = ds_context->nccl_comm[thread_id];
     auto* ds_thread_local = DSThreadEntry::ThreadLocal();
 

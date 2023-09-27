@@ -67,7 +67,9 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
       getBoundaryOffsets(scattered_index, num_partitions);
   CUDACHECK(cudaDeviceSynchronize());
   if (world_size != 1) {
+    std::cout << "Attempt shuffle \n";
     std::tie(array->shuffled_array, array->shuffled_recv_offsets) = ds::Alltoall(array->partitionContinuousArray, boundary_offsets, 1, rank, world_size);
+    std::cout << "Shuffle ok\n";
   } else {
     array->shuffled_array = array->partitionContinuousArray;
     array->shuffled_recv_offsets = boundary_offsets;

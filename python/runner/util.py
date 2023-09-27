@@ -24,9 +24,9 @@ class RunConfig:
     rank: int = 0
     world_size: int = 1
     system: str = "dgl-uva" # choice of ["pyg", "dgl-cpu", "dgl-uva", "quiver", "groot-uva", "groot-cache"]
-    graph_name: str = "ogbn-products" # choice of ["ogbn-products", "ogbn-papers100M", "mag240m"]
+    graph_name: str = "ogbn-arxiv" # choice of ["ogbn-products", "ogbn-papers100M", "mag240m"]
     model_type: str = "graphsage" # choice of ["graphsage", "gat"]
-    batch_size: int = 1024
+    batch_size: int = 5
     hid_feat: int = 256
     num_layer: int = 3
     num_epoch : int = 3
@@ -77,7 +77,7 @@ def get_config():
     config.sample_only = args.sample_only
     config.cache_percentage = args.cache_rate
     config.test_acc = args.test_acc
-    config.fanouts = [5, 10, 15]
+    config.fanouts = [5,5,5]
     config.world_size = args.world_size
     return config
 

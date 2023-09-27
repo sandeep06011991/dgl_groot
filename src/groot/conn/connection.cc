@@ -9,7 +9,6 @@
 #include "./nvlink.h"
 #include "./p2p_connection.h"
 #include "./jump_connection.h"
-
 namespace dgl {
 namespace ds {
 

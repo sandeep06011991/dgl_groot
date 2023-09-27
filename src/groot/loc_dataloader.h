@@ -19,6 +19,7 @@
 #include "cuda/gpu_cache.cuh"
 #include "cuda/rowwise_sampling.cuh"
 #include <thread>
+#include "core.h"
 namespace dgl::groot {
 class DataloaderObject : public runtime::Object {
 public:
@@ -139,7 +140,15 @@ public:
 
     LOG(INFO) << "Initialized dataloader at rank " << _rank << " world_size "
               << _world_size;
-  }
+
+    if(world_size != 0) {
+      int thread_num = 1;
+      bool enable_kernel_control = false;
+      bool enable_comm_control = false;
+      bool enable_profiler = false;
+      ds::Initialize(rank, world_size, thread_num, enable_kernel_control, enable_comm_control, enable_profiler);
+      }
+    }
 
   void InitFeatCache(NDArray cached_ids) {
     gpu_cache.Init(_cpu_feats, cached_ids);
@@ -203,6 +212,8 @@ public:
     int blk_idx = key % _max_pool_size;
     _syncflags.at(blk_idx) = false;
     cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
+    CUDAThreadEntry::ThreadLocal()->stream = sampling_stream;
+    CUDAThreadEntry::ThreadLocal()->data_copy_stream = sampling_stream;
 
     NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
     auto blocksPtr = _blocks_pool.at(blk_idx);
@@ -269,6 +280,7 @@ public:
       int64_t num_picks = _fanouts.at(layer);
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
       auto blockTable = blockPtr->_table;
+      blockTable->Reset();
       if (layer == _num_redundant_layers) {
         auto partition_index =
             IndexSelect(_partition_map, frontier, sampling_stream);
@@ -286,8 +298,9 @@ public:
         if (blocksPtr->_blockType == BlockType::SRC_TO_DEST) {
           // Todo:: Formally verify this method of insertion
           blockTable->Reset();
-          blockTable->FillWithDuplicates(blockPtr->_row,blockPtr->_row->shape[0]);
-          blockPtr->num_dst = frontier.NumElements();
+          blockTable->FillWithUnique(frontier, frontier.NumElements());
+//          blockTable->FillWithDuplicates(blockPtr->_row,blockPtr->_row->shape[0]);
+          blockPtr->num_dst = blockTable->RefUnique().NumElements();
           blockTable->FillWithDuplicates(blockPtr->_col,blockPtr->_col->shape[0]);
           auto unique_src = blockTable->RefUnique();
           auto partition_index =
@@ -298,6 +311,14 @@ public:
         } else {
           LOG(FATAL) << "Dont need to reindex here ";
         }
+      }else{
+        blockTable->Reset();
+        blockTable->FillWithUnique(frontier, frontier.NumElements());
+        assert(blockTable->RefUnique().NumElements() == frontier->shape[0]);
+        blockPtr->num_dst = blockTable->RefUnique().NumElements();
+        blockTable->FillWithDuplicates(blockPtr->_col,
+                                       blockPtr->_col.NumElements());
+        frontier = blockTable->RefUnique();
       }
 //        if (blocksPtr->_blockType == BlockType::DEST_TO_SRC) {
 //          LOG(FATAL) << ("Dont need to reindex here ");
@@ -312,17 +333,10 @@ public:
 //          blockTable->FillWithDuplicates(blockPtr->_row,blockPtr->_row.NumElements());
 //        }
 //      } else {
-//        blockTable->Reset();
-//        blockTable->FillWithDuplicates(blockPtr->_row,
-//                                       blockPtr->_row.NumElements());
-//        blockPtr->num_dst = blockTable->RefUnique().NumElements();
-//        blockTable->FillWithDuplicates(blockPtr->_col,
-//                                       blockPtr->_col.NumElements());
-//        frontier = blockTable->RefUnique();
+//
 //      }
       blockPtr->num_src = frontier.NumElements();
     }
-
     blocksPtr->_output_nodes = frontier;
     // MapEdges to 0 based indexing
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {

@@ -77,6 +77,7 @@ protected:
     // linearly scan for matching entry
     IdType delta = 1;
     while (_o2n_table[pos].key != id) {
+      if(_o2n_table[pos].key == Constant::kEmptyKey){printf("not found searching %ld\n", id);}
       assert(_o2n_table[pos].key != Constant::kEmptyKey);
       pos = HashO2N(pos + delta);
       delta += 1;

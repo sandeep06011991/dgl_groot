@@ -51,9 +51,9 @@ struct BlockObject : public runtime::Object {
     _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst, stream);
     // Todo SRC to DEST data strucutures are not needed for redudnant blocks
     _scattered_dest =
-        ScatteredArray::Create(est_num_dst, num_partitions, ctx, dtype, stream);
+        ScatteredArray::Create(est_num_dst  * num_partitions, num_partitions, ctx, dtype, stream);
     _scattered_src =
-        ScatteredArray::Create(est_num_src, num_partitions, ctx, dtype, stream);
+        ScatteredArray::Create(est_num_src * num_partitions , num_partitions, ctx, dtype, stream);
   };
   int64_t num_src, num_dst; // number of src (unique) and destination (unique)
                             // for buliding the dgl block object

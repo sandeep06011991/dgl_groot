@@ -8,7 +8,6 @@ from runner.groot_gpu import groot_gpu
 if __name__ == "__main__":
     config = get_config()
     config.fanouts = [15, 10, 5]
-    
     if config.system == "dgl-uva":
         dgl_uva(config)
     elif config.system == "dgl-gpu":
