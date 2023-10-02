@@ -34,6 +34,7 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
       }
 
       DGLContext ctx{kDGLCUDA, (int32_t)device_id};
+
       DataloaderObject::Global()->Init(
           rank, world_size, block_type, ctx, fanouts, batch_size, num_redundant_layers, max_pool_size, indptr,
           indices, feats, labels, train_idx, valid_idx, test_idx, partition_map);
@@ -62,6 +63,36 @@ DGL_REGISTER_GLOBAL("groot._CAPI_GetBlock")
                 ->GetBlock(layer)
                 ->_block_ref;
     });
+
+DGL_REGISTER_GLOBAL("groot._CAPI_GetBlockScatteredSrc")
+    .set_body([](DGLArgs args, DGLRetValue *rv) {
+      const int64_t key = args[0];
+      const int64_t layer = args[1];
+      *rv = DataloaderObject::Global()
+                ->AwaitGetBlocks(key)
+                ->GetBlock(layer)
+                ->_scattered_src;
+    });
+
+DGL_REGISTER_GLOBAL("groot._CAPI_GetBlockScatteredDest")
+    .set_body([](DGLArgs args, DGLRetValue *rv) {
+      const int64_t key = args[0];
+      const int64_t layer = args[1];
+      *rv = DataloaderObject::Global()
+                ->AwaitGetBlocks(key)
+                ->GetBlock(layer)
+                ->_scattered_dest;
+    });
+
+DGL_REGISTER_GLOBAL("groot._CAPI_GetBlocksFrontier")
+    .set_body([](DGLArgs args, DGLRetValue *rv) {
+      const int64_t key = args[0];
+      const int64_t layer = args[1];
+      *rv = DataloaderObject::Global()
+                ->AwaitGetBlocks(key)
+                ->_scattered_frontier;
+    });
+
 
 DGL_REGISTER_GLOBAL("groot._CAPI_GetBlocks")
     .set_body([](DGLArgs args, DGLRetValue *rv) {

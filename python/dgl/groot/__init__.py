@@ -1,10 +1,12 @@
 from .._ffi.function import _init_api
 _init_api("dgl.groot", __name__)
+_init_api("dgl.ds", __name__)
 
 import dgl.backend as F
 from torch import Tensor
 from ..heterograph import DGLBlock
 import torch
+
 
 def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id: int, fanouts: list[int],
                     batch_size: int, num_redundant_layers: int, max_pool_size: int,
@@ -12,7 +14,8 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
                     train_idx: Tensor, valid_idx: Tensor, test_idx: Tensor, partition_map: Tensor):
     if partition_map is None:
         # todo: partition map should be read from disk
-        # or partition map must be consistent with others
+        # todo: partition map must be consistent with others
+        print("Using synthetic product map")
         partition_map = torch.arange(indptr.shape[0] - 1) % world_size
     if num_redundant_layers == len(fanouts):
         assert(block_type == 0)
@@ -33,16 +36,26 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
 def init_groot_dataloader_cache(cache_idx: Tensor):
     _CAPI_InitCache(F.to_dgl_nd(cache_idx))
     
-def get_batch(key: int, layers: int = 3):
+def get_batch(key: int, layers: int = 3, \
+                n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL"):
     blocks = []
+    frontier = None
     for i in range(layers):
         gidx = _CAPI_GetBlock(key, i)
         block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
+        if i >= n_redundant_layers:
+            assert(mode == "SRC_TO_DEST" or mode == "DEST_TO_SRC")
+            if mode == "SRC_TO_DEST":
+                block.scattered_src = _CAPI_GetBlockScatteredSrc(key, i)
+        if i == n_redundant_layers:
+            frontier = _CAPI_GetBlocksFrontier(key, i)
         blocks.insert(0, block)
-        
+    # Todo correctness test
+    if mode == "SRC_TO_DEST":
+        blocks = (blocks, frontier)
     feat = _CAPI_GetFeat(key)
     labels = _CAPI_GetLabel(key)
-    return blocks, F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)
+    return blocks,  F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)
 
 def sample_batch_async() -> int:
     return _CAPI_NextAsync()

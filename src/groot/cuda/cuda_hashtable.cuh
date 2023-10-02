@@ -155,9 +155,10 @@ private:
   DGLDataType _dtype;
   DGLContext _ctx;
   int64_t _capacity;
-  cudaStream_t _stream;
 
 public:
+  cudaStream_t _stream;
+
   CudaHashTable(DGLDataType dtype, DGLContext ctx, int64_t capacity,
                 cudaStream_t stream) {
     _capacity = capacity;

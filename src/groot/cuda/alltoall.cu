@@ -70,12 +70,18 @@ void NCCLAllToAll(IdArray send_buffer, IdArray send_offset, IdArray recv_buffer,
 }
 
 std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
-           int expand_size, int rank, int world_size, IdArray recv_offset) {
+           int expand_size, int rank, int world_size, IdArray recv_offset, cudaStream_t stream) {
     // NCCL
     CHECK(send_offset->dtype.bits == 64);
     auto send_sizes = Diff(send_offset);
-    auto stream = CUDAThreadEntry::ThreadLocal()->stream;
-    auto data_copy_stream = CUDAThreadEntry::ThreadLocal()->data_copy_stream;
+    cudaStream_t data_copy_stream;
+    if(stream == nullptr){
+      stream = CUDAThreadEntry::ThreadLocal()->stream;
+      data_copy_stream = CUDAThreadEntry::ThreadLocal()->data_copy_stream;
+    }else{
+      std::cout << "using runtime stream \n";
+      data_copy_stream = stream;
+    }
     auto dgl_context = input->ctx;
     auto *ds_context = DSContext::Global();
     auto host_dgl_context = DGLContext{kDGLCPU, 0};
@@ -95,7 +101,8 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
       IdArray recv_sizes = IdArray::Empty({world_size}, send_offset->dtype, dgl_context);
       IdArray range_seq = Range(0, world_size + 1, 64, host_dgl_context);
       // scheduler->TryComm(thread_id);
-      NCCLAllToAll<int64_t, ncclInt64>(send_sizes, range_seq, recv_sizes, range_seq, 1, rank, world_size, nccl_comm);
+      NCCLAllToAll<int64_t, ncclInt64>(send_sizes, range_seq, \
+                                       recv_sizes, range_seq, 1, rank, world_size, nccl_comm);
       CUDACHECK(cudaStreamSynchronize(stream));
       // scheduler->FinishComm();
       recv_offset = CumSum(recv_sizes, true);

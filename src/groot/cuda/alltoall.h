@@ -20,7 +20,7 @@ namespace ds {
  */
 // FIXME: wrap the low-level communicator
 std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
-     int expand_size, int rank, int world_size, IdArray recv_offset=aten::NullArray());
+     int expand_size, int rank, int world_size, IdArray recv_offset=aten::NullArray(), cudaStream_t stream = nullptr);
 
 }
 }

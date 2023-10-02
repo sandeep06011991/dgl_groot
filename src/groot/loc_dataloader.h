@@ -147,6 +147,7 @@ public:
       bool enable_comm_control = false;
       bool enable_profiler = false;
       ds::Initialize(rank, world_size, thread_num, enable_kernel_control, enable_comm_control, enable_profiler);
+
       }
     }
 
@@ -194,6 +195,7 @@ public:
 
   // TODO: shuffle the seeds for every epoch
   NDArray GetNextSeeds(int64_t key) {
+
     const int64_t start_idx = key * _batch_size % _train_idx.NumElements();
     const int64_t end_idx =
         std::min(_train_idx.NumElements(), start_idx + _batch_size);
@@ -273,6 +275,8 @@ public:
     int num_partitions = _world_size;
     auto blocksPtr = _blocks_pool.at(blk_idx);
     NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
+    std::cout << "Found frontier size"<< frontier->shape[0] <<"\n";
+
     blocksPtr->_input_nodes = frontier;
     cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
     CHECK_LE(_num_redundant_layers, _fanouts.size() - 1);
@@ -280,6 +284,7 @@ public:
       int64_t num_picks = _fanouts.at(layer);
       std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
       auto blockTable = blockPtr->_table;
+      blockTable->_stream = sampling_stream;
       blockTable->Reset();
       if (layer == _num_redundant_layers) {
         auto partition_index =
@@ -303,6 +308,7 @@ public:
           blockPtr->num_dst = blockTable->RefUnique().NumElements();
           blockTable->FillWithDuplicates(blockPtr->_col,blockPtr->_col->shape[0]);
           auto unique_src = blockTable->RefUnique();
+          blockPtr->num_src = unique_src->shape[0];
           auto partition_index =
               IndexSelect(_partition_map, unique_src, sampling_stream);
           Scatter(blockPtr->_scattered_src, unique_src, partition_index,
@@ -319,7 +325,10 @@ public:
         blockTable->FillWithDuplicates(blockPtr->_col,
                                        blockPtr->_col.NumElements());
         frontier = blockTable->RefUnique();
+        blockPtr->num_src = frontier.NumElements();
       }
+
+
 //        if (blocksPtr->_blockType == BlockType::DEST_TO_SRC) {
 //          LOG(FATAL) << ("Dont need to reindex here ");
 //          NDArray p_map =
@@ -335,7 +344,6 @@ public:
 //      } else {
 //
 //      }
-      blockPtr->num_src = frontier.NumElements();
     }
     blocksPtr->_output_nodes = frontier;
     // MapEdges to 0 based indexing

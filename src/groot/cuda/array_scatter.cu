@@ -1,12 +1,9 @@
- #include "array_scatter.h"
 #include <iostream>
 #include <dgl/array.h>
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../array/cuda/utils.h"
- #include "../array_scatter.h"
-#include <iostream>
+#include "../array_scatter.h"
 using namespace dgl::runtime;
-
 namespace dgl{
     namespace groot{
         namespace impl{
@@ -73,19 +70,16 @@ void get_boundary_offsets_kernel(
 template<DGLDeviceType XPU, typename IdType>
 IdArray scatter_index(IdArray partition_map,int num_partitions){
     // uint8_t nbits = 32;
-    std::cout << "Start partition in \n";
     auto nbits = partition_map->dtype.bits;
-    std::cout << "n bits " << nbits <<"\n";
 
     IdArray index_out = aten::Full<IdType>(0, partition_map->shape[0] * num_partitions, \
             partition_map->ctx);
     size_t partition_map_size = partition_map->shape[0];
     const IdType* partition_map_idx = partition_map.Ptr<IdType>();
     IdType* index_out_idx = index_out.Ptr<IdType>();
-    std::cout << "Trying to get a stream  " << partition_map_size << "total size \n";
+
     cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
 
-    std::cout << "successfully got a stream \n";
     const int nt = cuda::FindNumThreads(partition_map_size);
     const int nb = (partition_map_size + nt - 1) / nt;
     CUDA_KERNEL_CALL(scatter_index_kernel, nb, nt, 0, stream,\
@@ -102,10 +96,7 @@ IdArray scatter_index(IdArray partition_map,int num_partitions){
                 index_out_idx, index_out_idx,\
                     partition_map_size * num_partitions, stream));
     device->FreeWorkspace(index_out->ctx, workspace);
-    std::cout << "returning \n";
     cudaStreamSynchronize(stream);
-    std::cout <<  index_out <<"\n";
-    std::cout << "Stream sync success\n";
     return index_out;
 }
 
@@ -117,7 +108,7 @@ IdArray  getBoundaryOffsetsLocal(IdArray index_cum_sums,int num_partitions){
 
     const IdType* index_cum_sums_idx = index_cum_sums.Ptr<IdType>();
     IdType* index_out_idx = index_out.Ptr<IdType>();
-    cudaStream_t stream = runtime::getCurrentCUDAStream();
+    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
     const int nt = cuda::FindNumThreads(num_partitions);
     const int nb = (num_partitions + nt - 1) / nt;
     CUDA_KERNEL_CALL(get_boundary_offsets_kernel, nb, nt, 0, stream,\
@@ -140,7 +131,7 @@ IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx, int
     const IdType * index_ptr = index.Ptr<IdType>();
     IdType * out_ptr = out.Ptr<IdType>();
     IdType * out_idx_ptr = out_idx.Ptr<IdType>();
-    cudaStream_t stream = runtime::getCurrentCUDAStream();
+    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
     const int nt = cuda::FindNumThreads(index->shape[0]);
     const int nb = (index->shape[0] + nt - 1) / nt;
 
@@ -150,6 +141,13 @@ IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx, int
     return out;
 }
 
+template<DGLDeviceType  XPU, typename IdType>
+IdArray gather_atomic_accumulate(IdArray floats, IdArray values, IdArray empty_full){
+
+}
+
+    template IdArray gather_atomic_accumulate<kDGLCUDA, float>(IdArray floats, IdArray values, IdArray empty_full);
+    template IdArray gather_atomic_accumulate<kDGLCUDA, double>(IdArray floats, IdArray values, IdArray empty_full);
 
     template IdArray scatter_index<kDGLCUDA, int32_t>(IdArray , int);
     template IdArray scatter_index<kDGLCUDA, int64_t>(IdArray , int);

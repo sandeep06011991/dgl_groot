@@ -1,3 +1,4 @@
+import dgl
 from runner.util import *
 from runner.dgl_uva import dgl_uva
 from runner.dgl_gpu import dgl_gpu

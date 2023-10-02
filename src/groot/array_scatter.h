@@ -3,6 +3,7 @@
 
 #include "../c_api_common.h"
 #include "../groot/cuda/cuda_hashtable.cuh"
+
 #include "./cuda/array_scatter.h"
 #include <dgl/array.h>
 #include <dgl/packed_func_ext.h>
@@ -12,6 +13,8 @@
 #include <dgl/runtime/registry.h>
 #include <memory>
 #include <vector>
+
+#include "cuda/alltoall.h"
 
 using namespace dgl::runtime;
 
@@ -34,6 +37,7 @@ IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
 
 template <DGLDeviceType XPU, typename IdType>
 IdArray scatter_index(IdArray partition_map, int num_partitions);
+
 } // namespace impl
 
 class ScatteredArrayObject : public runtime::Object {
@@ -85,9 +89,9 @@ public:
   NDArray unique_array;
   NDArray idx_unique_to_shuffled;
 
-  void shuffle_forward(NDArray array) {}
+  NDArray shuffle_forward(NDArray feat, int rank, int world_size);
 
-  void shuffle_backward(NDArray array) {}
+  NDArray shuffle_backward(NDArray back_grad, int rank,int world_size);
 
   void VisitAttrs(AttrVisitor *v) final {
     v->Visit("original_array", &originalArray);
@@ -96,6 +100,7 @@ public:
     v->Visit("idx_original_to_part_cont", &idx_original_to_part_cont);
     v->Visit("to_send_offsets_partition_continuos_array",
              &to_send_offsets_partition_continuous_array);
+    v->Visit("unique_array", &unique_array);
   }
 
   static constexpr const char *_type_key = "ScatteredArray";
@@ -117,7 +122,7 @@ public:
 void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
              int num_partitions, int rank, int world_size);
 
-} // namespace groot
+  } // namespace groot
 } // namespace dgl
 
 #endif // DGL_GROOT_ARRAY_SCATTER_H_
