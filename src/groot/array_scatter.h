@@ -4,7 +4,6 @@
 #include "../c_api_common.h"
 #include "../groot/cuda/cuda_hashtable.cuh"
 
-#include "./cuda/array_scatter.h"
 #include <dgl/array.h>
 #include <dgl/packed_func_ext.h>
 #include <dgl/runtime/container.h>
@@ -27,6 +26,9 @@ IdArray gatherArray(IdArray values, IdArray index, IdArray out_idx,
 
 IdArray scatter_index(IdArray partition_map, int num_partitions);
 
+IdArray atomic_accumulation(IdArray accumulated_grads, IdArray idx_unique_to_shuffled,\
+                              IdArray grad_shuffled_reshape);
+
 namespace impl {
 template <DGLDeviceType XPU, typename IdType>
 IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx,
@@ -37,6 +39,10 @@ IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums, int num_partitions);
 
 template <DGLDeviceType XPU, typename IdType>
 IdArray scatter_index(IdArray partition_map, int num_partitions);
+
+template <DGLDeviceType XPU, typename IdType>
+IdArray  gather_atomic_accumulate(IdArray accumulated_grads,IdArray idx_unique_to_shuffled,\
+                                IdArray grad_shuffled_reshape);
 
 } // namespace impl
 

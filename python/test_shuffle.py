@@ -17,17 +17,20 @@ def run_proc(rank, world_size):
     _CAPI_DGLDSInitialize(rank, world_size, thread_num , enable_kernel_control, enable_comm_control, enable_profiler)
     # Test Scatter Object()
     s1 = torch.cuda.Stream()
-    with torch.cuda.stream(s1):
+    with (torch.cuda.stream(s1)):
         frontier =F.zerocopy_to_dgl_ndarray(torch.arange(16, device = rank))
         partition_map = F.zerocopy_to_dgl_ndarray(torch.arange(16, device = rank) % 4)
         num_partitions = 4
-        scattered_array = _CAPI_getScatteredArrayObject(frontier, partition_map, num_partitions, rank, world_size)
+        scattered_array = _CAPI_getScatteredArrayObject\
+                (frontier, partition_map, num_partitions, rank, world_size)
         print(scattered_array.unique_array)
         feat = torch.ones((4,128), device = rank, requires_grad = True)
 
-        forward = Shuffle.apply( scattered_array, feat.detach(), rank, world_size)
+        forward = Shuffle.apply( scattered_array, feat, rank, world_size)
         forward.sum().backward()
+              # ).backward()
         print(feat.grad)
+        s1.synchronize()
         print("shape ", forward.shape)
      #    Create all torch layers
      #Test forward and Backward Pass on this object

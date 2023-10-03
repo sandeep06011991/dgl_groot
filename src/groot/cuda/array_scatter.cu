@@ -6,158 +6,196 @@
 using namespace dgl::runtime;
 namespace dgl{
     namespace groot{
-        namespace impl{
+        namespace impl {
 
-// Checks the assigned partition map and scatters the array indices.
-template<typename IdType>
-__global__
-void scatter_index_kernel(
-    const IdType * partition_map, size_t partition_map_size, \
-         IdType * index_out, int n_partitions){
-        int tx = blockIdx.x * blockDim.x + threadIdx.x;
-        int stride_x = gridDim.x * blockDim.x;
-        while (tx < partition_map_size) {
+        // Checks the assigned partition map and scatters the array indices.
+        template <typename IdType>
+        __global__ void scatter_index_kernel(const IdType *partition_map,
+                                             size_t partition_map_size,
+                                             IdType *index_out, int n_partitions) {
+          int tx = blockIdx.x * blockDim.x + threadIdx.x;
+          int stride_x = gridDim.x * blockDim.x;
+          while (tx < partition_map_size) {
             auto p_id = partition_map[tx];
             assert(p_id < n_partitions);
             index_out[p_id * partition_map_size + tx] = 1;
             tx += stride_x;
-    }
-}
-template<typename IDType>
-__inline__
-__device__
-  bool is_selected(const IDType * index, int sz){
-  if(sz == 0) {
+          }
+        }
+        template <typename IDType>
+        __inline__ __device__ bool is_selected(const IDType *index, int sz) {
+          if (sz == 0) {
             return index[sz] == 1;
-    }
-    return index[sz] != index[sz - 1];
-}
+          }
+          return index[sz] != index[sz - 1];
+        }
 
-
-template<typename IdType>
-__global__
-    void gather_index_kernel(
-        const IdType * source, size_t source_size,\
-        const IdType * index, size_t index_size, \
-        IdType * out, IdType * out_idx, int n_partitions){
-    int tx = blockIdx.x * blockDim.x + threadIdx.x;
-    int stride_x = gridDim.x * blockDim.x;
-    while (tx < index_size) {
-            if(is_selected(index, tx)){
+        template <typename IdType>
+        __global__ void gather_index_kernel(const IdType *source,
+                                            size_t source_size, const IdType *index,
+                                            size_t index_size, IdType *out,
+                                            IdType *out_idx, int n_partitions) {
+          int tx = blockIdx.x * blockDim.x + threadIdx.x;
+          int stride_x = gridDim.x * blockDim.x;
+          while (tx < index_size) {
+            if (is_selected(index, tx)) {
               auto value_idx = tx % source_size;
-              assert(index[tx] - 1 < source_size);  
+              assert(index[tx] - 1 < source_size);
               out[index[tx] - 1] = source[value_idx];
-              out_idx[index[tx]-1] = value_idx;
+              out_idx[index[tx] - 1] = value_idx;
             }
             tx += stride_x;
-    }
-}
+          }
+        }
 
-template<typename IdType>
-__global__
-void get_boundary_offsets_kernel(
-    const IdType * index_cum, size_t num_partitions, size_t partition_map_size, \
-         IdType * index_out){
-        int tx = blockIdx.x * blockDim.x + threadIdx.x;
-        int stride_x = gridDim.x * blockDim.x;
-        while (tx < num_partitions) {
-            index_out[tx + 1] = index_cum[partition_map_size -1 + tx * partition_map_size];
+        template <typename IdType>
+        __global__ void
+        gather_accumulate_kernel(const IdType *out_accumulated_grads,
+                                 const IdType *in_grads, const size_t in_grads_size,
+                                 const size_t feat_size,
+                                 const long *in_grads_index) {
+          int tx = blockIdx.x;
+          int stride_x = gridDim.x;
+          while (tx < in_grads_size) {
+            int ty = threadIdx.x;
+            while (ty < feat_size) {
+              atomicAdd(
+                  (IdType *)&out_accumulated_grads[in_grads_index[tx] * feat_size +
+                                                   ty],
+                  (IdType)in_grads[tx * feat_size + ty]);
+              ty += blockDim.x;
+            }
             tx += stride_x;
-    }
-}
+          }
+        }
 
+        template <typename IdType>
+        __global__ void
+        get_boundary_offsets_kernel(const IdType *index_cum, size_t num_partitions,
+                                    size_t partition_map_size, IdType *index_out) {
+          int tx = blockIdx.x * blockDim.x + threadIdx.x;
+          int stride_x = gridDim.x * blockDim.x;
+          while (tx < num_partitions) {
+            index_out[tx + 1] =
+                index_cum[partition_map_size - 1 + tx * partition_map_size];
+            tx += stride_x;
+          }
+        }
 
-template<DGLDeviceType XPU, typename IdType>
-IdArray scatter_index(IdArray partition_map,int num_partitions){
-    // uint8_t nbits = 32;
-    auto nbits = partition_map->dtype.bits;
+        template <DGLDeviceType XPU, typename IdType>
+        IdArray scatter_index(IdArray partition_map, int num_partitions) {
+          // uint8_t nbits = 32;
+          auto nbits = partition_map->dtype.bits;
 
-    IdArray index_out = aten::Full<IdType>(0, partition_map->shape[0] * num_partitions, \
-            partition_map->ctx);
-    size_t partition_map_size = partition_map->shape[0];
-    const IdType* partition_map_idx = partition_map.Ptr<IdType>();
-    IdType* index_out_idx = index_out.Ptr<IdType>();
+          IdArray index_out = aten::Full<IdType>(
+              0, partition_map->shape[0] * num_partitions, partition_map->ctx);
+          size_t partition_map_size = partition_map->shape[0];
+          const IdType *partition_map_idx = partition_map.Ptr<IdType>();
+          IdType *index_out_idx = index_out.Ptr<IdType>();
 
-    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+          cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
 
-    const int nt = cuda::FindNumThreads(partition_map_size);
-    const int nb = (partition_map_size + nt - 1) / nt;
-    CUDA_KERNEL_CALL(scatter_index_kernel, nb, nt, 0, stream,\
-        partition_map_idx, partition_map_size, index_out_idx, num_partitions);
-    size_t workspace_size = 0;
-    auto device = runtime::DeviceAPI::Get(index_out->ctx);
-    CUDA_CALL(cub::DeviceScan::InclusiveSum(
-        nullptr, workspace_size,\
-                index_out_idx, index_out_idx,\
-                    partition_map_size * num_partitions, stream));
-    void* workspace = device->AllocWorkspace(index_out->ctx, workspace_size);
-    CUDA_CALL(cub::DeviceScan::InclusiveSum(
-        workspace , workspace_size,\
-                index_out_idx, index_out_idx,\
-                    partition_map_size * num_partitions, stream));
-    device->FreeWorkspace(index_out->ctx, workspace);
-    cudaStreamSynchronize(stream);
-    return index_out;
-}
+          const int nt = cuda::FindNumThreads(partition_map_size);
+          const int nb = (partition_map_size + nt - 1) / nt;
+          CUDA_KERNEL_CALL(scatter_index_kernel, nb, nt, 0, stream,
+                           partition_map_idx, partition_map_size, index_out_idx,
+                           num_partitions);
+          size_t workspace_size = 0;
+          auto device = runtime::DeviceAPI::Get(index_out->ctx);
+          CUDA_CALL(cub::DeviceScan::InclusiveSum(
+              nullptr, workspace_size, index_out_idx, index_out_idx,
+              partition_map_size * num_partitions, stream));
+          void *workspace = device->AllocWorkspace(index_out->ctx, workspace_size);
+          CUDA_CALL(cub::DeviceScan::InclusiveSum(
+              workspace, workspace_size, index_out_idx, index_out_idx,
+              partition_map_size * num_partitions, stream));
+          device->FreeWorkspace(index_out->ctx, workspace);
+          cudaStreamSynchronize(stream);
+          return index_out;
+        }
 
+        template <DGLDeviceType XPU, typename IdType>
+        IdArray getBoundaryOffsetsLocal(IdArray index_cum_sums,
+                                        int num_partitions) {
+          IdArray index_out =
+              aten::Full(0, num_partitions + 1, index_cum_sums->dtype.bits,
+                         index_cum_sums->ctx);
 
-template<DGLDeviceType XPU, typename IdType>
-IdArray  getBoundaryOffsetsLocal(IdArray index_cum_sums,int num_partitions){    
-    IdArray index_out = aten::Full(0,  num_partitions + 1, index_cum_sums->dtype.bits, \
-            index_cum_sums->ctx);
+          const IdType *index_cum_sums_idx = index_cum_sums.Ptr<IdType>();
+          IdType *index_out_idx = index_out.Ptr<IdType>();
+          cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+          const int nt = cuda::FindNumThreads(num_partitions);
+          const int nb = (num_partitions + nt - 1) / nt;
+          CUDA_KERNEL_CALL(get_boundary_offsets_kernel, nb, nt, 0, stream,
+                           index_cum_sums_idx, num_partitions,
+                           index_cum_sums->shape[0] / num_partitions,
+                           index_out_idx);
+          //  Todo Use Pinned memory. save on memory copy
+          return index_out;
+          //    .CopyTo(DGLContext{kDGLCPU, 0});
+        }
 
-    const IdType* index_cum_sums_idx = index_cum_sums.Ptr<IdType>();
-    IdType* index_out_idx = index_out.Ptr<IdType>();
-    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
-    const int nt = cuda::FindNumThreads(num_partitions);
-    const int nb = (num_partitions + nt - 1) / nt;
-    CUDA_KERNEL_CALL(get_boundary_offsets_kernel, nb, nt, 0, stream,\
-        index_cum_sums_idx, num_partitions, index_cum_sums->shape[0]/num_partitions, index_out_idx);
-//  Todo Use Pinned memory. save on memory copy
-    return index_out;
-//    .CopyTo(DGLContext{kDGLCPU, 0});
-}
+        template <DGLDeviceType XPU, typename IdType>
+        IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx,
+                                     int num_partitions) {
+          //  Todo : Error of node tye
+          //  Steram line this.
+          assert(values->dtype.bits == index->dtype.bits);
+          IdArray out =
+              aten::NewIdArray(values->shape[0], index->ctx, values->dtype.bits);
 
+          const IdType *values_ptr = values.Ptr<IdType>();
+          const IdType *index_ptr = index.Ptr<IdType>();
+          IdType *out_ptr = out.Ptr<IdType>();
+          IdType *out_idx_ptr = out_idx.Ptr<IdType>();
+          cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
+          const int nt = cuda::FindNumThreads(index->shape[0]);
+          const int nb = (index->shape[0] + nt - 1) / nt;
 
+          CUDA_KERNEL_CALL(gather_index_kernel, nb, nt, 0, stream, values_ptr,
+                           values->shape[0], index_ptr, index->shape[0], out_ptr,
+                           out_idx_ptr, num_partitions);
+          return out;
+        }
 
-template<DGLDeviceType XPU, typename  IdType>
-IdArray gatherIndexFromArray(IdArray values, IdArray index, IdArray out_idx, int num_partitions){
-//  Todo : Error of node tye
-//  Steram line this.
-    assert(values->dtype.bits == index->dtype.bits);
-    IdArray out = aten::NewIdArray(values->shape[0], index->ctx, values->dtype.bits);
+        template <DGLDeviceType XPU, typename IdType>
+        IdArray gather_atomic_accumulate(IdArray accumulated_grads,
+                                         IdArray idx_unique_to_shuffled,
+                                         IdArray grad_shuffled_reshape) {
+          const IdType *out_ptr = accumulated_grads.Ptr<IdType>();
+          assert(idx_unique_to_shuffled->dtype.code == 0);
+          const long *index_ptr = idx_unique_to_shuffled.Ptr<long>();
+          const IdType *grad_ptr = grad_shuffled_reshape.Ptr<IdType>();
 
-    const IdType * values_ptr = values.Ptr<IdType>();
-    const IdType * index_ptr = index.Ptr<IdType>();
-    IdType * out_ptr = out.Ptr<IdType>();
-    IdType * out_idx_ptr = out_idx.Ptr<IdType>();
-    cudaStream_t stream = CUDAThreadEntry::ThreadLocal()->stream;
-    const int nt = cuda::FindNumThreads(index->shape[0]);
-    const int nb = (index->shape[0] + nt - 1) / nt;
+          cudaStream_t stream = runtime::getCurrentCUDAStream();
+          assert(accumulated_grads->ndim == 2);
+          assert(grad_shuffled_reshape->ndim == 2);
 
-    CUDA_KERNEL_CALL(gather_index_kernel, nb, nt, 0, stream,\
-                     values_ptr, values->shape[0],\
-                         index_ptr, index->shape[0], out_ptr, out_idx_ptr, num_partitions);
-    return out;
-}
+          const int nt = cuda::FindNumThreads(grad_shuffled_reshape->shape[1]);
+          const int TILE_SIZE = 1024;
+          const int nb = min((int)grad_shuffled_reshape->shape[0] ,  TILE_SIZE);
+          CUDA_KERNEL_CALL(gather_accumulate_kernel, nb, nt, 0, stream, out_ptr,
+                           grad_ptr, grad_shuffled_reshape->shape[0],
+                           grad_shuffled_reshape->shape[1], index_ptr);
+          return accumulated_grads;
+        }
 
-template<DGLDeviceType  XPU, typename IdType>
-IdArray gather_atomic_accumulate(IdArray floats, IdArray values, IdArray empty_full){
+        template IdArray gather_atomic_accumulate<kDGLCUDA, float>(IdArray, IdArray,
+                                                                   IdArray);
+        template IdArray
+            gather_atomic_accumulate<kDGLCUDA, double>(IdArray, IdArray, IdArray);
 
-}
+        template IdArray scatter_index<kDGLCUDA, int32_t>(IdArray, int);
+        template IdArray scatter_index<kDGLCUDA, int64_t>(IdArray, int);
 
-    template IdArray gather_atomic_accumulate<kDGLCUDA, float>(IdArray floats, IdArray values, IdArray empty_full);
-    template IdArray gather_atomic_accumulate<kDGLCUDA, double>(IdArray floats, IdArray values, IdArray empty_full);
+        template IdArray gatherIndexFromArray<kDGLCUDA, int32_t>(IdArray, IdArray,
+                                                                 IdArray, int);
+        template IdArray gatherIndexFromArray<kDGLCUDA, int64_t>(IdArray, IdArray,
+                                                                 IdArray, int);
 
-    template IdArray scatter_index<kDGLCUDA, int32_t>(IdArray , int);
-    template IdArray scatter_index<kDGLCUDA, int64_t>(IdArray , int);
+        template IdArray getBoundaryOffsetsLocal<kDGLCUDA, int32_t>(IdArray, int);
+        template IdArray getBoundaryOffsetsLocal<kDGLCUDA, int64_t>(IdArray, int);
 
-    template IdArray gatherIndexFromArray<kDGLCUDA, int32_t>(IdArray, IdArray, IdArray, int);
-    template IdArray gatherIndexFromArray<kDGLCUDA, int64_t>(IdArray, IdArray, IdArray, int);
-
-    template IdArray getBoundaryOffsetsLocal<kDGLCUDA, int32_t>(IdArray ,int );
-    template IdArray getBoundaryOffsetsLocal<kDGLCUDA, int64_t>(IdArray ,int );
-    
         }
     }
 }

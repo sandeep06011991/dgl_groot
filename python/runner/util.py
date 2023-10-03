@@ -31,7 +31,7 @@ class RunConfig:
     num_layer: int = 3
     num_epoch : int = 3
     sample_only: bool = False
-    test_acc: bool = False
+    test_acc: bool = True
     cache_percentage: float = 0.1
     in_feat: int = -1 # must be set correctly
     num_classes: int = -1 # must be set correctly
@@ -56,13 +56,13 @@ def get_parser():
     parser = argparse.ArgumentParser(description='benchmarking script')
     parser.add_argument('--batch', default=1024, type=int, help='Input batch size on each device (default: 1024)')
     parser.add_argument('--system', default="groot-cache", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-gpu", "groot-uva", "groot-cache"])
-    parser.add_argument('--model', default="graphsage", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
-    parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
+    parser.add_argument('--model', default="gat", type=str, help='Model type: graphsage or gat', choices=['graphsage', 'gat'])
+    parser.add_argument('--graph', default="ogbn-arxiv", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
     parser.add_argument('--world_size', default=1, type=int, help='Number of GPUs')
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
     parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
     parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
-    parser.add_argument('--test_acc', default=False, type=bool, help="whether test model accuracy", choices=[True, False])
+    parser.add_argument('--test_acc', default=True, type=bool, help="whether test model accuracy", choices=[True, False])
     return parser
 
 def get_config():
@@ -141,7 +141,7 @@ def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dg
             batch_feat = blocks[0].srcdata["feat"]
             batch_label = blocks[-1].dstdata["label"]
             ys.append(batch_label)
-            batch_pred = model(blocks, batch_feat)
+            batch_pred = model(blocks, batch_feat, inference = True)
             y_hats.append(batch_pred)
             
     acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=config.num_classes)

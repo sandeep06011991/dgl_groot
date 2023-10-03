@@ -93,10 +93,10 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
 
     // NOTE: to guarantee the send_offset is ready
     CUDACHECK(cudaStreamSynchronize(stream));
-    // auto host_send_offset = send_offset.CopyTo(host_dgl_context, data_copy_stream);
+    assert(send_offset->data != nullptr);
+//     auto host_send_offset = send_offset.CopyTo(host_dgl_context, data_copy_stream);
     auto host_send_offset = CopyArrayToPinned(send_offset, stream);
-    CUDACHECK(cudaStreamSynchronize(data_copy_stream));
-
+    CUDACHECK(cudaStreamSynchronize(stream));
     if(IsNullArray(recv_offset)) {
       IdArray recv_sizes = IdArray::Empty({world_size}, send_offset->dtype, dgl_context);
       IdArray range_seq = Range(0, world_size + 1, 64, host_dgl_context);
@@ -114,12 +114,19 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
     auto* host_recv_offset_ptr = host_recv_offset.Ptr<IdType>();
     int n_recv = host_recv_offset_ptr[world_size] * expand_size;
     auto recvbuff = IdArray::Empty({n_recv}, input->dtype, dgl_context);
-
     //   scheduler->TryComm(thread_id);
-    if(input->dtype.bits == 32) {
-      NCCLAllToAll<int, ncclInt32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
-    } else {
-      NCCLAllToAll<int64_t, ncclInt64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+    if(input->dtype.code == 0){
+      if(input->dtype.bits == 32) {
+        NCCLAllToAll<int, ncclInt32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+      } else {
+        NCCLAllToAll<int64_t, ncclInt64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+      }
+    }else{
+      if(input->dtype.bits == 32) {
+        NCCLAllToAll<float, ncclFloat32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+      } else {
+        NCCLAllToAll<double, ncclFloat64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+      }
     }
     CUDACHECK(cudaStreamSynchronize(stream));
     // scheduler->FinishComm();

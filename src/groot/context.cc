@@ -5,7 +5,12 @@ namespace ds {
 
 typedef dmlc::ThreadLocalStore<DSThreadEntry> DSThreadStore;
 
-DSThreadEntry *DSThreadEntry::ThreadLocal() { return DSThreadStore::Get(); }
+DSThreadEntry *DSThreadEntry::ThreadLocal() {
+  // TODO: singleton not thread local
+    static DSThreadEntry singleton_object;
+    return &singleton_object;
+  //  return DSThreadStore::Get();
+}
 
 } // namespace ds
 } // namespace dgl

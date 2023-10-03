@@ -180,8 +180,10 @@ IdArray CreatePinnedArray(DLDataType dtype, size_t size) {
 
 IdArray CopyArrayToPinned(IdArray arr, cudaStream_t stream) {
   auto *ds_thread_local = DSThreadEntry::ThreadLocal();
+
   int array_id = ds_thread_local->pinned_array_counter++;
   ds_thread_local->pinned_array_counter %= N_PINNED_ARRAY;
+
   IdArray ret = ds_thread_local->pinned_array[array_id].CreateView(
       {arr->shape[0]}, arr->dtype);
   CUDACHECK(cudaMemcpyAsync(ret.Ptr<void>(), arr.Ptr<void>(),

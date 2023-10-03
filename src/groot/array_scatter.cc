@@ -36,6 +36,18 @@ IdArray scatter_index(IdArray partition_map, int num_partitions) {
   return ret;
 }
 
+IdArray  atomic_accumulation(IdArray accumulated_grads,IdArray idx_unique_to_shuffled,\
+                            IdArray grad_shuffled_reshape){
+  IdArray  ret;
+  assert(idx_unique_to_shuffled->dtype.bits == 64);
+  ATEN_FLOAT_TYPE_SWITCH(accumulated_grads->dtype, IdType, "accumulated_grads", {
+    ret = impl::gather_atomic_accumulate<kDGLCUDA, IdType>(accumulated_grads, idx_unique_to_shuffled, \
+                                                      grad_shuffled_reshape);
+  });
+  return ret;
+
+}
+
 #define CUDACHECK(cmd)                                                         \
   do {                                                                         \
     cudaError_t e = cmd;                                                       \
@@ -74,18 +86,36 @@ NDArray ScatteredArrayObject::shuffle_forward(dgl::runtime::NDArray feat, int ra
 }
 NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int world_size){
       cudaStream_t stream = runtime::getCurrentCUDAStream();
-      NDArray part_cont = NDArray::Empty({partitionContinuousArray->shape[0], back_grad->shape[1]}, back_grad->dtype, back_grad->ctx);
+      NDArray part_cont = NDArray::Empty(\
+            {partitionContinuousArray->shape[0], back_grad->shape[1]}, back_grad->dtype, back_grad->ctx);
       IndexSelect(back_grad, idx_original_to_part_cont, part_cont, stream);
+
       NDArray  grad_shuffled;
       NDArray grad_offsets;
+      cudaStreamSynchronize(stream);
+
       std::tie(grad_shuffled, grad_offsets) \
-        = ds::Alltoall(part_cont, to_send_offsets_partition_continuous_array, \
-                       back_grad->shape[0], rank, world_size, shuffled_recv_offsets, stream);
+          = ds::Alltoall(part_cont, to_send_offsets_partition_continuous_array, \
+                       back_grad->shape[1], rank, world_size, \
+                          shuffled_recv_offsets, stream);
+
+      const int num_nodes = grad_shuffled->shape[0] / back_grad->shape[1];
+
+      NDArray grad_shuffled_reshape = grad_shuffled.CreateView(
+          {num_nodes, back_grad->shape[1]}, back_grad->dtype, 0);
+
+      cudaStreamSynchronize(stream);
+
       // offsets are always long
       auto grad_offsets_v = grad_offsets.ToVector<int64_t >();
-      NDArray accumulated_grads = aten::Full(0, unique_array->shape[0] * back_grad->shape[1],  back_grad->ctx);
-  //    assert(false);
-//      impl::atomic_accumulation(accumulated_grads, idx_unique_to_shuffled, grad_shuffled);
+      assert(back_grad->dtype.bits == 32);
+      NDArray accumulated_grads = aten::Full((float) 0.0, unique_array->shape[0] * back_grad->shape[1],
+                                              back_grad->ctx);
+      accumulated_grads = accumulated_grads.CreateView({unique_array->shape[0], back_grad->shape[1]}, \
+                                                        accumulated_grads->dtype, 0);
+//    Todo can be optimized as self nodes are rarely written
+//    Before doing this optimization have a unit test in place for this
+      atomic_accumulation(accumulated_grads, idx_unique_to_shuffled, grad_shuffled_reshape);
       return accumulated_grads;
 }
 

@@ -25,7 +25,8 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
     if(world_size != 1):
         init_process(rank, world_size)
     
-    graph: dgl.DGLGraph = dgl_dataset.graph    
+    graph: dgl.DGLGraph = dgl_dataset.graph
+    graph = graph.add_self_loop()
     indptr, indices, edge_id = graph.adj_tensors('csc')
     feats = graph.ndata.pop("feat")
     labels = graph.ndata.pop("label")
@@ -66,7 +67,6 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
 
 # model = get_distributed_model(config).to(0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    
     step = int(dgl_dataset.train_idx.shape[0] / config.batch_size)
     feat_size_in_bytes = 0
     key = -1
@@ -103,12 +103,10 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
             # wait for previous training to complete
             with torch.cuda.stream(train_stream):
                 pred = model(blocks, batch_feat)
-            train_stream.synchronize()
-            continue
-                # loss = torch.nn.functional.cross_entropy(pred, batch_label)
-                # optimizer.zero_grad()
-                # loss.backward()
-                # optimizer.step()
+                loss = torch.nn.functional.cross_entropy(pred, batch_label)
+                optimizer.zero_grad()
+                loss.backward()
+                optimizer.step()
                 # train_event.record(train_stream)
 
             train_stream.synchronize()
@@ -125,7 +123,6 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
     torch.cuda.synchronize()        
     passed = timer.passed()
     duration = passed / config.num_epoch
-    
     print(f"{config.rank} duration={round(duration,2)} secs / epoch")
     if config.test_acc:
         graph.ndata["feat"] = feats
@@ -139,6 +136,8 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
                                                 batch_size=config.batch_size)
         
         acc = test_model_accuracy(config, model, test_dataloader)
+        print("Accuracy ", acc )
+
 
 def groot_cache(config: RunConfig):
     dgl_dataset: DGLDataset = load_dgl_dataset(config)    

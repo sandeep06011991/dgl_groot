@@ -11,17 +11,18 @@ class Shuffle(torch.autograd.Function):
         ctx.rank = rank
         ctx.world_size = world_size
         ctx.scattered_array =scattered_array
-        return F.zerocopy_from_dgl_ndarray(\
+        out = F.zerocopy_from_dgl_ndarray(\
             _CAPI_ScatterForward(scattered_array,F.zerocopy_to_dgl_ndarray(feat), rank, world_size))
-
+        out.requires_grad = True
+        return out
     @staticmethod
     def backward(ctx, grads):
         rank = ctx.rank
         world_size = ctx.world_size
         scattered_array = ctx.scattered_array
-        return (F.zerocopy_from_dgl_ndarray(\
+        return None,(F.zerocopy_from_dgl_ndarray(\
                 _CAPI_ScatterBackward(scattered_array,\
-                                      F.zerocopy_to_dgl_ndarray(grads), rank, world_size)))
+                                      F.zerocopy_to_dgl_ndarray(grads), rank, world_size))),None,None
 
 # Todo this architecture that can be improved by
 # SRC_TO_DEST is not restricted to SAGE and GCN
@@ -42,17 +43,19 @@ class SRC_TO_DEST(torch.nn.Module):
         self.world_size = world_size
         self.activation = torch.nn.ReLU()
 
-    def forward(self, blocks, input):
+    def forward(self, blocks, input, inference = False):
         x = input
-        blocks, frontier = blocks
+        if not inference:
+            blocks, frontier = blocks
         redundant_layer = self.n_layers - self.num_redundant_layers
         for i, (block,layer) in enumerate(zip(blocks, self.layers)):
             #     // switch frontier
             print("running layer", block, i)
-            if i == redundant_layer:
-                x = Shuffle.apply(frontier, x, self.rank, self.world_size)
-            if i <  redundant_layer:
-                x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
+            if not inference:
+                if i == redundant_layer:
+                    x = Shuffle.apply(frontier, x, self.rank, self.world_size)
+                if i <  redundant_layer:
+                    x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
             x = layer(block, x)
             if i != len(self.layers) - 1:
                 x = self.activation(x)
@@ -67,11 +70,10 @@ def get_distributed_model(mode, layer, feat_size, num_layers,\
     layers = []
     assert(num_layers > 1)
     heads = 4
-    print("Adding zero in degree")
-    layers.append(GATConv(feat_size, n_hidden//heads, heads, allow_zero_in_degree = True))
+    layers.append(GATConv(feat_size, n_hidden//heads, heads))
     for i in range(num_layers-2):
-        layers.append(GATConv(n_hidden, n_hidden//heads, heads, allow_zero_in_degree= True))
-    layers.append(GATConv(n_hidden, n_classes, 1, allow_zero_in_degree=  True))
+        layers.append(GATConv(n_hidden, n_hidden//heads, heads))
+    layers.append(GATConv(n_hidden, n_classes, 1))
     model = SRC_TO_DEST(feat_size, n_hidden, n_classes, layers, num_redundant,\
                             rank, world_size)
     return model
