@@ -64,6 +64,9 @@ IndexSelectMultiKernel(const DType *const array, const int64_t num_feat,
     const int64_t in_row = index[out_row];
     assert(in_row >= 0 && in_row < arr_len);
     while (col < num_feat) {
+//      if((int)array[in_row * num_feat + col ] == 0){
+//        printf("Debug kernel %ld %ld %ld %ld\n", out_row , col, in_row, col);
+//      }
       out[out_row * num_feat + col] = array[in_row * num_feat + col];
       col += blockDim.x;
     }

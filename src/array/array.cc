@@ -315,11 +315,12 @@ std::string ToDebugString(NDArray array) {
   NDArray a = array.CopyTo(DGLContext{kDGLCPU, 0});
   oss << "array([";
   ATEN_DTYPE_SWITCH(a->dtype, DType, "array", {
-    for (int64_t i = 0; i < std::min<int64_t>(a.NumElements(), 10L); ++i) {
+
+    for (int64_t i = 0; i < std::min<int64_t>(a.NumElements(), 16L); ++i) {
       oss << a.Ptr<DType>()[i] << ", ";
     }
   });
-  if (a.NumElements() > 10) oss << "...";
+  if (a.NumElements() > 16) oss << "...";
   oss << "], dtype=" << array->dtype << ", ctx=" << array->ctx << ")";
   return oss.str();
 }

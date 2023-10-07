@@ -65,6 +65,8 @@ struct BlockObject : public runtime::Object {
   NDArray _outdeg;
   NDArray _indptr;
   NDArray _new_len_tensor;
+  NDArray _true_node_ids;
+
   HeteroGraphRef _block_ref;
   std::shared_ptr<CudaHashTable> _table;
   // Depending on wheter they are scattered src or dest
@@ -80,6 +82,7 @@ struct BlockObject : public runtime::Object {
     v->Visit("indptr", &_indptr);
     v->Visit("outdeg", &_outdeg);
     v->Visit("gidx", &_block_ref);
+    v->Visit("true_node_ids" ,&_true_node_ids);
   }
 
   static constexpr const char *_type_key = "Block";

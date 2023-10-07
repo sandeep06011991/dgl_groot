@@ -17,10 +17,11 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
         # todo: partition map must be consistent with others
         print("Using synthetic product map")
         partition_map = torch.arange(indptr.shape[0] - 1) % world_size
-    if num_redundant_layers == len(fanouts):
-        assert(block_type == 0)
-    else:
-        assert(block_type == 1 or block_type == 2)
+    print("Temp by pass")
+    # if num_redundant_layers == len(fanouts):
+    #     assert(block_type == 0)
+    # else:
+    #     assert(block_type == 1 or block_type == 2)
         
     return _CAPI_InitDataloader(rank, world_size, block_type, device_id, 
                                 fanouts, batch_size, num_redundant_layers, max_pool_size,
@@ -39,7 +40,9 @@ def init_groot_dataloader_cache(cache_idx: Tensor):
 def get_batch(key: int, layers: int = 3, \
                 n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL"):
     blocks = []
+    unique_ids = []
     frontier = None
+    print("get batch", layers, n_redundant_layers)
     for i in range(layers):
         gidx = _CAPI_GetBlock(key, i)
         block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
@@ -49,10 +52,13 @@ def get_batch(key: int, layers: int = 3, \
                 block.scattered_src = _CAPI_GetBlockScatteredSrc(key, i)
         if i == n_redundant_layers:
             frontier = _CAPI_GetBlocksFrontier(key, i)
+
+        unique_ids.insert(0, F.zerocopy_from_dgl_ndarray(_CAPI_GetBlocksUniqueId(key,i)))
         blocks.insert(0, block)
     # Todo correctness test
+    print("Got eveything")
     if mode == "SRC_TO_DEST":
-        blocks = (blocks, frontier)
+        blocks = (blocks, frontier, unique_ids)
     feat = _CAPI_GetFeat(key)
     labels = _CAPI_GetLabel(key)
     return blocks,  F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)

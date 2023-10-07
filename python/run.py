@@ -8,9 +8,12 @@ from runner.groot_gpu import groot_gpu
 
 if __name__ == "__main__":
     config = get_config()
-    config.fanouts = [15, 10, 5]
+    config.fanouts = [10,10]
     config.system = "groot-cache"
-    config.graph_name = "ogbn-products"
+    config.batch_size = 1024
+    config.graph_name = "test-data"
+    config.test_acc = True
+    config.num_epoch = 2
     if config.system == "dgl-uva":
         dgl_uva(config)
     elif config.system == "dgl-gpu":

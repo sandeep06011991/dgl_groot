@@ -26,7 +26,7 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
         init_process(rank, world_size)
     
     graph: dgl.DGLGraph = dgl_dataset.graph
-    graph = graph.add_self_loop()
+    # graph = graph.add_self_loop()
     indptr, indices, edge_id = graph.adj_tensors('csc')
     feats = graph.ndata.pop("feat")
     labels = graph.ndata.pop("label")
@@ -44,7 +44,7 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
     dgl_dataset.train_idx = torch.split(dgl_dataset.train_idx, dgl_dataset.train_idx.shape[0] // config.world_size)[rank]
     dataloader = init_groot_dataloader(
         config.rank, config.world_size, block_type, config.rank, config.fanouts,
-        config.batch_size,num_redundant_layer, max_pool_size, 
+        config.batch_size,  num_redundant_layer, max_pool_size,
         indptr, indices, feats, labels,
         dgl_dataset.train_idx, dgl_dataset.valid_idx, dgl_dataset.test_idx, partition_map
     )
@@ -56,18 +56,27 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
     # model = get_dgl_model(config).to(0)
     print("Hardcoding ")
     mode = "SRC_TO_DEST"
+    model_type = "GAT"
     layer = "GAT"
-    num_layers = 3
-    n_hidden = 256
-    n_classes = torch.max(labels) + 1
-    num_redundant = 2
-    model = get_distributed_model(mode, layer, feat_size, num_layers, n_hidden, n_classes, num_redundant,
-                                  rank, world_size).to(rank)
-    model = DistributedDataParallel(model)
+    num_layers = len(config.fanouts)
 
-# model = get_distributed_model(config).to(0)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    step = int(dgl_dataset.train_idx.shape[0] / config.batch_size)
+    n_hidden = 256
+    if config.graph_name == "test-data":
+        model_type = "test"
+        n_classes = 1
+    else:
+        n_classes = int((torch.max(labels) + 1).item())
+
+    num_redundant = num_redundant_layer
+    model = get_distributed_model(model_type, layer, feat_size, num_layers, n_hidden, n_classes, num_redundant,
+                                  rank, world_size).to(rank)
+    if world_size != 1:
+        pass
+    if model_type != "test":
+        model = DistributedDataParallel(model)
+        # model = get_distributed_model(config).to(0)
+        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    step = int(dgl_dataset.train_idx.shape[0] / config.batch_size) + 1
     feat_size_in_bytes = 0
     key = -1
     num_epoch = config.num_epoch + 1
@@ -81,11 +90,10 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
             print("pre-heating")
         else:
             if epoch == 1:
-                torch.cuda.synchronize()    
+                torch.cuda.synchronize()
                 print(f"pre-heating takes {round(timer.passed(), 2)} sec")
                 timer.reset()
             print(f"start epoch {epoch}")
-                
         for i in range(step):
             # if key == -1:
             #   pass
@@ -95,32 +103,39 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
 
             # prefetch next mini-batch
             # key = sample_batch_async()
-            # blocks, batch_feat, batch_label = get_batch(sample_batch_sync())            
+            # blocks, batch_feat, batch_label = get_batch(sample_batch_sync())
             if config.sample_only:
                 continue
-            
-            train_event.wait(train_stream)            
+            train_event.wait(train_stream)
             # wait for previous training to complete
-            with torch.cuda.stream(train_stream):
+            # with torch.cuda.stream(train_stream):
+            print("Start training !")
+            if config.graph_name == "test-data":
+                batch_feat.requires_grad = True
                 pred = model(blocks, batch_feat)
-                loss = torch.nn.functional.cross_entropy(pred, batch_label)
-                optimizer.zero_grad()
-                loss.backward()
-                optimizer.step()
-                # train_event.record(train_stream)
-
-            train_stream.synchronize()
-            if epoch > 0:
-                num_feat, feat_width = batch_feat.shape
-                feat_size_in_bytes += num_feat * feat_width * 4
-                
-            if epoch == 0 and i == 0:
-                print(batch_feat)
-                print(batch_label)
-                for block in blocks:
-                    print(block)
-                    
-    torch.cuda.synchronize()        
+                torch.sum(batch_label * pred.flatten()).backward()
+            torch.cuda.synchronize()
+            if config.graph_name == "test-data":
+                break
+            loss = torch.nn.functional.cross_entropy(pred, batch_label)
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            torch.cuda.synchronize()
+    #             # train_event.record(train_stream)
+    #
+    #         train_stream.synchronize()
+    #         if epoch > 0:
+    #             num_feat, feat_width = batch_feat.shape
+    #             feat_size_in_bytes += num_feat * feat_width * 4
+    #
+    #         if epoch == 0 and i == 0:
+    #             print(batch_feat)
+    #             print(batch_label)
+    #             for block in blocks:
+    #                 print(block)
+    #
+    torch.cuda.synchronize()
     passed = timer.passed()
     duration = passed / config.num_epoch
     print(f"{config.rank} duration={round(duration,2)} secs / epoch")
@@ -129,12 +144,12 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
         graph.ndata["label"] = labels
         graph.pin_memory_()
         sampler = dgl.dataloading.NeighborSampler(config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
-        test_dataloader = dgl.dataloading.DataLoader(graph = graph, 
+        test_dataloader = dgl.dataloading.DataLoader(graph = graph,
                                                 indices = dgl_dataset.test_idx,
-                                                graph_sampler = sampler, 
+                                                graph_sampler = sampler,
                                                 use_uva=True,
                                                 batch_size=config.batch_size)
-        
+
         acc = test_model_accuracy(config, model, test_dataloader)
         print("Accuracy ", acc )
 

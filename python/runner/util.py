@@ -62,7 +62,7 @@ def get_parser():
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
     parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
     parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
-    parser.add_argument('--test_acc', default=True, type=bool, help="whether test model accuracy", choices=[True, False])
+    parser.add_argument('--test_acc', default=False, type=bool, help="whether test model accuracy", choices=[True, False])
     return parser
 
 def get_config():
@@ -102,17 +102,41 @@ def ddp_exit():
     destroy_process_group()
 
 def load_dgl_dataset(config: RunConfig) -> DGLDataset:
-    dataset = DglNodePropPredDataset(config.graph_name, root="/data/ogbn")
-    graph: dgl.DGLGraph = dataset[0][0]
-    label: torch.tensor = dataset[0][1]
-    label = torch.flatten(label).type(torch.int64)
-    torch.nan_to_num_(label, nan=-1)
-        
-    if config.model_type == "gat":
-        graph = dgl.add_self_loop(graph)
-    
-    graph.ndata['label'] = label
-    dataset_idx_split = dataset.get_idx_split()
+    if config.graph_name != "test-data":
+        dataset = DglNodePropPredDataset(config.graph_name, root="/data/ogbn")
+        graph: dgl.DGLGraph = dataset[0][0]
+        label: torch.tensor = dataset[0][1]
+        label = torch.flatten(label).type(torch.int64)
+        torch.nan_to_num_(label, nan=-1)
+
+        if config.model_type == "gat":
+            graph = dgl.add_self_loop(graph)
+
+        graph.ndata['label'] = label
+        dataset_idx_split = dataset.get_idx_split()
+    else:
+        print("reading synthetic ")
+        clique_size = 16
+        e_list = []
+        for i in range(clique_size):
+            for j in range(4):
+            #     if i == j:
+            #         continue
+                e_list.append([i,(i + 1+ j)%clique_size])
+        graph = dgl.DGLGraph(e_list)
+        label = torch.zeros(clique_size).to(torch.int64)
+        graph.ndata['feat'] =\
+            (torch.arange(graph.num_nodes()) * torch.ones((2,graph.num_nodes()),dtype = torch.float32)).T.contiguous()
+        print(graph.ndata['feat'].shape)
+        graph.ndata['label'] = label
+        dataset_idx_split = {}
+        for i in ["train", "test", "valid"]:
+            dataset_idx_split[i] = torch.arange(clique_size)
+        class Dataset:
+            pass
+        dataset = Dataset()
+        dataset.num_classes = 1
+    print(torch.sum(graph.ndata['feat']), "Avg feat")
     dgl_dataset = DGLDataset()
     dgl_dataset.train_idx = dataset_idx_split.pop("train")
     dgl_dataset.test_idx = dataset_idx_split.pop("test")
