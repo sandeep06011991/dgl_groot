@@ -48,12 +48,13 @@ struct BlockObject : public runtime::Object {
     _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
     _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
 
-    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst, stream);
+    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst  * num_partitions, stream);
     // Todo SRC to DEST data strucutures are not needed for redudnant blocks
+    //TODO _estimated sizes of scattered src and dst are different
     _scattered_dest =
-        ScatteredArray::Create(est_num_dst  * num_partitions, num_partitions, ctx, dtype, stream);
+        ScatteredArray::Create(est_num_src * num_partitions, num_partitions, ctx, dtype, stream);
     _scattered_src =
-        ScatteredArray::Create(est_num_src * num_partitions , num_partitions, ctx, dtype, stream);
+        ScatteredArray::Create(est_num_dst * num_partitions , num_partitions, ctx, dtype, stream);
   };
   int64_t num_src, num_dst; // number of src (unique) and destination (unique)
                             // for buliding the dgl block object
@@ -160,8 +161,8 @@ struct BlocksObject : public runtime::Object {
     }
 
     int exp_frontier_size = batch_size;
-    for (int i = 0; i < num_redundant_layers; i++) exp_frontier_size *= fanouts[i] + 1;
-    _scattered_frontier = ScatteredArray::Create(exp_frontier_size, num_partitions, ctx, id_type, stream);
+    for (int i = 0; i < num_redundant_layers; i++) exp_frontier_size *= (fanouts[i] + 1);
+    _scattered_frontier = ScatteredArray::Create(exp_frontier_size * num_partitions, num_partitions, ctx, id_type, stream);
 
     int64_t est_output_nodes = batch_size;
     for (int64_t fanout : fanouts)

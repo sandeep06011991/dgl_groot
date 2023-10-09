@@ -19,20 +19,13 @@ using namespace dgl::runtime;
 
 namespace dgl {
 namespace groot {
-//IdArray getBoundaryOffsets(IdArray index_cum_sums, int num_partitions);
-//
-//IdArray gatherArray(IdArray values, IdArray index, IdArray out_idx);
-//
-//IdArray scatter_index(IdArray partition_map, int num_partitions);
 
-IdArray atomic_accumulation(IdArray accumulated_grads, IdArray idx_unique_to_shuffled,\
-                              IdArray grad_shuffled_reshape);
 
 namespace impl {
 
-template <DGLDeviceType XPU, typename IdType>
+template <DGLDeviceType XPU, typename IdType, typename IndexType>
 IdArray  gather_atomic_accumulate(IdArray accumulated_grads,IdArray idx_unique_to_shuffled,\
-                                IdArray grad_shuffled_reshape);
+                                IdArray grad_shuffled_reshape, cudaStream_t stream);
 
 
 template <DGLDeviceType XPU, typename  IdType, typename IndexType>
@@ -64,6 +57,7 @@ public:
     this->num_partitions = num_partitions;
     this->stream = stream;
     this->expectedSize = expectedSize;
+    std::cout << "Creating scattered table with size " << expectedSize <<"\n";
     this->table =
         std::make_shared<CudaHashTable>(dtype, ctx, expectedSize, stream);
   }
@@ -84,8 +78,6 @@ public:
   NDArray gather_idx_in_part_disc_cont;// shape of original array
   NDArray scatter_idx_in_part_disc_cont; // shape of scattered array
 
-  // to send offsets
-  NDArray to_send_offsets_partition_continuous_array;
 
   // After NCCL Comm
   NDArray shuffled_array;
@@ -106,8 +98,8 @@ public:
     v->Visit("partitionContinuousArray", &partitionContinuousArray);
     v->Visit("gather_idx_in_part_disc_cont", &gather_idx_in_part_disc_cont);
     v->Visit("scatter_idx_in_part_disc_cont", & scatter_idx_in_part_disc_cont);
-    v->Visit("to_send_offsets_partition_continuos_array",
-             &to_send_offsets_partition_continuous_array);
+    v->Visit("partition_continuous_offsets",
+             &partitionContinuousOffsets);
     v->Visit("unique_array", &unique_array);
     v->Visit("gather_idx_in_unique_out_shuffled", &gather_idx_in_unique_out_shuffled);
   }
@@ -123,6 +115,7 @@ public:
   static ScatteredArray Create(int expectedSize, int num_partitions,
                                DGLContext ctx, DGLDataType dtype,
                                cudaStream_t stream) {
+    std::cout << "Creating scattered object with expected size " << expectedSize <<"\n";
     return ScatteredArray(std::make_shared<ScatteredArrayObject>(
         expectedSize, num_partitions, ctx, dtype, stream));
   }

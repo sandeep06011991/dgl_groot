@@ -271,7 +271,7 @@ if(USE_CUDA)
           src/groot/cuda/rowwise_sampling.cu
           src/groot/cuda/alltoall.cu
           src/groot/cuda/partition_continuous.cu
-
+        src/groot/cuda/array_gather.cu
   )
 else(USE_CUDA)
 endif(USE_CUDA)

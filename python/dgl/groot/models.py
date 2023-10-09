@@ -54,7 +54,7 @@ class SRC_TO_DEST(torch.nn.Module):
         redundant_layer = self.n_layers - self.num_redundant_layers
         if self.debug:
             print(input)
-
+        # Todo refactor this code such that redundant_layer != 0 is handled automatically
         for i, (block,layer) in enumerate(zip(blocks, self.layers)):
             if not inference:
                 if i == redundant_layer and redundant_layer != 0:
@@ -63,14 +63,17 @@ class SRC_TO_DEST(torch.nn.Module):
                     x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
             if self.debug:
                 print("Layer", i)
-                debug(x, unique_id_list[i],i)
+                debug(unique_id_list[i],x[:,0],i)
             x = layer(block, x)
             if i != len(self.layers) - 1:
                 x = self.activation(x)
             if len(x.shape) == 3:
                 x = x.flatten(-2)
+        if not inference:
+            if len(self.layers) == redundant_layer:
+                x = Shuffle.apply(frontier, x, self.rank, self.world_size)
         if self.debug:
-            debug(x, unique_id_list[-1][:x.shape[0]], self.n_layers)
+            debug( unique_id_list[-1][:x.shape[0]], x[:,0], self.n_layers)
         return x
 
 def debug(unique, values, layer_id):

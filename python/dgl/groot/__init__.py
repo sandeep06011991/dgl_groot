@@ -34,6 +34,10 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
                                 F.zerocopy_to_dgl_ndarray(test_idx.to(device_id)),
                                 F.zerocopy_to_dgl_ndarray(partition_map.to(device_id)))
 
+
+def shuffle_training_nodes(randInt: Tensor):
+    _CAPI_ShuffleIDX(F.zerocopy_to_dgl_ndarray(randInt))
+
 def init_groot_dataloader_cache(cache_idx: Tensor):
     _CAPI_InitCache(F.to_dgl_nd(cache_idx))
     
@@ -42,7 +46,6 @@ def get_batch(key: int, layers: int = 3, \
     blocks = []
     unique_ids = []
     frontier = None
-    print("get batch", layers, n_redundant_layers)
     for i in range(layers):
         gidx = _CAPI_GetBlock(key, i)
         block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
@@ -56,7 +59,6 @@ def get_batch(key: int, layers: int = 3, \
         unique_ids.insert(0, F.zerocopy_from_dgl_ndarray(_CAPI_GetBlocksUniqueId(key,i)))
         blocks.insert(0, block)
     # Todo correctness test
-    print("Got eveything")
     if mode == "SRC_TO_DEST":
         blocks = (blocks, frontier, unique_ids)
     feat = _CAPI_GetFeat(key)

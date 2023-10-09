@@ -7,6 +7,7 @@ namespace dgl {
 namespace groot {
 using namespace runtime;
 
+typedef  int64_t IndexType;
 
 template<typename IndexType>
 std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices(IdArray partition_map,
@@ -19,13 +20,13 @@ std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices(IdArray
   return ret;
 }
 
-IdArray  atomic_accumulation(IdArray accumulated_grads,IdArray idx_unique_to_shuffled,\
-                            IdArray grad_shuffled_reshape){
+template<typename IndexType>
+IdArray  gather_atomic_accumulation(IdArray accumulated_grads,IdArray gather_idx_in_unique,\
+                            IdArray grad_shuffled_reshape, cudaStream_t stream){
   IdArray  ret;
-  assert(idx_unique_to_shuffled->dtype.bits == 64);
   ATEN_FLOAT_TYPE_SWITCH(accumulated_grads->dtype, IdType, "accumulated_grads", {
-    ret = impl::gather_atomic_accumulate<kDGLCUDA, IdType>(accumulated_grads, idx_unique_to_shuffled, \
-                                                      grad_shuffled_reshape);
+    ret = impl::gather_atomic_accumulate<kDGLCUDA, IdType, IndexType>(
+        accumulated_grads, gather_idx_in_unique, grad_shuffled_reshape,stream);
   });
   return ret;
 
@@ -45,46 +46,48 @@ NDArray ScatteredArrayObject::shuffle_forward(dgl::runtime::NDArray feat, int ra
       assert(feat->shape[0] == unique_tensor_dim);
       cudaStream_t stream = runtime::getCurrentCUDAStream();
 
-      NDArray toShuffle = NDArray::Empty({idx_unique_to_shuffled->shape[0], feat->shape[1]},
+      NDArray toShuffle = NDArray::Empty({gather_idx_in_unique_out_shuffled->shape[0], feat->shape[1]},
                                           feat->dtype, feat->ctx);
 
-      IndexSelect(feat, idx_unique_to_shuffled, toShuffle, stream);
+      IndexSelect(feat, gather_idx_in_unique_out_shuffled, toShuffle, stream);
 
-      std::cout << "Idx unique to shiuffled " << idx_unique_to_shuffled <<"\n";
       NDArray  feat_shuffled;
       NDArray feat_offsets;
       cudaDeviceSynchronize();
       assert(shuffled_recv_offsets.ToVector<int64_t>()[4] == toShuffle->shape[0]);
+
       std::tie(feat_shuffled, feat_offsets) \
           = ds::Alltoall(toShuffle, shuffled_recv_offsets, \
                                       feat->shape[1], rank, world_size,
-                         to_send_offsets_partition_continuous_array, stream);
+                         partitionContinuousOffsets, stream);
+
       const int num_nodes = feat_shuffled->shape[0] / feat->shape[1];
 
       NDArray feat_shuffled_reshape = feat_shuffled.CreateView(
                                                        {num_nodes, feat->shape[1]}, feat->dtype, 0);
-
       NDArray partDiscFeat =
           NDArray::Empty({feat_shuffled_reshape->shape[0], feat->shape[1]}, feat_shuffled->dtype, feat->ctx);
-      atomic_accumulation(partDiscFeat, idx_part_cont_to_original, feat_shuffled_reshape);
+      IndexSelect(feat_shuffled_reshape, scatter_idx_in_part_disc_cont, partDiscFeat, stream);
+
       assert(partDiscFeat->shape[0] == scattered_tensor_dim);
       return partDiscFeat;
 }
 NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int world_size){
+      std::cout << "back grad shape " << back_grad->shape[1] << " " << back_grad->shape[0] <<"\n";
       assert(back_grad->shape[0] == scattered_tensor_dim);
       cudaStream_t stream = runtime::getCurrentCUDAStream();
+      // backgrad is part disccont
       NDArray part_cont = NDArray::Empty(\
             {partitionContinuousArray->shape[0], back_grad->shape[1]}, back_grad->dtype, back_grad->ctx);
 //      atomic_accumulation(part_cont, idx_original_to_part_cont, back_grad);
 //      assert(idx_original_to_part_cont->shape[0]!=back_grad->shape[0]);
-      IndexSelect(back_grad, idx_original_to_part_cont, part_cont, stream);
+      IndexSelect(back_grad, gather_idx_in_part_disc_cont, part_cont, stream);
 
       NDArray  grad_shuffled;
       NDArray grad_offsets;
-      cudaStreamSynchronize(stream);
-      assert(to_send_offsets_partition_continuous_array.ToVector<int64_t>()[4] == part_cont->shape[0]);
+
       std::tie(grad_shuffled, grad_offsets) \
-          = ds::Alltoall(part_cont, to_send_offsets_partition_continuous_array, \
+          = ds::Alltoall(part_cont, partitionContinuousOffsets, \
                        back_grad->shape[1], rank, world_size, \
                           shuffled_recv_offsets, stream);
 
@@ -98,14 +101,17 @@ NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int w
       // offsets are always long
       auto grad_offsets_v = grad_offsets.ToVector<int64_t >();
       assert(back_grad->dtype.bits == 32);
+
       NDArray accumulated_grads = aten::Full((float) 0.0, unique_array->shape[0] * back_grad->shape[1],
                                               back_grad->ctx);
       accumulated_grads = accumulated_grads.CreateView({unique_array->shape[0], back_grad->shape[1]}, \
                                                         accumulated_grads->dtype, 0);
 //    Todo can be optimized as self nodes are rarely written
 //    Before doing this optimization have a unit test in place for this
-      atomic_accumulation(accumulated_grads, idx_unique_to_shuffled, grad_shuffled_reshape);
-      assert(accumulated_grads == unique_tensor_dim);
+      gather_atomic_accumulation<IndexType>(accumulated_grads,\
+                                            gather_idx_in_unique_out_shuffled, grad_shuffled_reshape, stream);
+      assert(accumulated_grads->shape[0] == unique_tensor_dim);
+      assert(accumulated_grads->shape[1] == back_grad->shape[1]);
       return accumulated_grads;
 }
 
@@ -115,13 +121,26 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   assert(array->dtype == frontier->dtype);
   if(array->debug){
     array->table->Reset();
+    std::cout << "attemtping to insert frontier" << frontier->shape[0] <<"\n";
     array->table->FillWithDuplicates(frontier, frontier->shape[0]);
+    if(array->table->RefUnique()->shape[0] != frontier->shape[0]){
+       auto v1 =  array->table->RefUnique().ToVector<int64_t>();
+       auto v2 =  frontier.ToVector<int64_t>();
+       for (auto vv :v1){
+         int count  = 0;
+         for(auto vvv : v2){
+           if(vvv == vv)count ++;
+         }
+         if(count>1)std::cout << "Duplicate " << vv <<"\n";
+       }
+    }
     CHECK_EQ(array->table->RefUnique()->shape[0], frontier->shape[0]);
     array->table->Reset();
   }
+  array->scattered_tensor_dim = frontier->shape[0];
   array->originalArray = frontier;
   array->partitionMap = _partition_map;
-  typedef  int64_t IndexType;
+
   // Compute partition continuos array
   cudaStream_t stream =  CUDAThreadEntry::ThreadLocal()->stream;
   // Todo: Why not runtime stream
@@ -153,6 +172,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   array->table->FillWithDuplicates(array->shuffled_array,
                                    array->shuffled_array->shape[0]);
   array->unique_array = array->table->RefUnique();
+  array->unique_tensor_dim = array->unique_array->shape[0];
   array->gather_idx_in_unique_out_shuffled = IdArray::Empty(
       std::vector<int64_t>{array->shuffled_array->shape[0]},
       array->shuffled_array->dtype, array->shuffled_array->ctx);

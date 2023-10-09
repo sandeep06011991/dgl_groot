@@ -8,11 +8,14 @@ namespace dgl{
 namespace groot {
 namespace impl {
 
-template <typename IdType>
+template <typename IdType, typename IndexType>
 __global__ void
 gather_accumulate_kernel(const IdType *out_accumulated_grads,
                          const IdType *in_grads, const size_t in_grads_size,
-                         const size_t feat_size, const long *in_grads_index) {
+                         const size_t feat_size, IndexType * in_grads_index) {
+  // Todo:not the most efficient way to break workload
+  // especially for low hidden feature sizes
+  // Easier to debug, check cuda index select  to modify
   int tx = blockIdx.x;
   int stride_x = gridDim.x;
   while (tx < in_grads_size) {
@@ -27,17 +30,14 @@ gather_accumulate_kernel(const IdType *out_accumulated_grads,
   }
 }
 
-
-template <DGLDeviceType XPU, typename IdType>
+template <DGLDeviceType XPU, typename IdType, typename IndexType>
 IdArray gather_atomic_accumulate(IdArray accumulated_grads,
-                                 IdArray idx_unique_to_shuffled,
-                                 IdArray grad_shuffled_reshape) {
+                                 IdArray gather_idx_in_unique,
+                                 IdArray grad_shuffled_reshape, cudaStream_t stream) {
   const IdType *out_ptr = accumulated_grads.Ptr<IdType>();
-  assert(idx_unique_to_shuffled->dtype.code == 0);
-  const long *index_ptr = idx_unique_to_shuffled.Ptr<long>();
+  const IndexType *index_ptr = gather_idx_in_unique.Ptr<IndexType>();
   const IdType *grad_ptr = grad_shuffled_reshape.Ptr<IdType>();
 
-  cudaStream_t stream = runtime::getCurrentCUDAStream();
   assert(accumulated_grads->ndim == 2);
   assert(grad_shuffled_reshape->ndim == 2);
 
@@ -50,6 +50,30 @@ IdArray gather_atomic_accumulate(IdArray accumulated_grads,
   return accumulated_grads;
 }
 
+
+template
+IdArray gather_atomic_accumulate<DGLDeviceType::kDGLCUDA, float ,int32_t>(IdArray accumulated_grads,
+                                 IdArray gather_idx_in_unique,
+                                 IdArray grad_shuffled_reshape, cudaStream_t stream);
+
+
+template
+    IdArray gather_atomic_accumulate<DGLDeviceType::kDGLCUDA, float ,int64_t>(IdArray accumulated_grads,
+                                                                      IdArray gather_idx_in_unique,
+                                                                      IdArray grad_shuffled_reshape, cudaStream_t stream);
+
+
+
+template
+    IdArray gather_atomic_accumulate<DGLDeviceType::kDGLCUDA, double ,int64_t>(IdArray accumulated_grads,
+                                                                        IdArray gather_idx_in_unique,
+                                                                        IdArray grad_shuffled_reshape, cudaStream_t stream);
+
+
+template
+    IdArray gather_atomic_accumulate<DGLDeviceType::kDGLCUDA, double ,int32_t>(IdArray accumulated_grads,
+                                                                       IdArray gather_idx_in_unique,
+                                                                       IdArray grad_shuffled_reshape, cudaStream_t stream);
 
 
 

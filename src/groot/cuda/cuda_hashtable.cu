@@ -78,7 +78,7 @@ public:
 
   inline __device__ IteratorN2O GetMutableN2O(const IdType pos) {
     if(pos >= this->_n2o_size){
-      printf( "overflowing expected size of %ld\n", this->_n2o_size);
+      printf( "overflowing expected size of %lld %lld %d\n", this->_n2o_size, pos, sizeof(pos));
     }
     assert(pos < this->_n2o_size);
     return const_cast<IteratorN2O>(this->_n2o_table + pos);
@@ -664,6 +664,7 @@ OrderedHashTable<IdType>::OrderedHashTable(const size_t size, DGLContext ctx,
       _n2o_size(size), _ctx(ctx), _version(0), _num_items(0) {
   // make sure we will at least as many buckets as items.
   auto device = runtime::DeviceAPI::Get(_ctx);
+  std::cout << "allocating with table sizes" << _o2n_size  <<":"<< _n2o_size <<"\n";
   _o2n_table = static_cast<BucketO2N *>(
       device->AllocWorkspace(_ctx, sizeof(BucketO2N) * _o2n_size));
   _n2o_table = static_cast<BucketN2O *>(

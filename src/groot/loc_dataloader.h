@@ -194,6 +194,10 @@ public:
     return key;
   }
 
+  void ShuffleTrainingNodes(NDArray randInt){
+      auto stream = runtime::getCurrentCUDAStream();
+      _train_idx = IndexSelect(_train_idx, randInt, stream);
+  }
   // TODO: shuffle the seeds for every epoch
   NDArray GetNextSeeds(int64_t key) {
 
@@ -292,7 +296,7 @@ public:
       blockTable->Reset();
       if (layer == _num_redundant_layers) {
         std::cout << "Sampling redundant forntier " << frontier <<"\n";
-
+        assert(frontier->shape[0] < _batch_size * num_partitions * _fanouts[0] + 1);
         auto partition_index =
             IndexSelect(_partition_map, frontier, sampling_stream);
         Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,

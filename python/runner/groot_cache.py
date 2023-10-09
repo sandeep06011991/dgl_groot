@@ -39,6 +39,7 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
 
     max_pool_size = 1
     num_redundant_layer = len(config.fanouts) - 1
+    num_redundant_layer = 0
     block_type = get_block_type("src_to_dst")
     partition_map = None
     dgl_dataset.train_idx = torch.split(dgl_dataset.train_idx, dgl_dataset.train_idx.shape[0] // config.world_size)[rank]
@@ -85,7 +86,7 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
     train_event.record(train_stream)
     duration_in_s = 0
     timer = Timer()
-    for epoch in range(num_epoch):
+    for epoch in range(num_epoch +1 ):
         if epoch == 0:
             print("pre-heating")
         else:
@@ -94,6 +95,8 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
                 print(f"pre-heating takes {round(timer.passed(), 2)} sec")
                 timer.reset()
             print(f"start epoch {epoch}")
+        randInt = torch.randperm( dgl_dataset.train_idx.shape[0], device = rank)
+        shuffle_training_nodes(randInt)
         for i in range(step):
             # if key == -1:
             #   pass
@@ -113,7 +116,10 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
             if config.graph_name == "test-data":
                 batch_feat.requires_grad = True
                 pred = model(blocks, batch_feat)
+                pred = pred @ torch.ones(2,1, device = rank)
                 torch.sum(batch_label * pred.flatten()).backward()
+            else:
+                pred = model(blocks, batch_feat)
             torch.cuda.synchronize()
             if config.graph_name == "test-data":
                 break
@@ -122,19 +128,7 @@ def train_cache(rank: int, world_size, config: RunConfig,  dgl_dataset: DGLDatas
             loss.backward()
             optimizer.step()
             torch.cuda.synchronize()
-    #             # train_event.record(train_stream)
-    #
-    #         train_stream.synchronize()
-    #         if epoch > 0:
-    #             num_feat, feat_width = batch_feat.shape
-    #             feat_size_in_bytes += num_feat * feat_width * 4
-    #
-    #         if epoch == 0 and i == 0:
-    #             print(batch_feat)
-    #             print(batch_label)
-    #             for block in blocks:
-    #                 print(block)
-    #
+
     torch.cuda.synchronize()
     passed = timer.passed()
     duration = passed / config.num_epoch

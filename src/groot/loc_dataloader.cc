@@ -48,6 +48,13 @@ DGL_REGISTER_GLOBAL("groot._CAPI_NextAsync")
       *rv = key;
     });
 
+DGL_REGISTER_GLOBAL("groot._CAPI_ShuffleIDX")
+    .set_body([](DGLArgs args, DGLRetValue *rv) {
+      NDArray train_idx = args[0];
+      DataloaderObject::Global()->ShuffleTrainingNodes(train_idx);
+    });
+
+
 DGL_REGISTER_GLOBAL("groot._CAPI_NextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
       const int64_t key = DataloaderObject::Global()->SyncSample();

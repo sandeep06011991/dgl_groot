@@ -10,10 +10,10 @@ namespace dgl{
         namespace impl {
 
         // Checks the assigned partition map and scatters the array indices.
-        template <typename IdType>
-        __global__ void scatter_partition_continuous_index_kernel(const IdType *partition_map,
+        template <typename PIdType, typename IndexType>
+        __global__ void scatter_partition_continuous_index_kernel(const PIdType *partition_map,
                                              size_t partition_map_size,
-                                             IdType *index_out, int n_partitions) {
+                                             IndexType *index_out, int n_partitions) {
           int tx = blockIdx.x * blockDim.x + threadIdx.x;
           int stride_x = gridDim.x * blockDim.x;
           while (tx < partition_map_size) {
@@ -128,8 +128,22 @@ namespace dgl{
 
         template
         std::tuple<IdArray,IdArray,IdArray>
-        compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int32_t ,int32_t>(IdArray partition_map, \
+        compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int32_t ,int64_t>(IdArray partition_map, \
                                              int num_partitions,cudaStream_t stream);
+        template
+            std::tuple<IdArray,IdArray,IdArray>
+            compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int64_t ,int64_t>(IdArray partition_map, \
+                                                                                            int num_partitions,cudaStream_t stream);
+
+
+        template
+            std::tuple<IdArray,IdArray,IdArray>
+            compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int32_t ,int32_t>(IdArray partition_map, \
+                                                                                            int num_partitions,cudaStream_t stream);
+        template
+            std::tuple<IdArray,IdArray,IdArray>
+            compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int64_t ,int32_t>(IdArray partition_map, \
+                                                                                            int num_partitions,cudaStream_t stream);
 
         }
     }
