@@ -9,9 +9,11 @@ from runner.groot_gpu import groot_gpu
 if __name__ == "__main__":
     config = get_config()
     config.fanouts = [15,10]
+
     config.system = "groot-cache"
     config.batch_size = 128
-    # config.graph_name = "ogbn-papers100M"
+    config.world_size = 4
+    config.graph_name = "ogbn-papers100M"
     config.test_acc = True
     config.num_epoch = 2
     config.cache_percentage = .01
