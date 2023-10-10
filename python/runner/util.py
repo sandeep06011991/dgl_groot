@@ -180,7 +180,7 @@ def load_dgl_dataset(config: RunConfig):
     else:
         partition_map = get_metis_partition(config, graph, f"/ssd/ogbn/{config.graph_name}".replace("-","_"), train_idx)
 
-    config.in_feat = graph.ndata["feat"].shape[1]
+    config.in_feat = feat.shape[1]
     config.num_classes = dataset.num_classes
 
     return indptr, indices, edge_id, shared_graph, train_idx, test_idx, valid_idx, feat, label, partition_map
