@@ -31,7 +31,8 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
     indices_handle = pin_memory_inplace(indices)
     edge_id_handle = pin_memory_inplace(edge_id)
     labels_id_handle = pin_memory_inplace(labels)
-    graph = dgl.hetero_from_shared_memory(config.graph_name).formats("csc")
+    graph = dgl.DGLGraph(('csc',(indptr, indices, edge_id)))
+    # graph = dgl.hetero_from_shared_memory(config.graph_name).formats("csc")
     max_pool_size = 1
     num_redundant_layer = config.num_redundant_layers
     block_type = get_block_type("src_to_dst")
@@ -139,7 +140,8 @@ def groot_cache(config: RunConfig):
     t2 = time.time()
     print("total time to load data", t2 -t1)
     assert(config.is_valid())
-    print(config.world_size)
+    import gc
+    gc.collect()
 
     if config.world_size == 1:
         train_cache(config.rank, config.world_size, config, indptr, indices, edge_id, train_idx, test_idx, valid_idx, feat, label, partition_map)

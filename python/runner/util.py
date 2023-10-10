@@ -133,7 +133,6 @@ def load_dgl_dataset(config: RunConfig):
         dataset = DglNodePropPredDataset(config.graph_name, root="/ssd/ogbn")
         print("read success full")
         graph: dgl.DGLGraph = dataset[0][0].astype(torch_type)
-        assert(graph.edges()[0].dtype == torch_type)
         label: torch.tensor = dataset[0][1]
         label = torch.flatten(label).type(torch.int64)
         torch.nan_to_num_(label, nan=-1)
@@ -171,8 +170,13 @@ def load_dgl_dataset(config: RunConfig):
     valid_idx = dataset_idx_split.pop("valid").type(torch_type)
     feat = graph.ndata.pop("feat")
     label = graph.ndata.pop("label")
-    indptr, indices, edge_id = graph.adj_tensors("csc")
-    shared_graph = graph.shared_memory(config.graph_name)
+    indptr, indices, edge_id = None, None, None
+    if "groot" in config.system:
+        indptr, indices, edge_id = graph.adj_tensors("csc")
+    shared_graph = None
+    if "groot" not in config.system:
+        shared_graph = graph.shared_memory(config.graph_name)
+
     partition_map = None
     if config.random_partition:
         print("random partition")
