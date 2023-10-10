@@ -48,28 +48,28 @@ class RunConfig:
             return False
         return True
     
-@dataclass
-class DGLDataset:
-    graph: dgl.DGLGraph = None
-    train_idx: torch.tensor = None
-    valid_idx: torch.tensor = None
-    test_idx: torch.tensor = None
-    edge_id: torch.tensor = None
-    indptr: torch.tensor = None
-    indices: torch.tensor = None
-    partition_map: torch.tensor = None
-    def get_containing_tensors(self):
-        return self.graph, self.train_idx, self.test_idx, self.valid_idx,\
-                self.edge_id, self.indptr, self.indices, self.partition_map
-    def set_containing_tensors(self, graph, train_idx, test_idx, valid_idx, edge_id, indptr, indices, partition_map):
-        self.graph = graph
-        self.train_idx = train_idx
-        self.valid_idx = valid_idx
-        self.edge_id = edge_id
-        self.indptr = indptr
-        self.indices = indices
-        self.partition_map = partition_map
-        self.test_idx = test_idx
+# @dataclass
+# class DGLDataset:
+#     graph: dgl.DGLGraph = None
+#     train_idx: torch.tensor = None
+#     valid_idx: torch.tensor = None
+#     test_idx: torch.tensor = None
+#     edge_id: torch.tensor = None
+#     indptr: torch.tensor = None
+#     indices: torch.tensor = None
+#     partition_map: torch.tensor = None
+#     def get_containing_tensors(self):
+#         return self.graph, self.train_idx, self.test_idx, self.valid_idx,\
+#                 self.edge_id, self.indptr, self.indices, self.partition_map
+#     def set_containing_tensors(self, graph, train_idx, test_idx, valid_idx, edge_id, indptr, indices, partition_map):
+#         self.graph = graph
+#         self.train_idx = train_idx
+#         self.valid_idx = valid_idx
+#         self.edge_id = edge_id
+#         self.indptr = indptr
+#         self.indices = indices
+#         self.partition_map = partition_map
+#         self.test_idx = test_idx
 
 
 def get_parser():
@@ -126,7 +126,7 @@ def ddp_setup(rank, world_size):
 def ddp_exit():
     destroy_process_group()
 
-def load_dgl_dataset(config: RunConfig) -> DGLDataset:
+def load_dgl_dataset(config: RunConfig):
     torch_type = torch.int64
     if config.graph_name != "test-data":
         print("Attempting to read")
@@ -165,26 +165,25 @@ def load_dgl_dataset(config: RunConfig) -> DGLDataset:
             pass
         dataset = Dataset()
         dataset.num_classes = 1
-    dgl_dataset = DGLDataset()
-    dgl_dataset.train_idx = dataset_idx_split.pop("train").type(torch_type)
-    dgl_dataset.test_idx = dataset_idx_split.pop("test").type(torch_type)
-    dgl_dataset.valid_idx = dataset_idx_split.pop("valid").type(torch_type)
-    dgl_dataset.graph = graph
-    print("get indptr indices ")
-    indptr, indices, edge_id = graph.adj_tensors('csc')
-    dgl_dataset.indptr = indptr
-    dgl_dataset.indices = indices
-    dgl_dataset.edge_id = edge_id
+
+    train_idx = dataset_idx_split.pop("train").type(torch_type)
+    test_idx = dataset_idx_split.pop("test").type(torch_type)
+    valid_idx = dataset_idx_split.pop("valid").type(torch_type)
+    feat = graph.ndata.pop("feat")
+    label = graph.ndata.pop("label")
+    indptr, indices, edge_id = graph.adj_tensors("csc")
+    shared_graph = graph.shared_memory(config.graph_name)
+    partition_map = None
     if config.random_partition:
         print("random partition")
-        dgl_dataset.partition_map = torch.randint(0,4, (graph.num_nodes(),))
+        partition_map = torch.randint(0,4, (graph.num_nodes(),))
     else:
-        dgl_dataset.partition_map = get_metis_partition(config, graph, f"/data/ogbn/{config.graph_name}".replace("-","_") , \
-                                                        dgl_dataset.train_idx)
+        partition_map = get_metis_partition(config, graph, f"/ssd/ogbn/{config.graph_name}".replace("-","_"), train_idx)
 
     config.in_feat = graph.ndata["feat"].shape[1]
     config.num_classes = dataset.num_classes
-    return dgl_dataset
+
+    return indptr, indices, edge_id, shared_graph, train_idx, test_idx, valid_idx, feat, label, partition_map
 
 def load_pyg_graph(config: RunConfig):
     dataset = PygNodePropPredDataset(config.graph_name, root="/data")
