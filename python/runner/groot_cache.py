@@ -47,7 +47,7 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
 
     print("Get the cache ")
     cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
-    init_groot_dataloader_cache(cache_id)
+    init_groot_dataloader_cache(cache_id.to(indptr.dtype))
 
     # sample one epoch before profiling
     # model = get_dgl_model(config).to(0)
@@ -92,7 +92,6 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
             key = sample_batch_sync()
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
                         n_redundant_layers =num_redundant_layer , mode = "SRC_TO_DEST")
-
             if config.sample_only:
                 continue
             train_event.wait(train_stream)

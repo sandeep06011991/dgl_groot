@@ -120,11 +120,11 @@ struct GpuCacheQueryBuffer {
     _hit_id = NDArray::Empty({est_num_nodes}, dtype, ctx);
     _missed_qid = NDArray::Empty({est_num_nodes}, dtype, ctx);
     _hit_cidx =
-        NDArray::Empty({est_num_nodes}, DGLDataType{kDGLInt, 64, 1}, ctx);
+        NDArray::Empty({est_num_nodes}, dtype, ctx);
     _hit_qidx =
-        NDArray::Empty({est_num_nodes}, DGLDataType{kDGLInt, 64, 1}, ctx);
+        NDArray::Empty({est_num_nodes}, dtype, ctx);
     _missed_qidx =
-        NDArray::Empty({est_num_nodes}, DGLDataType{kDGLInt, 64, 1}, ctx);
+        NDArray::Empty({est_num_nodes}, dtype, ctx);
   }
 };
 

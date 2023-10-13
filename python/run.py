@@ -12,9 +12,9 @@ if __name__ == "__main__":
     config.system = "groot-cache"
     config.batch_size = 128
     config.graph_name = "ogbn-products"
-    # config.graph_name = "ogbn-papers100M"
     config.test_acc = True
     config.num_epoch = 2
+    config.world_size = 4
     config.cache_percentage = .01
     if config.system == "dgl-uva":
         dgl_uva(config)

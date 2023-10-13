@@ -7,6 +7,7 @@ namespace dgl {
 namespace groot {
 using namespace runtime;
 
+//Index type should be 64 bits for all 2 all
 typedef  int64_t IndexType;
 
 template<typename IndexType>
@@ -20,13 +21,14 @@ std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices(IdArray
   return ret;
 }
 
-template<typename IndexType>
 IdArray  gather_atomic_accumulation(IdArray accumulated_grads,IdArray gather_idx_in_unique,\
                             IdArray grad_shuffled_reshape, cudaStream_t stream){
   IdArray  ret;
   ATEN_FLOAT_TYPE_SWITCH(accumulated_grads->dtype, IdType, "accumulated_grads", {
-    ret = impl::gather_atomic_accumulate<kDGLCUDA, IdType, IndexType>(
-        accumulated_grads, gather_idx_in_unique, grad_shuffled_reshape,stream);
+    ATEN_ID_TYPE_SWITCH(gather_idx_in_unique->dtype, IndexType, {
+      ret = impl::gather_atomic_accumulate<kDGLCUDA, IdType, IndexType>(
+          accumulated_grads, gather_idx_in_unique, grad_shuffled_reshape, stream);
+    });
   });
   return ret;
 
@@ -107,7 +109,7 @@ NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int w
                                                         accumulated_grads->dtype, 0);
 //    Todo can be optimized as self nodes are rarely written
 //    Before doing this optimization have a unit test in place for this
-      gather_atomic_accumulation<IndexType>(accumulated_grads,\
+      gather_atomic_accumulation(accumulated_grads,\
                                             gather_idx_in_unique_out_shuffled, grad_shuffled_reshape, stream);
       assert(accumulated_grads->shape[0] == unique_tensor_dim);
       assert(accumulated_grads->shape[1] == back_grad->shape[1]);
