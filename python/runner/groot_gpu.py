@@ -53,15 +53,6 @@ def groot_gpu(config: RunConfig):
     duration_in_s = 0
     timer = Timer()
     for epoch in range(num_epoch):
-        if epoch == 0:
-            print("pre-heating")
-        else:
-            if epoch == 1:
-                torch.cuda.synchronize()    
-                print(f"pre-heating takes {round(timer.passed(), 2)} sec")
-                timer.reset()
-            print(f"start epoch {epoch}")
-                
         for i in range(step):
             if key == -1:
                 key = sample_batch_sync()

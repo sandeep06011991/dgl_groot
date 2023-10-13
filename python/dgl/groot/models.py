@@ -2,6 +2,10 @@ import torch
 import dgl.backend as F
 import torch.nn as nn
 from ..nn.pytorch.conv.gatconv import GATConv
+from ..nn.pytorch.conv.hgtconv import HGTConv
+from ..nn.pytorch.conv.sageconv import SAGEConv
+from ..nn.pytorch.conv.graphconv import GraphConv
+
 from .._ffi.function import _init_api
 import dgl.function as fn
 
@@ -32,7 +36,7 @@ class Shuffle(torch.autograd.Function):
 # it is applied very generally to HGT as well.
 class SRC_TO_DEST(torch.nn.Module):
     def __init__(self, in_feats, n_hidden, n_classes, layers,\
-                            num_redundant_layers, rank, world_size):
+                            num_redundant_layers, rank, world_size, model_name):
         super().__init__()
         self.in_feats = in_feats
         self.n_hidden = n_hidden
@@ -46,6 +50,7 @@ class SRC_TO_DEST(torch.nn.Module):
         self.world_size = world_size
         self.activation = torch.nn.ReLU()
         self.debug = False
+        self.model_name = model_name
 
     def forward(self, blocks, input, inference = False):
         x = input
@@ -60,7 +65,11 @@ class SRC_TO_DEST(torch.nn.Module):
                     x = Shuffle.apply(frontier, x, self.rank, self.world_size)
                 if i <  redundant_layer:
                     x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
-            x = layer(block, x)
+            if(self.model_name == "hgt"):
+                x = layer(block, x, torch.zeros(block.num_nodes(), dtype = torch.int32)\
+                            , torch.zeros(block.num_edges(), dtype = torch.int32))
+            else:
+                x = layer(block, x)
             if i != len(self.layers) - 1:
                 x = self.activation(x)
             if len(x.shape) == 3:
@@ -90,26 +99,46 @@ class Gather(torch.nn.Module):
             block.update_all(fn.copy_u('x','m'), fn.sum('m', 'h'))
             return block.dstdata['h']
 
-def get_distributed_model(model_type, layer, feat_size, num_layers,\
+def get_distributed_model( model_name , feat_size, num_layers,\
                             n_hidden, n_classes, num_redundant,\
                                 rank, world_size):
-    assert(layer == "GAT")
     layers = []
     assert(num_layers > 0)
     heads = 4
     print("n_classes", n_classes)
+    print("model", model_name)
     # model_type = "debug"
-    if model_type == "GAT":
+    model_name in ["graphsage", "gat","hgt", "gcn" ]
+    if model_name == "gat":
         # GAT has atleast 2 layers
         assert(num_layers > 1)
         layers.append(GATConv(feat_size, n_hidden//heads, heads))
         for i in range(num_layers-2):
             layers.append(GATConv(n_hidden, n_hidden//heads, heads))
         layers.append(GATConv(n_hidden, n_classes, 1))
-    if model_type == "test":
+    if model_name == "test":
+        assert (num_layers > 1)
         for i in range(num_layers):
             layers.append(Gather())
+    if model_name == "graphsage":
+        assert (num_layers > 1)
+        layers.append(SAGEConv(feat_size, n_hidden , aggregator_type= 'mean'))
+        for i in range(num_layers - 2):
+            layers.append(GATConv(n_hidden, n_hidden , aggregator_type= 'mean'))
+        layers.append(GATConv(n_hidden, n_classes, aggregator_type= 'mean'))
+    if model_name == "gcn":
+        assert (num_layers > 1)
+        layers.append(GraphConv(feat_size, n_hidden))
+        for i in range(num_layers - 2):
+            layers.append(GraphConv(n_hidden, n_hidden))
+        layers.append(GraphConv(n_hidden, n_classes))
+    if model_name == "hgt":
+        assert (num_layers > 1)
+        layers.append(HGTConv(feat_size, n_hidden // heads, heads, num_ntypes=1, num_etypes=1))
+        for i in range(num_layers - 2):
+            layers.append(HGTConv(n_hidden, n_hidden // heads, heads, num_ntypes= 1, num_etypes = 1))
+        layers.append(HGTConv(n_hidden, n_classes, 1, num_ntypes= 1, num_etypes = 1))
 
     model = SRC_TO_DEST(feat_size, n_hidden, n_classes, layers, num_redundant,\
-                            rank, world_size)
+                            rank, world_size, model_name)
     return model

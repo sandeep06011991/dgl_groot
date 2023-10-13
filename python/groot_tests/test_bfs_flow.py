@@ -1,14 +1,39 @@
+from ..runner.util import *
+
+def get_test_dataset():
+    print("reading synthetic ")
+    clique_size = 16
+    e_list = []
+    for i in range(clique_size):
+        for j in range(4):
+            #     if i == j:
+            #         continue
+            e_list.append([i, (i + 1 + j) % clique_size])
+    graph = dgl.DGLGraph(e_list)
+    label = torch.zeros(clique_size).to(torch.int64)
+    graph.ndata['feat'] = \
+        (torch.arange(graph.num_nodes()) * torch.ones((2, graph.num_nodes()), dtype=torch.float32)).T.contiguous()
+    print(graph.ndata['feat'].shape)
+    graph.ndata['label'] = label
+    dataset_idx_split = {}
+    for i in ["train", "test", "valid"]:
+        dataset_idx_split[i] = torch.arange(clique_size)
+    class Dataset:
+        pass
+    dataset = Dataset()
+    dataset.num_classes = 1
+
+
 import torch, dgl
 import torch.nn.functional as F
 from torch.nn.parallel import DistributedDataParallel as DDP
-from .util import *
-from .dgl_model import get_dgl_model
-from dgl.groot import *
-from dgl.utils import pin_memory_inplace
+from ..runner.util import *
+from ..dgl.groot import *
+from ..dgl.utils import pin_memory_inplace
 import torch.multiprocessing as mp
 import torch.distributed as dist
 import os
-from dgl.groot.models import get_distributed_model
+from ..dgl.groot.models import get_distributed_model
 from torch.nn.parallel import DistributedDataParallel
 import time
 
@@ -56,9 +81,8 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
     if cached_ids != None:
         cache_id = cached_ids[rank].to(rank)
         # cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
-        init_groot_dataloader_cache(cache_id.to(indptr.dtype))
-    else:
-        print("skipping cache")
+        init_groot_dataloader_cache(cache_id)
+
     # sample one epoch before profiling
     # model = get_dgl_model(config).to(0)
     layer = config.model_type
@@ -68,7 +92,7 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
     n_classes = int((torch.max(labels) + 1).item())
 
     model = get_distributed_model( layer, feat_size, num_layers, n_hidden, n_classes, num_redundant_layer,
-                                  rank, world_size).to(rank)
+                                   rank, world_size).to(rank)
 
     model = DistributedDataParallel(model)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -77,86 +101,30 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
     train_stream = torch.cuda.Stream()
     train_event = torch.cuda.Event()
     train_event.record(train_stream)
-    epoch_times = []
-    epoch_timer = Timer()
-    sampling_times = []
-    sampling_timer = Timer()
-    training_times = []
-    training_timer = Timer()
-    max_memory_used = []
+
     for epoch in range(num_epoch):
-        # if epoch == 0:
-        #     print("pre-heating")
-        # else:
-        #     if epoch == 1:
-        #         torch.cuda.synchronize()
-        #         print(f"pre-heating takes {round(epoch_timer.passed(), 2)} sec")
-        #         epoch_timer.reset()
-        #     print(f"start epoch {epoch}")
         print("Start training ")
         randInt = torch.randperm(train_idx.shape[0], device = rank)
         shuffle_training_nodes(randInt)
-        epoch_timer.reset()
-        sampling_timer.reset()
-        training_timer.reset()
-        epoch_timer.start()
         edges_per_epoch = 0
         for i in range(step):
-            sampling_timer.start()
             key = sample_batch_sync()
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
-                        n_redundant_layers =num_redundant_layer , mode = "SRC_TO_DEST")
+                                                        n_redundant_layers =num_redundant_layer , mode = "SRC_TO_DEST")
             local_blocks, _, _ = blocks
             for block in local_blocks:
                 edges_per_epoch += block.num_edges()
             torch.cuda.synchronize()
-            sampling_timer.stop()
-            if config.sample_only:
-                continue
             train_event.wait(train_stream)
-            # wait for previous training to complete
-            # with torch.cuda.stream(train_stream):
-            training_timer.start()
+            batch_feat.requires_grad = True
             pred = model(blocks, batch_feat)
-            torch.cuda.synchronize()
-            loss = torch.nn.functional.cross_entropy(pred, batch_label)
-            optimizer.zero_grad()
-            training_timer.stop()
-            loss.backward()
-            optimizer.step()
-            torch.cuda.synchronize()
-            sampling_timer.accumulate_async()
-            training_timer.accumulate_async()
-        max_memory_used.append(torch.cuda.memory_allocated())
-        passed = epoch_timer.stop()
-        epoch_times.append(epoch_timer.get_accumulated())
-        training_times.append(training_timer.get_async_accumulated())
-        sampling_times.append(sampling_timer.get_async_accumulated())
-    torch.cuda.synchronize()
-    if config.test_acc  and rank == 0:
-        use_uva = False
-        graph.ndata["feat"] = feats
-        graph.ndata["label"] = labels
-        if use_uva:
-            graph.pin_memory_()
-        sampler = dgl.dataloading.NeighborSampler(\
-                config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
-        test_dataloader = dgl.dataloading.DataLoader(graph = graph,
-                                                indices = test_idx.to('cpu'),
-                                                graph_sampler = sampler,
-                                                use_uva=use_uva,
-                                                batch_size=config.batch_size)
+            pred = pred @ torch.ones(2,1, device = rank)
+            torch.sum(batch_label * pred.flatten()).backward()
 
-        acc = test_model_accuracy(config, model.to('cpu'), test_dataloader)
-        print("Accuracy:", acc )
-        print("Epoch time:",avg_ignore_first(epoch_times))
-        print("Sampling time:", avg_ignore_first(sampling_times))
-        print("Training time:", avg_ignore_first(training_times))
-        print("Max memory used:", avg_ignore_first(max_memory_used))
-
-def groot_cache(config: RunConfig):
+def test_bfs_flow():
     t1 = time.time()
-    indptr, indices, edge_id, shared_graph, train_idx, test_idx, valid_idx, feat,\
+    config = RunConfig()
+    indptr, indices, edge_id, shared_graph, train_idx, test_idx, valid_idx, feat, \
         label, partition_map, cached_ids= load_dgl_dataset(config)
     t2 = time.time()
     print("total time to load data", t2 -t1)
@@ -167,3 +135,7 @@ def groot_cache(config: RunConfig):
         train_cache(config.rank, config.world_size, config, indptr, indices, edge_id, train_idx, test_idx, valid_idx, feat, label, partition_map)
     else:
         mp.spawn(train_cache, args=(config.world_size, config, indptr, indices, edge_id, train_idx, test_idx, valid_idx, feat, label, partition_map, cached_ids), nprocs=config.world_size, daemon=True)# def groot_cache(config: RunConfig):
+
+
+if __name__ == "__main__":
+    test_bfs_flow()

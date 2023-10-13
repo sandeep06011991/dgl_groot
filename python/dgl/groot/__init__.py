@@ -12,17 +12,18 @@ def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id
                     batch_size: int, num_redundant_layers: int, max_pool_size: int,
                     indptr: Tensor, indices: Tensor, feats: Tensor, labels: Tensor,
                     train_idx: Tensor, valid_idx: Tensor, test_idx: Tensor, partition_map: Tensor):
-    if partition_map is None:
-        # todo: partition map should be read from disk
-        # todo: partition map must be consistent with others
-        print("Using synthetic product map")
-        partition_map = torch.arange(indptr.shape[0] - 1) % world_size
-    print("Temp by pass")
+    assert(partition_map != None)
+    # if partition_map is None:
+    #     # todo: partition map should be read from disk
+    #     # todo: partition map must be consistent with others
+    #     print("Using synthetic product map")
+    #     partition_map = torch.arange(indptr.shape[0] - 1) % world_size
+    # print("Temp by pass")
     # if num_redundant_layers == len(fanouts):
     #     assert(block_type == 0)
     # else:
     #     assert(block_type == 1 or block_type == 2)
-        
+
     return _CAPI_InitDataloader(rank, world_size, block_type, device_id, 
                                 fanouts, batch_size, num_redundant_layers, max_pool_size,
                                 F.zerocopy_to_dgl_ndarray(indptr),
