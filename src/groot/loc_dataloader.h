@@ -200,10 +200,12 @@ public:
   }
   // TODO: shuffle the seeds for every epoch
   NDArray GetNextSeeds(int64_t key) {
-
-    const int64_t start_idx = key * _batch_size % _train_idx.NumElements();
+    auto num_elements = (_train_idx.NumElements()/ _batch_size) * _batch_size;
+    const int64_t start_idx = key * _batch_size % num_elements;
     const int64_t end_idx =
         std::min(_train_idx.NumElements(), start_idx + _batch_size);
+    // Having unequal initial batch sizes causes all2all to be unpredictable
+    assert(end_idx - start_idx == _batch_size);
     return _train_idx.CreateView({end_idx - start_idx}, _id_type,
                                  start_idx * _id_type.bits / 8);
   }
@@ -282,7 +284,6 @@ public:
     int num_partitions = _world_size;
     auto blocksPtr = _blocks_pool.at(blk_idx);
     NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
-
     blocksPtr->_input_nodes = frontier;
 //    cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
     auto sampling_stream = runtime::getCurrentCUDAStream();
@@ -294,7 +295,6 @@ public:
       blockTable->_stream = sampling_stream;
       blockTable->Reset();
       if (layer == _num_redundant_layers) {
-        assert(frontier->shape[0] < _batch_size * num_partitions * _fanouts[0] + 1);
         auto partition_index =
             IndexSelect(_partition_map, frontier, sampling_stream);
         Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,

@@ -33,8 +33,10 @@ struct BlockObject : public runtime::Object {
   BlockObject(DGLContext ctx, int64_t num_partitions,
               const std::vector<int64_t> &fanouts, int64_t layer,
               int64_t batch_size, DGLDataType dtype, cudaStream_t stream) {
-    int64_t est_num_src = batch_size;
-    int64_t est_num_dst = batch_size;
+//  Num partitions must be multiplied to single gpu expeceted nodes only after last redundant layer
+//  Since we don't do this optimization over allocation is done for safety.
+    int64_t est_num_src = batch_size * num_partitions;
+    int64_t est_num_dst = batch_size * num_partitions;
     for (int64_t i = 0; i < layer; i++)
       est_num_src *= (fanouts[i] + 1);
     for (int64_t i = 0; i <= layer; i++)
@@ -48,13 +50,12 @@ struct BlockObject : public runtime::Object {
     _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
     _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
 
-    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst  * num_partitions, stream);
-    // Todo SRC to DEST data strucutures are not needed for redudnant blocks
-    //TODO _estimated sizes of scattered src and dst are different
-    _scattered_dest =
-        ScatteredArray::Create(est_num_src * num_partitions, num_partitions, ctx, dtype, stream);
+    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst , stream);
+    //Note scattered array src size refers to est_num_dest as during sampling, dest and src nodes are flipped.
+//    _scattered_dest =
+//        ScatteredArray::Create(est_num_src * num_partitions, num_partitions, ctx, dtype, stream);
     _scattered_src =
-        ScatteredArray::Create(est_num_dst * num_partitions , num_partitions, ctx, dtype, stream);
+        ScatteredArray::Create(est_num_dst , num_partitions, ctx, dtype, stream);
   };
   int64_t num_src, num_dst; // number of src (unique) and destination (unique)
                             // for buliding the dgl block object

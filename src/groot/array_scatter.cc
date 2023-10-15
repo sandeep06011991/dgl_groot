@@ -118,6 +118,8 @@ NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int w
 void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
              int num_partitions, int rank, int world_size) {
   assert(array->dtype == frontier->dtype);
+  assert(frontier->shape[0] > 0);
+  assert(frontier->shape[0] < array->expectedSize);
   if(array->debug){
     array->table->Reset();
     array->table->FillWithDuplicates(frontier, frontier->shape[0]);
@@ -129,7 +131,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   array->partitionMap = _partition_map;
 
   // Compute partition continuos array
-  cudaStream_t stream =  CUDAThreadEntry::ThreadLocal()->stream;
+  cudaStream_t stream =  runtime::getCurrentCUDAStream();
   // Todo: Why not runtime stream
   auto [boundary_offsets, gather_idx_in_part_disc_cont, scatter_idx_in_part_disc_cont]\
       = compute_partition_continuous_indices<IndexType>(array->partitionMap, num_partitions, stream);
