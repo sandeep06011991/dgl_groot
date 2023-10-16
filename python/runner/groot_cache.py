@@ -84,6 +84,7 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
     training_times = []
     training_timer = Timer()
     max_memory_used = []
+    edges_computed = []
     for epoch in range(num_epoch):
         # if epoch == 0:
         #     print("pre-heating")
@@ -132,13 +133,20 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
         epoch_times.append(epoch_timer.get_accumulated())
         training_times.append(training_timer.get_async_accumulated())
         sampling_times.append(sampling_timer.get_async_accumulated())
+        edges_computed.append(edges_per_epoch)
     torch.cuda.synchronize()
     if config.test_acc  and rank == 0:
-        use_uva = False
+        use_uva = True
         graph.ndata["feat"] = feats
         graph.ndata["label"] = labels
         if use_uva:
             graph.pin_memory_()
+            device = torch.device(rank)
+        else:
+            device = torch.device('cpu')
+        model = model.to(device)
+        test_idx = test_idx.to(device)
+
         test_dtype = torch.int64
 
         sampler = dgl.dataloading.NeighborSampler(\
@@ -149,14 +157,14 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
                                                 use_uva=use_uva, drop_last = True,
                                                 batch_size=config.batch_size)
 
-        acc = test_model_accuracy(config, model.to('cpu'), test_dataloader)
+        acc = test_model_accuracy(config, model, test_dataloader)
         print("accuracy:", acc )
         print("epoch_time:",    avg_ignore_first(epoch_times))
         print("sampling_time", avg_ignore_first(sampling_times))
         print("training_time:", avg_ignore_first(training_times))
         max_cache_fraction  = min(1.0, int(((16 * 1024 ** 3) - max(max_memory_used)) / (feats.shape[1] * 4)))
         print("max_cache_fraction:", max_cache_fraction)
-
+    print("edges_computed:", sum(edges_computed)/len(edges_computed))
     torch.distributed.barrier()
     print(f"Max memory used:{'{:.2f}'.format(max(max_memory_used) / (1024 ** 3))}GB")
 

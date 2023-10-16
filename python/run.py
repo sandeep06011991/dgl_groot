@@ -8,17 +8,19 @@ from runner.groot_gpu import groot_gpu
 
 if __name__ == "__main__":
     config = get_config()
-    # config.fanouts = [20,20,20]
+    config.fanouts = [20,20,20]
+    config.random_partition = False
+    config.graph_name = "ogbn-products"
     # config.system = "groot-cache"
-    # config.batch_size = 128
+    config.batch_size = 128
     # config.graph_name = "ogbn-products"
     # config.world_size = 4
     # config.world_size = 4
     # config.cache_percentage = .01
     # config.graph_name = "ogbn-papers100M"
-    # config.test_acc = True
-    # config.model_type = "gat"
-    # config.num_epoch = 5
+    config.test_acc = True
+    config.model_type = "gat"
+    config.num_epoch = 5
     if config.system == "dgl-uva":
         dgl_uva(config)
     elif config.system == "dgl-gpu":
