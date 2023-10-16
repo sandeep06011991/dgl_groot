@@ -203,7 +203,7 @@ def load_dgl_dataset(config: RunConfig):
             print(cached_ids)
         train_idx = train_idx_partition
         print("Label test", label[train_idx_partition[0]])
-    if config.model_type == "gat":
+    if config.model_type == "gat" or config.model_type == "gcn":
         print("Adding self loop")
         graph = dgl.add_self_loop(graph)
     test_idx = dataset_idx_split.pop("test").type(torch_type)

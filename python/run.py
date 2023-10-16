@@ -15,8 +15,9 @@ if __name__ == "__main__":
     config.world_size = 4
     config.world_size = 4
     config.cache_percentage = .01
-    config.graph_name = "ogbn-arxiv"
+    config.graph_name = "ogbn-papers100M"
     config.test_acc = True
+    config.model_type = "gat"
     config.num_epoch = 2
     if config.system == "dgl-uva":
         dgl_uva(config)

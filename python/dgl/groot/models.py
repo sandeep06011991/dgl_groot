@@ -66,8 +66,8 @@ class SRC_TO_DEST(torch.nn.Module):
                 if i <  redundant_layer:
                     x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
             if(self.model_name == "hgt"):
-                x = layer(block, x, torch.zeros(block.num_nodes(), dtype = torch.int32)\
-                            , torch.zeros(block.num_edges(), dtype = torch.int32))
+                x = layer(block, x, torch.zeros(x.shape[0],  dtype = torch.int64, device = x.device)\
+                            , torch.zeros(block.num_edges(), dtype = torch.int64, device = x.device))
             else:
                 x = layer(block, x)
             if i != len(self.layers) - 1:
@@ -124,8 +124,8 @@ def get_distributed_model( model_name , feat_size, num_layers,\
         assert (num_layers > 1)
         layers.append(SAGEConv(feat_size, n_hidden , aggregator_type= 'mean'))
         for i in range(num_layers - 2):
-            layers.append(GATConv(n_hidden, n_hidden , aggregator_type= 'mean'))
-        layers.append(GATConv(n_hidden, n_classes, aggregator_type= 'mean'))
+            layers.append(SAGEConv(n_hidden, n_hidden , aggregator_type= 'mean'))
+        layers.append(SAGEConv(n_hidden, n_classes, aggregator_type= 'mean'))
     if model_name == "gcn":
         assert (num_layers > 1)
         layers.append(GraphConv(feat_size, n_hidden))
