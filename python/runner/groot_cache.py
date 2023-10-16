@@ -139,22 +139,30 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
         graph.ndata["label"] = labels
         if use_uva:
             graph.pin_memory_()
+        test_dtype = torch.int64
+
         sampler = dgl.dataloading.NeighborSampler(\
                 config.fanouts, prefetch_node_feats=['feat'], prefetch_labels=['label'])
-        test_dataloader = dgl.dataloading.DataLoader(graph = graph,
-                                                indices = test_idx.to('cpu'),
+        test_dataloader = dgl.dataloading.DataLoader(graph = graph.astype(test_dtype),
+                                                indices = test_idx.to(test_dtype),
                                                 graph_sampler = sampler,
-                                                use_uva=use_uva,
+                                                use_uva=use_uva, drop_last = True,
                                                 batch_size=config.batch_size)
 
         acc = test_model_accuracy(config, model.to('cpu'), test_dataloader)
         print("Accuracy:", acc )
-        print("Epoch time:",avg_ignore_first(epoch_times))
+        print("Epoch time:",    avg_ignore_first(epoch_times))
         print("Sampling time:", avg_ignore_first(sampling_times))
         print("Training time:", avg_ignore_first(training_times))
-        print("Max memory used:", avg_ignore_first(max_memory_used))
+        max_cache_fraction  = min(1, int(((16 * 1024 ** 3) - max(max_memory_used)) / (feats.shape[0] * feats.shape[1] * 4)))
+        print("max cache fraction", max_cache_fraction)
+
+    torch.distributed.barrier()
+    print(f"Max memory used:{'{:.2f}'.format(max(max_memory_used) / (1024 ** 3))}GB")
+
 
 def groot_cache(config: RunConfig):
+
     t1 = time.time()
     indptr, indices, edge_id, shared_graph, train_idx, test_idx, valid_idx, feat,\
         label, partition_map, cached_ids= load_dgl_dataset(config)

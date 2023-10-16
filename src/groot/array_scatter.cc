@@ -15,7 +15,7 @@ std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices(IdArray
                  int num_partitions, cudaStream_t stream) {
   std::tuple<IdArray ,IdArray , IdArray > ret;
   ATEN_ID_TYPE_SWITCH(partition_map->dtype, IdType, {
-    ret = impl::compute_partition_continuous_indices<kDGLCUDA, IdType, IndexType>\
+    ret = impl::compute_partition_continuous_indices<kDGLCUDA, IndexType, IdType>\
         (partition_map, num_partitions, stream);
   });
   return ret;
@@ -122,6 +122,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   assert(array->dtype == frontier->dtype);
   assert(frontier->shape[0] > 0);
   assert(frontier->shape[0] < array->expectedSize);
+  assert(num_partitions == world_size);
   if(array->debug){
     array->table->Reset();
     array->table->FillWithDuplicates(frontier, frontier->shape[0]);

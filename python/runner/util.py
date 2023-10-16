@@ -10,8 +10,10 @@ import torchmetrics.functional as MF
 import numpy as np
 
 def avg_ignore_first(s):
+    if(np.var(s[1:]) >= .10 * np.mean(s[1:])):
+        print("Variance overflow")
+        print(s)
     assert(np.var(s[1:]) < .10 * np.mean(s[1:]))
-    print(s)
     return sum(s[1:])/(len(s) - 1)
 
 class Timer:
@@ -121,10 +123,10 @@ def get_parser():
     parser.add_argument('--world_size', default=1, type=int, help='Number of GPUs')
     parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
     parser.add_argument('--cache_rate', default=0.1, type=float, help="percentage of feature data cached on each gpu")
-    parser.add_argument('--sample_only', default=True, type=bool, help="whether test system on sampling only mode", choices=[True, False])
+    parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
     parser.add_argument('--test_acc', default=True, type=bool, help="whether test model accuracy", choices=[True, False])
     parser.add_argument('--num_redundant_layers', default = 0, type = int, help = "number of redundant layers")
-    parser.add_argument('--random_partition', default = True, type = bool)
+    parser.add_argument('--random_partition', default = False, type = bool)
     parser.add_argument('--fanout', default='5-5-5', type = str, help = "fanout during neighbour sampling ")
     return parser
 
@@ -170,7 +172,7 @@ def ddp_exit():
 
 
 def load_dgl_dataset(config: RunConfig):
-    torch_type = torch.int64
+    torch_type = torch.int32
     dataset = DglNodePropPredDataset(config.graph_name, root="/ssd/ogbn")
     graph: dgl.DGLGraph = dataset[0][0].astype(torch_type)
     feat = graph.ndata.pop('feat')
