@@ -173,7 +173,7 @@ def ddp_exit():
 
 def load_dgl_dataset(config: RunConfig):
     torch_type = torch.int32
-    dataset = DglNodePropPredDataset(config.graph_name, root="/ssd/ogbn")
+    dataset = DglNodePropPredDataset(config.graph_name, root="/data/ogbn")
     graph: dgl.DGLGraph = dataset[0][0].astype(torch_type)
     feat = graph.ndata.pop('feat')
     label: torch.tensor = dataset[0][1]

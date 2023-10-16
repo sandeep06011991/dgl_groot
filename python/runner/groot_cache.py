@@ -150,12 +150,12 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
                                                 batch_size=config.batch_size)
 
         acc = test_model_accuracy(config, model.to('cpu'), test_dataloader)
-        print("Accuracy:", acc )
-        print("Epoch time:",    avg_ignore_first(epoch_times))
-        print("Sampling time:", avg_ignore_first(sampling_times))
-        print("Training time:", avg_ignore_first(training_times))
-        max_cache_fraction  = min(1, int(((16 * 1024 ** 3) - max(max_memory_used)) / (feats.shape[0] * feats.shape[1] * 4)))
-        print("max cache fraction", max_cache_fraction)
+        print("accuracy:", acc )
+        print("epoch_time:",    avg_ignore_first(epoch_times))
+        print("sampling_time", avg_ignore_first(sampling_times))
+        print("training_time:", avg_ignore_first(training_times))
+        max_cache_fraction  = min(1.0, int(((16 * 1024 ** 3) - max(max_memory_used)) / (feats.shape[1] * 4)))
+        print("max_cache_fraction:", max_cache_fraction)
 
     torch.distributed.barrier()
     print(f"Max memory used:{'{:.2f}'.format(max(max_memory_used) / (1024 ** 3))}GB")
