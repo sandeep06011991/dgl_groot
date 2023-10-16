@@ -25,9 +25,7 @@ def preprocess(graph_name, in_dir, out_dir) -> None:
         feat: torch.Tensor = graph.dstdata.pop("feat")
         torch.save(feat, os.path.join(out_dir, "feat.pt"))
         del feat
-    
-    graph.remove_self_loop()    
-    graph.add_self_loop()    
+
     node_labels: torch.Tensor = dataset[0][1]
     node_labels = node_labels.flatten().clone()
     torch.nan_to_num_(node_labels, nan=0.0)

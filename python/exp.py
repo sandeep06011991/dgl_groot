@@ -31,6 +31,5 @@ def get_configs(graph_name, system, log_path, data_dir):
     return configs
 
 if __name__ == "__main__":
-    configs = get_configs(graph_name="ogbn-products", system="quiver", log_path="./log/log.csv", data_dir="/data/juelin/dataset/OGBN/processed/")    
-    bench_quiver_batch(configs=configs, test_acc=True)
-    # bench_dgl_batch(configs=configs, test_acc=True)
+    configs = get_configs(graph_name="ogbn-arxiv", system="gpu", log_path="./log/log.csv", data_dir="/data/ogbn/processed/")
+    bench_dgl_batch(configs=configs, test_acc=True)

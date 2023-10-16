@@ -6,7 +6,6 @@ import gc
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.multiprocessing import spawn
 from dgl.utils import pin_memory_inplace, gather_pinned_tensor_rows
-
 from .dgl_model import *
 from .util import *
 
@@ -19,32 +18,41 @@ def ddp_setup(rank, world_size):
 def ddp_exit():
     dist.destroy_process_group()
 
-def bench_dgl_batch(configs: list[Config], test_acc=False):
+def bench_groot_batch(configs: list[Config], test_acc=False):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     
     in_dir = os.path.join(config.data_dir, config.graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
+    indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
+    max_cache_fraction_queue = torch.multiprocessing.Queue()
     for config in configs:
         try:
-            spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
+            spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
+                                   num_label, train_idx, valid_idx, test_idx, \
+                                   indptr, indices, edges, max_cache_fraction_queue),\
+                  nprocs=config.world_size, daemon=True, join= True)
+
         except Exception as e:
             print(e)
-            write_to_csv(config.log_path, [config], [empty_profiler()])
         gc.collect()
         torch.cuda.empty_cache()
             
 def train_ddp(rank: int, config: Config, test_acc: bool,
               graph: dgl.DGLGraph, feat: torch.Tensor, label: torch.Tensor, num_label: int, 
-              train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor):
+              train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor,
+              indptr: torch.Tensor, indices: torch.Tensor, edges:torch.Tensor, \
+                queue: torch.multiprocessing.Queue, partition_map: torch.Tensor, cached_ids: None):
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
-    graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
-    dataloader, graph = get_dgl_sampler(graph=graph, train_idx=train_idx,
-                                        graph_samler=graph_sampler, system=config.system, batch_size=config.batch_size, use_dpp=True)
+    indptr_handle = pin_memory_inplace(indptr)
+    indices_handle = pin_memory_inplace(indices)
+    print("Note attempting empty tensor pinning")
+    edge_id_handle = pin_memory_inplace(edges)
+
     if "uva" in config.system:
         feat_nd  = pin_memory_inplace(feat)
         label_nd = pin_memory_inplace(label)
@@ -52,7 +60,10 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     elif "gpu" in config.system:
         feat = feat.to(device)
         label = label.to(device)
-        
+
+    max_pool_size = 1
+
+    timer = Timer()
     model = None
     if config.model == "gat":
         model = DGLGat(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label, num_heads=4)
@@ -63,34 +74,11 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
-    
-    print(f"pre-heating model on device: {device}")
-    for input_nodes, output_nodes, blocks in dataloader:
-        batch_feat = None
-        batch_label = None
-        if "uva" in config.system:
-            batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
-            batch_label = gather_pinned_tensor_rows(label, output_nodes)
-        elif "gpu" in config.system:
-            batch_feat = feat[input_nodes]
-            batch_label = label[output_nodes]
-        else:
-            batch_feat = feat[input_nodes].to(device)
-            batch_label = label[output_nodes].to(device)
-            blocks = [block.to(device) for block in blocks]
-        batch_pred = model(blocks, batch_feat)
-        batch_loss = F.cross_entropy(batch_pred, batch_label)
-        optimizer.zero_grad()
-        batch_loss.backward()
-        optimizer.step()
-
-    print(f"training model on device: {device}")        
-    timer = Timer()
     sampling_timers = []
     feature_timers = []
     forward_timers = []
     backward_timers = []
-    
+    print(f"training model on {device}")
     for epoch in range(config.num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")
