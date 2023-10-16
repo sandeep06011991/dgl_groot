@@ -1,12 +1,13 @@
 import argparse
 from exp.util import *
 from exp.dgl_trainer import bench_dgl_batch
+from exp.quiver_trainer import bench_quiver_batch
 
 def get_configs(graph_name, system, log_path, data_dir):
     fanouts = [[10, 10, 10], [15, 15, 15]]
     batch_sizes = [4096, 8192]
-    models = ["sage", "gat"]
-    hid_sizes = [256]
+    models = ["sage"]
+    hid_sizes = [128]
     cache_rates = [0.1]
     
     configs = []
@@ -30,5 +31,6 @@ def get_configs(graph_name, system, log_path, data_dir):
     return configs
 
 if __name__ == "__main__":
-    configs = get_configs(graph_name="ogbn-products", system="gpu", log_path="./log/log.csv", data_dir="/data/juelin/dataset/OGBN/processed/")
-    bench_dgl_batch(configs=configs, test_acc=True)
+    configs = get_configs(graph_name="ogbn-products", system="quiver", log_path="./log/log.csv", data_dir="/data/juelin/dataset/OGBN/processed/")    
+    bench_quiver_batch(configs=configs, test_acc=True)
+    # bench_dgl_batch(configs=configs, test_acc=True)

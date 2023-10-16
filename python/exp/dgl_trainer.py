@@ -29,10 +29,10 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     feat, label, num_label = load_feat_label(in_dir)
     for config in configs:
         try:
-            spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size, daemon=True)
-
+            spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             print(e)
+            write_to_csv(config.log_path, [config], [empty_profiler()])
         gc.collect()
         torch.cuda.empty_cache()
             
@@ -52,7 +52,6 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         feat = feat.to(device)
         label = label.to(device)
         
-    timer = Timer()
     model = None
     if config.model == "gat":
         model = DGLGat(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label, num_heads=4)
@@ -63,11 +62,34 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
+    
+    print(f"pre-heating model on device: {device}")
+    for input_nodes, output_nodes, blocks in dataloader:
+        batch_feat = None
+        batch_label = None
+        if "uva" in config.system:
+            batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
+            batch_label = gather_pinned_tensor_rows(label, output_nodes)
+        elif "gpu" in config.system:
+            batch_feat = feat[input_nodes]
+            batch_label = label[output_nodes]
+        else:
+            batch_feat = feat[input_nodes].to(device)
+            batch_label = label[output_nodes].to(device)
+            blocks = [block.to(device) for block in blocks]
+        batch_pred = model(blocks, batch_feat)
+        batch_loss = F.cross_entropy(batch_pred, batch_label)
+        optimizer.zero_grad()
+        batch_loss.backward()
+        optimizer.step()
+
+    print(f"training model on device: {device}")        
+    timer = Timer()
     sampling_timers = []
     feature_timers = []
     forward_timers = []
     backward_timers = []
-    print(f"training model on {device}")
+    
     for epoch in range(config.num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")

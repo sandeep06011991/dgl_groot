@@ -245,8 +245,8 @@ class Config:
         for header, ctn in zip(header, content):
             res += f"{header}={ctn} | "
         res += "\n"
-        return res
-    
+        return res    
+
 class Profiler:
     def __init__(self, duration: float, sampling_time : float, feature_time: float, forward_time: float, backward_time: float, test_acc):
         self.duration = duration
@@ -256,7 +256,7 @@ class Profiler:
         self.backward_time = backward_time
         self.test_acc = test_acc
         self.allocated_mb, self.reserved_mb = get_memory_info()
-        
+    
     def header(self):
         header = ["duration (s)", "sampling (s)", "feature (s)", "forward (s)", "backward (s)", "allocated (MB)", "reserved (MB)", "test accuracy %"]
         return header
@@ -274,6 +274,10 @@ class Profiler:
         res += "\n"
         return res
 
+def empty_profiler():
+    empty = -1
+    profiler = Profiler(duration=empty, sampling_time=empty, feature_time=empty, forward_time=empty, backward_time=empty, test_acc=empty)
+    return profiler
 
 def get_duration(timers: list[CudaTimer], rb=3)->float:
     res = 0.0
