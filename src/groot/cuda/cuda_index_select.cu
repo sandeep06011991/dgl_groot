@@ -493,6 +493,7 @@ void IndexSelect(NDArray array, IdArray index, NDArray &out_buff,
 void IndexSelect(NDArray array, IdArray in_index, IdArray out_index,
                  NDArray &out_buff, cudaStream_t stream) {
   std::string header = "IndexSelect";
+  CHECK_EQ(in_index->dtype, out_index->dtype);
   CHECK_EQ(in_index->shape[0], out_index->shape[0])
       << "in_index and out_index must have the same shape";
   if (in_index.NumElements() <= 8192) {

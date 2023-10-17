@@ -216,7 +216,8 @@ class CudaTimer:
         return duration_s
     
 class Config:
-    def __init__(self, graph_name, world_size, num_epoch, fanouts, batch_size, system, model, hid_size, cache_rate, log_path, data_dir):
+    def __init__(self, graph_name, world_size, num_epoch, fanouts,
+                 batch_size, system, model, hid_size, cache_rate, log_path, data_dir):
         self.graph_name = graph_name
         self.world_size = world_size
         self.num_epoch = num_epoch
@@ -228,12 +229,16 @@ class Config:
         self.cache_rate = cache_rate
         self.log_path = log_path
         self.data_dir = data_dir
+        self.num_redundant_layer = len(self.fanouts)
         
     def header(self):
-        return ["graph_name", "world_size", "num_epoch", "fanouts", "batch_size", "system", "model", "hid_size", "cache_rate"]
+        return ["graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
+                "batch_size", "system", \
+                    "model", "hid_size", "cache_rate"]
     
     def content(self):
-        return [self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.batch_size, self.system, self.model, self.hid_size, self.cache_rate]
+        return [self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
+                    self.batch_size, self.system, self.model, self.hid_size, self.cache_rate]
 
     def __repr__(self):
         res = ""
@@ -246,7 +251,8 @@ class Config:
         return res    
 
 class Profiler:
-    def __init__(self, duration: float, sampling_time : float, feature_time: float, forward_time: float, backward_time: float, test_acc):
+    def __init__(self, duration: float, sampling_time : float, feature_time: float,\
+                 forward_time: float, backward_time: float, test_acc):
         self.duration = duration
         self.sampling_time = sampling_time
         self.feature_time = feature_time
@@ -254,13 +260,15 @@ class Profiler:
         self.backward_time = backward_time
         self.test_acc = test_acc
         self.allocated_mb, self.reserved_mb = get_memory_info()
-    
+        self.edges_computed = 0
     def header(self):
-        header = ["duration (s)", "sampling (s)", "feature (s)", "forward (s)", "backward (s)", "allocated (MB)", "reserved (MB)", "test accuracy %"]
+        header = ["duration (s)", "sampling (s)", "feature (s)", "forward (s)", "backward (s)",\
+                    "allocated (MB)", "reserved (MB)", "test accuracy %", "edges_computed"]
         return header
     
     def content(self):
-        content = [self.duration, self.sampling_time, self.feature_time, self.forward_time, self.backward_time, self.allocated_mb, self.reserved_mb, self.test_acc]
+        content = [self.duration, self.sampling_time, self.feature_time, self.forward_time,\
+                   self.backward_time, self.allocated_mb, self.reserved_mb, self.test_acc, self.edges_computed]
         return content
     
     def __repr__(self):

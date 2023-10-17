@@ -108,7 +108,7 @@ def get_distributed_model( model_name , feat_size, num_layers,\
     print("n_classes", n_classes)
     print("model", model_name)
     # model_type = "debug"
-    model_name in ["graphsage", "gat","hgt", "gcn" ]
+    assert model_name in ["sage", "gat","hgt", "gcn" ]
     if model_name == "gat":
         # GAT has atleast 2 layers
         assert(num_layers > 1)
@@ -120,7 +120,7 @@ def get_distributed_model( model_name , feat_size, num_layers,\
         assert (num_layers > 1)
         for i in range(num_layers):
             layers.append(Gather())
-    if model_name == "graphsage":
+    if model_name == "sage":
         assert (num_layers > 1)
         layers.append(SAGEConv(feat_size, n_hidden , aggregator_type= 'mean'))
         for i in range(num_layers - 2):

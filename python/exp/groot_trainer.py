@@ -1,13 +1,17 @@
+import torch.multiprocessing
 import torch.nn.functional as F
 import torchmetrics.functional as MF
 import torch.distributed as dist
 import gc
-
 from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.multiprocessing import spawn
 from dgl.utils import pin_memory_inplace, gather_pinned_tensor_rows
-from .dgl_model import *
+
+from runner.util import *
 from .util import *
+from dgl.groot import *
+from dgl.groot.models import get_distributed_model
+from torch.nn.parallel import DistributedDataParallel
 
 def ddp_setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -24,27 +28,51 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     
     in_dir = os.path.join(config.data_dir, config.graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
+    partition_map = get_metis_partition(config)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
-    max_cache_fraction_queue = torch.multiprocessing.Queue()
+    torch.multiprocessing.set_start_method('spawn')
+    max_cache_fraction_queue = torch.multiprocessing.Queue(1)
+    train_idx_list = []
+    for p in range(config.world_size):
+        train_idx_list.append(train_idx[partition_map[train_idx] == p])
     for config in configs:
+        config.cache_rate = 0
+        cached_ids = None
+        # try:
+        #     spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
+        #                            num_label, train_idx_list , valid_idx, test_idx, \
+        #                            indptr, indices, edges, max_cache_fraction_queue, partition_map, cached_ids),\
+        #           nprocs=config.world_size, daemon=True, join= True)
+        #
+        # except Exception as e:
+        #     print(e)
+        #     assert(False)
+        # gc.collect()
+        # torch.cuda.empty_cache()
+        # config.cache_rate = max_cache_fraction_queue.get()
+        config.cache_rate = 1
+        # Todo: bad design, two kinds of config objects with almost similar charecteristics.
+        config.cache_percentage = config.cache_rate
+        cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
         try:
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
-                                   num_label, train_idx, valid_idx, test_idx, \
-                                   indptr, indices, edges, max_cache_fraction_queue),\
+                                   num_label, train_idx_list, valid_idx, test_idx, \
+                                   indptr, indices, edges, None , partition_map, cached_ids), \
                   nprocs=config.world_size, daemon=True, join= True)
 
         except Exception as e:
             print(e)
+            assert(False)
         gc.collect()
         torch.cuda.empty_cache()
-            
+
 def train_ddp(rank: int, config: Config, test_acc: bool,
               graph: dgl.DGLGraph, feat: torch.Tensor, label: torch.Tensor, num_label: int, 
-              train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor,
+              train_idx_list: [torch.Tensor], valid_idx: torch.Tensor, test_idx: torch.Tensor,
               indptr: torch.Tensor, indices: torch.Tensor, edges:torch.Tensor, \
-                queue: torch.multiprocessing.Queue, partition_map: torch.Tensor, cached_ids: None):
+                queue: torch.multiprocessing.Queue, partition_map: torch.Tensor, cached_ids):
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
@@ -62,86 +90,103 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         label = label.to(device)
 
     max_pool_size = 1
+    num_layers = len(config.fanouts)
+    block_type = get_block_type("src_to_dst")
+    step = min([(int(idx.shape[0] / config.batch_size) + 1) for idx in train_idx_list])
+    train_idx = train_idx_list[rank].to(rank)
+    partition_map = partition_map.to(rank)
+    dataloader = init_groot_dataloader(
+        rank, config.world_size, block_type, rank, config.fanouts,
+        config.batch_size,  config.num_redundant_layer, max_pool_size,
+        indptr, indices, feat, label,
+        train_idx, valid_idx, test_idx, partition_map
+    )
+    if cached_ids != None:
 
+        cache_id = cached_ids[rank].to(rank)
+        # cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
+        init_groot_dataloader_cache(cache_id.to(indptr.dtype))
+
+    n_classes = torch.max(label) + 1
+    model = get_distributed_model( config.model, feat.shape[1], num_layers, config.hid_size, \
+                                   n_classes, config.num_redundant_layer,
+                                   rank, config.world_size).to(rank)
+    model = DistributedDataParallel(model)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     timer = Timer()
-    model = None
-    if config.model == "gat":
-        model = DGLGat(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label, num_heads=4)
-    elif config.model == "sage":
-        model = DGLGraphSage(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label)
     model = model.to(device)
     model = DDP(model, device_ids=[rank])
     
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
     sampling_timers = []
     feature_timers = []
     forward_timers = []
     backward_timers = []
+    edges_computed = []
+    max_memory_used = []
     print(f"training model on {device}")
     for epoch in range(config.num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")
-        sampling_timer = CudaTimer()
-        for input_nodes, output_nodes, blocks in dataloader:
+        randInt = torch.randperm(train_idx.shape[0], device = rank)
+        shuffle_training_nodes(randInt)
+        edges_per_epoch = 0
+        for _ in range(step):
+            sampling_timer = CudaTimer()
+            key = sample_batch_sync()
+            blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
+                                n_redundant_layers = config.num_redundant_layer , mode = "SRC_TO_DEST")
+            local_blocks, _, _ = blocks
+            for block in local_blocks:
+                edges_per_epoch += block.num_edges()
             sampling_timer.end()
-            
             feat_timer = CudaTimer()
-            batch_feat = None
-            batch_label = None
-            if "uva" in config.system:
-                batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
-                batch_label = gather_pinned_tensor_rows(label, output_nodes)
-            elif "gpu" in config.system:
-                batch_feat = feat[input_nodes]
-                batch_label = label[output_nodes]
-            else:
-                batch_feat = feat[input_nodes].to(device)
-                batch_label = label[output_nodes].to(device)
-                blocks = [block.to(device) for block in blocks]
-                
-            feat_timer.end()            
-            
+            feat_timer.end()
             forward_timer = CudaTimer()
-            batch_pred = model(blocks, batch_feat)
-            batch_loss = F.cross_entropy(batch_pred, batch_label)
-            forward_timer.end()
-            
-            backward_timer = CudaTimer()
+            pred = model(blocks, batch_feat)
+            loss = torch.nn.functional.cross_entropy(pred, batch_label)
             optimizer.zero_grad()
-            batch_loss.backward()
-            optimizer.step()
+            forward_timer.end()
+            backward_timer = CudaTimer()
+            loss.backward()
             backward_timer.end()
-            
+            optimizer.step()
             sampling_timers.append(sampling_timer)
             feature_timers.append(feat_timer)
             forward_timers.append(forward_timer)
             backward_timers.append(backward_timer)
-
-            sampling_timer = CudaTimer()
-            
+            max_memory_used.append(torch.cuda.memory_allocated())
     torch.cuda.synchronize()
     duration = timer.duration()
+    edges_computed.append(edges_per_epoch)
     sampling_time = get_duration(sampling_timers)
     feature_time = get_duration(feature_timers)
     forward_time = get_duration(forward_timers)
     backward_time = get_duration(backward_timers)
-    profiler = Profiler(duration=duration, sampling_time=sampling_time, feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
+    profiler = Profiler(duration=duration, sampling_time=sampling_time,
+                        feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
+    profiler.edges_computed = sum(edges_computed)/len(edges_computed)
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
+        if config.cache_rate == 0:
+            max_available_memory = 16 * (1024 ** 3) - (max(max_memory_used))
+            percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
+            print("Can cache percentage of nodes", percentage_of_nodes)
+            queue.put(percentage_of_nodes)
         if not test_acc:
             write_to_csv(config.log_path, [config], [profiler])
     
     dist.barrier()
     
-    if test_acc:
+    if test_acc :
         print(f"testing model accuracy on {device}")
-        dataloader, graph = get_dgl_sampler(graph=graph, train_idx=test_idx, graph_samler=graph_sampler, system=config.system, batch_size=config.batch_size, use_dpp=True)    
+        graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
+        dataloader, graph = get_dgl_sampler(graph=graph, train_idx=test_idx, \
+                                            graph_samler=graph_sampler, system=config.system, \
+                                            batch_size=config.batch_size, use_dpp=True)
         model.eval()
         ys = []
         y_hats = []
-        
         for input_nodes, output_nodes, blocks in dataloader:
             with torch.no_grad():
                 batch_feat = None
@@ -157,7 +202,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
                     batch_label = label[output_nodes].to(device)
                     blocks = [block.to(device) for block in blocks]
                 ys.append(batch_label)
-                batch_pred = model(blocks, batch_feat)
+                batch_pred = model(blocks, batch_feat, inference = True)
                 y_hats.append(batch_pred)  
         acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=num_label)
         dist.all_reduce(acc, op=dist.ReduceOp.SUM)
@@ -168,130 +213,3 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             write_to_csv(config.log_path, [config], [profiler])
     ddp_exit()
 
-# def bench_dgl_single(config: Config, test_acc=False):
-#     if config.world_size == 1:
-#         return train_single_gpu(config, config.data_dir, test_acc)
-
-#     in_dir = os.path.join(config.data_dir, config.graph_name)
-#     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-#     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
-#     feat, label, num_label = load_feat_label(in_dir)
-#     spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size, daemon=True)
-    
-# def train_single_gpu(config: Config, data_dir, test_acc):
-#     device = torch.cuda.device(0)
-#     e2eTimer = Timer()
-#     in_dir = os.path.join(data_dir, config.graph_name)
-#     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-#     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
-#     graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
-#     dataloader, graph = get_dgl_sampler(graph, train_idx, graph_sampler, config.system, config.batch_size, False)
-#     feat, label, num_label = load_feat_label(in_dir)
-    
-#     if "uva" in config.system:
-#         feat_nd  = pin_memory_inplace(feat)
-#         label_nd = pin_memory_inplace(label)
-    
-#     elif "gpu" in config.system:
-#         feat = feat.to(device)
-#         label = label.to(device)
-        
-#     timer = Timer()
-    
-#     model = None
-#     if config.model == "gat":
-#         model = DGLGat(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label, num_heads=4)
-#     elif config.model == "sage":
-#         model = DGLGraphSage(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label)
-#     model = model.to(device)
-    
-#     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
-#     sampling_timers = []
-#     feature_timers = []
-#     forward_timers = []
-#     backward_timers = []
-#     print(f"train on device {device}")
-#     for epoch in range(config.num_epoch):
-#         print(f"start epoch {epoch}")
-#         sampling_timer = CudaTimer()
-#         for input_nodes, output_nodes, blocks in dataloader:
-#             sampling_timer.end()
-            
-#             feat_timer = CudaTimer()
-#             batch_feat = None
-#             batch_label = None
-#             if "uva" in config.system:
-#                 batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
-#                 batch_label = gather_pinned_tensor_rows(label, output_nodes)
-#             elif "gpu" in config.system:
-#                 batch_feat = feat[input_nodes]
-#                 batch_label = label[output_nodes]
-#             else:
-#                 print(f"{input_nodes=}")
-#                 batch_feat = feat[input_nodes].to(device)
-#                 batch_label = label[output_nodes].to(device)
-#                 blocks = [block.to(device) for block in blocks]
-                
-#             feat_timer.end()            
-            
-#             forward_timer = CudaTimer()
-#             batch_pred = model(blocks, batch_feat)
-#             batch_loss = F.cross_entropy(batch_pred, batch_label)
-#             forward_timer.end()
-            
-#             backward_timer = CudaTimer()
-#             optimizer.zero_grad()
-#             batch_loss.backward()
-#             optimizer.step()
-#             backward_timer.end()
-            
-#             sampling_timers.append(sampling_timer)
-#             feature_timers.append(feat_timer)
-#             forward_timers.append(forward_timer)
-#             backward_timers.append(backward_timer)
-
-#             sampling_timer = CudaTimer()
-            
-#     torch.cuda.synchronize()
-#     duration = timer.duration()
-#     sampling_time = get_duration(sampling_timers)
-#     feature_time = get_duration(feature_timers)
-#     forward_time = get_duration(forward_timers)
-#     backward_time = get_duration(backward_timers)
-#     profiler = Profiler(duration=duration, sampling_time=sampling_time, feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
-    
-#     print(f"train for {config.num_epoch} epochs in {duration}s")
-#     print(f"finished experiment {config} in {e2eTimer.duration()}s")
-    
-#     if test_acc:
-#         print("testing model accuracy")
-#         dataloader, graph = get_dgl_sampler(graph, test_idx, graph_sampler, config.system, config.batch_size, False)
-#         model.eval()
-#         ys = []
-#         y_hats = []
-        
-#         for input_nodes, output_nodes, blocks in dataloader:
-#             with torch.no_grad():
-#                 batch_feat = None
-#                 batch_label = None
-#                 if "uva" in config.system:
-#                     batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
-#                     batch_label = gather_pinned_tensor_rows(label, output_nodes)
-#                 elif "gpu" in config.system:
-#                     batch_feat = feat[input_nodes]
-#                     batch_label = label[output_nodes]
-#                 else:
-#                     batch_feat = feat[input_nodes].to(device)
-#                     batch_label = label[output_nodes].to(device)
-#                     blocks = [block.to(device) for block in blocks]
-#                 ys.append(batch_label)
-#                 batch_pred = model(blocks, batch_feat)
-#                 y_hats.append(batch_pred)
-                
-#         acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=num_label)
-#         acc = round(acc.item() * 100, 2)
-#         profiler.test_acc = acc  
-#         print(f"test accuracy={acc}%")
-              
-#     write_to_csv(config.log_path, [config], [profiler])
