@@ -123,12 +123,15 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   assert(frontier->shape[0] > 0);
   assert(frontier->shape[0] < array->expectedSize);
   assert(num_partitions == world_size);
-  if(array->debug){
-    array->table->Reset();
-    array->table->FillWithDuplicates(frontier, frontier->shape[0]);
-    CHECK_EQ(array->table->RefUnique()->shape[0], frontier->shape[0]);
-    array->table->Reset();
-  }
+
+  auto table = std::make_shared<CudaHashTable>(frontier->dtype, frontier->ctx,
+                                               frontier.NumElements() * num_partitions);
+//  if(array->debug){
+//    array->table->Reset();
+//    array->table->FillWithDuplicates(frontier, frontier->shape[0]);
+//    CHECK_EQ(array->table->RefUnique()->shape[0], frontier->shape[0]);
+//    array->table->Reset();
+//  }
   array->scattered_tensor_dim = frontier->shape[0];
   array->originalArray = frontier;
   array->partitionMap = _partition_map;
@@ -159,17 +162,17 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
 
 
   // Todo: Why table stream is different from main stream
-  array->table->_stream = stream;
-  array->table->Reset();
-  array->table->FillWithDuplicates(array->shuffled_array,
-                                   array->shuffled_array->shape[0]);
-  array->unique_array = array->table->RefUnique();
+//  array->table->_stream = stream;
+//  array->table->Reset();
+//  array->table->FillWithDuplicates(array->shuffled_array,
+//                                   array->shuffled_array->shape[0]);
+  table->FillWithDuplicates(array->shuffled_array, array->shuffled_array->shape[0]);
+  array->unique_array = table->CopyUnique();
   array->unique_tensor_dim = array->unique_array->shape[0];
   array->gather_idx_in_unique_out_shuffled = IdArray::Empty(
       std::vector<int64_t>{array->shuffled_array->shape[0]},
       array->shuffled_array->dtype, array->shuffled_array->ctx);
-  GPUMapEdges(array->shuffled_array, array->gather_idx_in_unique_out_shuffled,
-              array->table, stream);
+  GPUMapEdges(array->shuffled_array, array->gather_idx_in_unique_out_shuffled, table, stream);
 }
 
 

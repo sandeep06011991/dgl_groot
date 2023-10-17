@@ -5,8 +5,6 @@ _init_api("dgl.ds", __name__)
 import dgl.backend as F
 from torch import Tensor
 from ..heterograph import DGLBlock
-import torch
-
 
 def init_groot_dataloader(rank: int, world_size: int, block_type: int, device_id: int, fanouts: list[int],
                     batch_size: int, num_redundant_layers: int, max_pool_size: int,
@@ -43,7 +41,7 @@ def init_groot_dataloader_cache(cache_idx: Tensor):
     _CAPI_InitCache(F.to_dgl_nd(cache_idx))
     
 def get_batch(key: int, layers: int = 3, \
-                n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL"):
+                n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL") -> (list[DGLBlock], Tensor, Tensor):
     blocks = []
     unique_ids = []
     frontier = None
@@ -72,6 +70,42 @@ def get_batch(key: int, layers: int = 3, \
     feat = _CAPI_GetFeat(key)
     labels = _CAPI_GetLabel(key)
     return blocks,  F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)
+
+def get_batch_graph(key: int, layers: int = 3, \
+                n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL") -> list[DGLBlock]:
+    blocks = []
+    unique_ids = []
+    frontier = None
+    if n_redundant_layers != layers:
+        for i in range(layers):
+            gidx = _CAPI_GetBlock(key, i)
+            block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
+            if i >= n_redundant_layers:
+                assert(mode == "SRC_TO_DEST" or mode == "DEST_TO_SRC")
+                if mode == "SRC_TO_DEST":
+                    block.scattered_src = _CAPI_GetBlockScatteredSrc(key, i)
+            if i == n_redundant_layers:
+                frontier = _CAPI_GetBlocksFrontier(key, i)
+
+            unique_ids.insert(0, F.zerocopy_from_dgl_ndarray(_CAPI_GetBlocksUniqueId(key,i)))
+            blocks.insert(0, block)
+        # Todo correctness test
+        if mode == "SRC_TO_DEST":
+            blocks = (blocks, frontier, unique_ids)
+    else:
+        for i in range(layers):
+            gidx = _CAPI_GetBlock(key, i)
+            block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
+            blocks.insert(0, block)
+    return blocks
+
+def get_batch_label(key:int) -> Tensor:
+    labels = _CAPI_GetLabel(key)
+    return F.zerocopy_from_dgl_ndarray(labels)
+
+def get_batch_feat(key:int) -> Tensor:
+    feat = _CAPI_GetFeat(key)
+    return F.zerocopy_from_dgl_ndarray(feat)
 
 def sample_batch_async() -> int:
     return _CAPI_NextAsync()

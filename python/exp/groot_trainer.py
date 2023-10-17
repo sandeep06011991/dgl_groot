@@ -27,9 +27,10 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     
-    in_dir = os.path.join(config.data_dir, config.graph_name)
+    in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-    partition_map = get_metis_partition(config)
+    # partition_map = get_metis_partition(config)
+    partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
@@ -49,7 +50,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
 
         except Exception as e:
             print(e)
-            assert(False)
+            exit(-1)
         gc.collect()
         torch.cuda.empty_cache()
         config.cache_rate = max_cache_fraction_queue.get()
@@ -78,7 +79,6 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     e2eTimer = Timer()
     indptr_handle = pin_memory_inplace(indptr)
     indices_handle = pin_memory_inplace(indices)
-    print("Note attempting empty tensor pinning")
     edge_id_handle = pin_memory_inplace(edges)
 
     if "uva" in config.system:
@@ -137,7 +137,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
                                 n_redundant_layers = config.num_redundant_layer , mode = "SRC_TO_DEST")
             if config.num_redundant_layer == num_layers:
-                local_blocks == blocks
+                local_blocks = blocks
             else:
                 local_blocks, _, _ = blocks
             for block in local_blocks:
@@ -185,7 +185,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     
     if test_acc :
         print(f"testing model accuracy on {device}")
-        graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
+        graph_sampler = dgl.dataloading.NeighborSampler(fanouts=config.fanouts)
         dataloader, graph = get_dgl_sampler(graph=graph, train_idx=test_idx, \
                                             graph_samler=graph_sampler, system=config.system, \
                                             batch_size=config.batch_size, use_dpp=True)

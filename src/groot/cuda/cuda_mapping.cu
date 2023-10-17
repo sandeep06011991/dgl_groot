@@ -94,6 +94,7 @@ void GPUMapEdges(NDArray row, NDArray ret_row, std::shared_ptr<CudaHashTable> ma
     map_edge_ids<IdType, Constant::kCudaBlockSize, Constant::kCudaTileSize>
         <<<grid, block, 0, stream>>>(global_src, new_global_src, num_edges, table);
   });
+    runtime::DeviceAPI::Get(row->ctx)->StreamSync(row->ctx, stream);
 } // GPUMapEdges
 
 } // namespace groot

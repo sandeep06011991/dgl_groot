@@ -35,55 +35,55 @@ struct BlockObject : public runtime::Object {
               int64_t batch_size, DGLDataType dtype, cudaStream_t stream) {
 //  Num partitions must be multiplied to single gpu expeceted nodes only after last redundant layer
 //  Since we don't do this optimization over allocation is done for safety.
-    int64_t est_num_src = batch_size * num_partitions;
-    int64_t est_num_dst = batch_size * num_partitions;
-    for (int64_t i = 0; i < layer; i++)
-      est_num_src *= (fanouts[i] + 1);
-    for (int64_t i = 0; i <= layer; i++)
-      est_num_dst *= (fanouts[i] + 1);
-    _row = NDArray::Empty({est_num_dst}, dtype, ctx);
-    _col = NDArray::Empty({est_num_dst}, dtype, ctx);
-    _new_row = NDArray::Empty({est_num_dst}, dtype, ctx);
-    _new_col = NDArray::Empty({est_num_dst}, dtype, ctx);
-    _new_len_tensor = NDArray::PinnedEmpty({1}, dtype, DGLContext{kDGLCPU, 0});
-    _data_or_idx = NDArray::Empty({est_num_dst}, dtype, ctx);
-    _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
-    _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
-
-    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst , stream);
+//    int64_t est_num_src = batch_size * num_partitions;
+//    int64_t est_num_dst = batch_size * num_partitions;
+//    for (int64_t i = 0; i < layer; i++)
+//      est_num_src *= (fanouts[i] + 1);
+//    for (int64_t i = 0; i <= layer; i++)
+//      est_num_dst *= (fanouts[i] + 1);
+//    _row = NDArray::Empty({est_num_dst}, dtype, ctx);
+//    _col = NDArray::Empty({est_num_dst}, dtype, ctx);
+//    _new_row = NDArray::Empty({est_num_dst}, dtype, ctx);
+//    _new_col = NDArray::Empty({est_num_dst}, dtype, ctx);
+//    _new_len_tensor = NDArray::PinnedEmpty({1}, dtype, DGLContext{kDGLCPU, 0});
+//    _data_or_idx = NDArray::Empty({est_num_dst}, dtype, ctx);
+//    _indptr = NDArray::Empty({est_num_src + 1}, dtype, ctx);
+//    _outdeg = NDArray::Empty({est_num_src}, dtype, ctx);
+//    _table = std::make_shared<CudaHashTable>(dtype, ctx, est_num_dst , stream);
     //Note scattered array src size refers to est_num_dest as during sampling, dest and src nodes are flipped.
 //    _scattered_dest =
 //        ScatteredArray::Create(est_num_src * num_partitions, num_partitions, ctx, dtype, stream);
-    _scattered_src =
-        ScatteredArray::Create(est_num_dst , num_partitions, ctx, dtype, stream);
+//    _scattered_src =
+//        ScatteredArray::Create(est_num_dst , num_partitions, ctx, dtype, stream);
   };
-  int64_t num_src, num_dst; // number of src (unique) and destination (unique)
+    int64_t num_src, num_dst; // number of src (unique) and destination (unique)
                             // for buliding the dgl block object
-  NDArray _row;             // input nodes in original ids (coo format)
-  NDArray _new_row;         // input nodes in reindex-ed ids (0 based indexing)
-  NDArray _col;             // destination nodes in original ids (coo format)
-  NDArray _new_col;         // destination nodes inreindex-ed ids (coo format)
-  NDArray _data_or_idx;     // storing index / data (optional)
-  NDArray _outdeg;
-  NDArray _indptr;
-  NDArray _new_len_tensor;
+
+    NDArray _row;             // input nodes in original ids (coo format)
+    NDArray _col;             // destination nodes in original ids (coo format)
+//  NDArray _new_row;         // input nodes in reindex-ed ids (0 based indexing)
+//  NDArray _new_col;         // destination nodes inreindex-ed ids (coo format)
+//  NDArray _data_or_idx;     // storing index / data (optional)
+//  NDArray _outdeg;
+//  NDArray _indptr;
+//  NDArray _new_len_tensor;
   NDArray _true_node_ids;
 
   HeteroGraphRef _block_ref;
-  std::shared_ptr<CudaHashTable> _table;
-  // Depending on wheter they are scattered src or dest
+//  std::shared_ptr<CudaHashTable> _table;
+// Depending on wheter they are scattered src or dest
   ScatteredArray _scattered_src;
-  ScatteredArray _scattered_dest;
+//  ScatteredArray _scattered_dest;
 
   void VisitAttrs(runtime::AttrVisitor *v) final {
     v->Visit("row", &_row);
     v->Visit("col", &_col);
-    v->Visit("idx", &_data_or_idx);
-    v->Visit("new_col", &_new_col);
-    v->Visit("new_row", &_new_row);
-    v->Visit("indptr", &_indptr);
-    v->Visit("outdeg", &_outdeg);
     v->Visit("gidx", &_block_ref);
+//    v->Visit("idx", &_data_or_idx);
+//    v->Visit("new_col", &_new_col);
+//    v->Visit("new_row", &_new_row);
+//    v->Visit("indptr", &_indptr);
+//    v->Visit("outdeg", &_outdeg);
     v->Visit("true_node_ids" ,&_true_node_ids);
   }
 
@@ -99,6 +99,19 @@ public:
   }
 
   using ContainerType = BlockObject;
+};
+
+struct GpuSamplingBuffer {
+    NDArray _data_or_idx;     // storing index / data (optional)
+    NDArray _outdeg;
+    NDArray _indptr;
+    std::shared_ptr<CudaHashTable> _table;
+    GpuSamplingBuffer(int64_t num_src, int64_t num_dst, DGLDataType dtype, DGLContext ctx) {
+        _data_or_idx = NDArray::Empty({num_dst}, dtype, ctx);
+        _indptr = NDArray::Empty({num_src + 1}, dtype, ctx);
+        _outdeg = NDArray::Empty({num_src}, dtype, ctx);
+        _table = std::make_shared<CudaHashTable>(dtype, ctx, num_dst);
+    }
 };
 
 struct GpuCacheQueryBuffer {
@@ -138,7 +151,7 @@ struct BlocksObject : public runtime::Object {
   NDArray _input_nodes;              // seeds
   NDArray _output_nodes;             // output nodes
   GpuCacheQueryBuffer _query_buffer; // store indices for query gpu cache
-  std::shared_ptr<CudaHashTable> _table;
+//  std::shared_ptr<CudaHashTable> _table;
   cudaStream_t _stream;
   DGLContext _ctx;
   BlockType _blockType;
@@ -163,13 +176,13 @@ struct BlocksObject : public runtime::Object {
 
     int exp_frontier_size = batch_size;
     for (int i = 0; i < num_redundant_layers; i++) exp_frontier_size *= (fanouts[i] + 1);
-    _scattered_frontier = ScatteredArray::Create(exp_frontier_size * num_partitions, num_partitions, ctx, id_type, stream);
+    _scattered_frontier = ScatteredArray::Create(exp_frontier_size, num_partitions, ctx, id_type, stream);
 
     int64_t est_output_nodes = batch_size;
     for (int64_t fanout : fanouts)
       est_output_nodes *= (fanout + 1);
-    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes,
-                                             stream);
+//    _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes,
+//                                             stream);
 //    _feats = NDArray::Empty({est_output_nodes, _feat_width}, feat_type, _ctx);
     _labels = NDArray::Empty({batch_size}, label_type, _ctx);
     _query_buffer.Init(est_output_nodes, id_type, _ctx);

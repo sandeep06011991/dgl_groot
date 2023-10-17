@@ -158,9 +158,8 @@ private:
 
 public:
   cudaStream_t _stream;
-
   CudaHashTable(DGLDataType dtype, DGLContext ctx, int64_t capacity,
-                cudaStream_t stream) {
+                cudaStream_t stream = runtime::getCurrentCUDAStream()) {
     _capacity = capacity;
     _stream = stream;
     _dtype = dtype;
@@ -182,7 +181,7 @@ public:
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
       const IdType *unique{nullptr};
       IdType num_unique = _handle->RefUnique(unique);
-      if(num_input + num_unique >=  _capacity){std::cout << "Expected" << _capacity <<" but got " << num_input <<"\n";}
+      if(num_input + num_unique >=  _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input <<"\n";}
       assert(num_input +  num_unique < _capacity);
 
       _handle->FillWithUnique(arr.Ptr<IdType>(), num_input, _stream);
@@ -195,7 +194,7 @@ public:
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
       const IdType *unique{nullptr};
       IdType num_unique = _handle->RefUnique(unique);
-      if(num_input + num_unique >=  _capacity){std::cout << "Expected" << _capacity <<" but got " << num_input <<"\n";}
+      if(num_input + num_unique >= _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input <<"\n";}
       assert(num_input +  num_unique < _capacity);
 
       _handle->FillWithDupRevised(arr.Ptr<IdType>(), num_input, _stream);
@@ -220,6 +219,14 @@ public:
     });
   }
 
+  int64_t NumItem() {
+    ATEN_ID_TYPE_SWITCH(_dtype, IdType, {
+      auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
+      const IdType *unique{nullptr};
+      IdType num_unique = _handle->RefUnique(unique);
+      return num_unique;
+    });
+  }
   NDArray CopyUnique() {
     ATEN_ID_TYPE_SWITCH(_dtype, IdType, {
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);

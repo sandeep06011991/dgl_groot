@@ -137,7 +137,7 @@ def get_dgl_sampler(graph: dgl.DGLGraph, train_idx: torch.Tensor, graph_samler: 
             use_uva=False,
             num_workers=1,
         )
-    elif system == "uva":
+    elif "uva" in system:
         graph.pin_memory_()
         assert(graph.is_pinned())
         dataloader = dgl.dataloading.DataLoader(
@@ -153,7 +153,7 @@ def get_dgl_sampler(graph: dgl.DGLGraph, train_idx: torch.Tensor, graph_samler: 
             use_uva=True,
             num_workers=0,
         )
-    elif system == "gpu":
+    elif "gpu" in system:
         graph = graph.to(device)
         dataloader = dgl.dataloading.DataLoader(
             graph=graph,               # The graph

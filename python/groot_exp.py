@@ -17,7 +17,7 @@ def get_configs(graph_name, system, log_path, data_dir):
         for batch_size in batch_sizes:
             for model in models:
                 for hid_size in hid_sizes:
-                    for num_redundant_layers in [ len(fanout)]:
+                    for num_redundant_layers in range(len(fanout) + 1):
                         config = Config(graph_name=graph_name,
                                         world_size=4,
                                         num_epoch=10,
@@ -34,7 +34,7 @@ def get_configs(graph_name, system, log_path, data_dir):
     return configs
 
 if __name__ == "__main__":
-    configs = get_configs(graph_name="ogbn-products", system="uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
+    configs = get_configs(graph_name="ogbn-products", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
     bench_groot_batch(configs=configs, test_acc=True)
     # configs = get_configs(graph_name="ogbn-papers100M", system="uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
     # bench_groot_batch(configs=configs, test_acc=True)

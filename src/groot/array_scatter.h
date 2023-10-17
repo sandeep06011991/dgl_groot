@@ -51,14 +51,14 @@ public:
 //              << "\n";
   }
   ScatteredArrayObject(int expectedSize, int num_partitions, DGLContext ctx,
-                       DGLDataType dtype, cudaStream_t stream) {
+                       DGLDataType dtype, cudaStream_t stream = runtime::getCurrentCUDAStream()) {
     this->dtype = dtype;
     this->ctx = ctx;
     this->num_partitions = num_partitions;
     this->stream = stream;
     this->expectedSize = expectedSize;
-    this->table =
-        std::make_shared<CudaHashTable>(dtype, ctx, expectedSize, stream);
+//    this->table =
+//        std::make_shared<CudaHashTable>(dtype, ctx, expectedSize, stream);
   }
   bool isScattered;
   // original array has no duplicates
@@ -83,7 +83,7 @@ public:
   NDArray shuffled_recv_offsets;
 
   // Possible received array after shuffling has duplicates
-  std::shared_ptr<CudaHashTable> table;
+//  std::shared_ptr<CudaHashTable> table;
   NDArray unique_array;
   NDArray gather_idx_in_unique_out_shuffled;
 
@@ -111,12 +111,12 @@ class ScatteredArray : public ObjectRef {
 public:
   DGL_DEFINE_OBJECT_REF_METHODS(ScatteredArray, runtime::ObjectRef,
                                 ScatteredArrayObject);
-  static ScatteredArray Create(int expectedSize, int num_partitions,
+  static ScatteredArray Create(int expected_size_on_single_gpu, int num_partitions,
                                DGLContext ctx, DGLDataType dtype,
                                cudaStream_t stream) {
-    std::cout << "Creating scattered object with expected size " << expectedSize <<"\n";
+    std::cout << "Creating scattered object with expected size " << expected_size_on_single_gpu << "\n";
     return ScatteredArray(std::make_shared<ScatteredArrayObject>(
-        expectedSize, num_partitions, ctx, dtype, stream));
+            expected_size_on_single_gpu * num_partitions, num_partitions, ctx, dtype, stream));
   }
 };
 

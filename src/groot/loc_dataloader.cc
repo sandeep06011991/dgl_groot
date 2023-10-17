@@ -57,7 +57,7 @@ DGL_REGISTER_GLOBAL("groot._CAPI_ShuffleIDX")
 
 DGL_REGISTER_GLOBAL("groot._CAPI_NextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
-      const int64_t key = DataloaderObject::Global()->SyncSample();
+      const int64_t key = DataloaderObject::Global()->Sample();
       *rv = key;
     });
 
@@ -91,15 +91,15 @@ DGL_REGISTER_GLOBAL("groot._CAPI_GetBlockScatteredSrc")
                 ->_scattered_src;
     });
 
-DGL_REGISTER_GLOBAL("groot._CAPI_GetBlockScatteredDest")
-    .set_body([](DGLArgs args, DGLRetValue *rv) {
-      const int64_t key = args[0];
-      const int64_t layer = args[1];
-      *rv = DataloaderObject::Global()
-                ->AwaitGetBlocks(key)
-                ->GetBlock(layer)
-                ->_scattered_dest;
-    });
+//DGL_REGISTER_GLOBAL("groot._CAPI_GetBlockScatteredDest")
+//    .set_body([](DGLArgs args, DGLRetValue *rv) {
+//      const int64_t key = args[0];
+//      const int64_t layer = args[1];
+//      *rv = DataloaderObject::Global()
+//                ->AwaitGetBlocks(key)
+//                ->GetBlock(layer)
+//                ->_scattered_dest;
+//    });
 
 DGL_REGISTER_GLOBAL("groot._CAPI_GetBlocksFrontier")
     .set_body([](DGLArgs args, DGLRetValue *rv) {

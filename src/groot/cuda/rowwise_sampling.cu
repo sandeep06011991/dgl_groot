@@ -8,6 +8,7 @@
 
 #include "../../array/cuda/atomic.cuh"
 #include "../../array/cuda/utils.h"
+#include <dgl/aten/array_ops.h>
 #include "rowwise_sampling.cuh"
 using TensorDispatcher = dgl::runtime::TensorDispatcher;
 
@@ -231,17 +232,17 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
   const int64_t num_rows = rows->shape[0];
   const IdType *const slice_rows = static_cast<const IdType *>(rows->data);
 
-  //  IdArray picked_row =
-  //      NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
-  //  IdArray picked_col =
-  //      NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
-  //  IdArray picked_idx =
-  //      NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
+    IdArray picked_row =
+        aten::NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
+    IdArray picked_col =
+        aten::NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
+    IdArray picked_idx =
+        aten::NewIdArray(num_rows * num_picks, ctx, sizeof(IdType) * 8);
 
-  NDArray &picked_row = block->_row;
-  NDArray &picked_col = block->_col;
-  NDArray &picked_idx = block->_data_or_idx;
-
+//  NDArray &picked_row = block->_row;
+//  NDArray &picked_col = block->_col;
+//  NDArray &picked_idx = block->_data_or_idx;
+//    GpuSamplingBuffer buffer = GpuSamplingBuffer(num_rows, num_rows * num_picks, DGLDataTypeTraits<IdType>::dtype, )
   IdType *const out_rows = static_cast<IdType *>(picked_row->data);
   IdType *const out_cols = static_cast<IdType *>(picked_col->data);
   IdType *const out_idxs = static_cast<IdType *>(picked_idx->data);
@@ -266,9 +267,9 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
   const IdType *data = nullptr;
 
   // compute degree
-  //  IdType* out_deg = static_cast<IdType*>(
-  //      device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
-  IdType *const out_deg = static_cast<IdType *>(block->_outdeg->data);
+    IdType* out_deg = static_cast<IdType*>(
+        device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
+//  IdType *const out_deg = static_cast<IdType *>(block->_outdeg->data);
   if (replace) {
     const dim3 block(512);
     const dim3 grid((num_rows + block.x - 1) / block.x);
@@ -282,9 +283,9 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
   }
 
   // fill out_ptr
-  //  IdType* out_ptr = static_cast<IdType*>(
-  //      device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
-  IdType *out_ptr = static_cast<IdType *>(block->_indptr->data);
+    IdType* out_ptr = static_cast<IdType*>(
+        device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
+//  IdType *out_ptr = static_cast<IdType *>(block->_indptr->data);
   size_t prefix_temp_size = 0;
   CUDA_CALL(cub::DeviceScan::ExclusiveSum(nullptr, prefix_temp_size, out_deg,
                                           out_ptr, num_rows + 1, stream));
@@ -297,18 +298,18 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
   cudaEvent_t copyEvent;
   CUDA_CALL(cudaEventCreate(&copyEvent));
 
-  //            NDArray new_len_tensor;
-  //            if (dgl::runtime::TensorDispatcher::Global()->IsAvailable()) {
-  //                new_len_tensor = NDArray::PinnedEmpty(
-  //                        {1}, DGLDataTypeTraits<IdType>::dtype,
-  //                        DGLContext{kDGLCPU, 0});
-  //            } else {
-  //                // use pageable memory, it will unecessarily block but be
-  //                functional new_len_tensor = NDArray::Empty(
-  //                        {1}, DGLDataTypeTraits<IdType>::dtype,
-  //                        DGLContext{kDGLCPU, 0});
-  //            }
-  NDArray &new_len_tensor = block->_new_len_tensor;
+  NDArray new_len_tensor;
+  if (dgl::runtime::TensorDispatcher::Global()->IsAvailable()) {
+      new_len_tensor = NDArray::PinnedEmpty(
+              {1}, DGLDataTypeTraits<IdType>::dtype,
+              DGLContext{kDGLCPU, 0});
+  } else {
+      // use pageable memory, it will unecessarily block but be
+      new_len_tensor = NDArray::Empty(
+              {1}, DGLDataTypeTraits<IdType>::dtype,
+              DGLContext{kDGLCPU, 0});
+  }
+//  NDArray &new_len_tensor = block->_new_len_tensor;
   // copy using the internal current stream
   CUDA_CALL(cudaMemcpyAsync(new_len_tensor->data, out_ptr + num_rows,
                             sizeof(IdType), cudaMemcpyDeviceToHost, stream));
@@ -341,15 +342,15 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
   CUDA_CALL(cudaEventDestroy(copyEvent));
 
   const IdType new_len = static_cast<const IdType *>(new_len_tensor->data)[0];
-  block->_indptr->shape[0] = num_rows + 1;
-  block->_outdeg->shape[0] = num_rows;
-  block->_row->shape[0] = new_len;
-  block->_col->shape[0] = new_len;
-  block->_new_row->shape[0] = new_len;
-  block->_new_col->shape[0] = new_len;
+//  block->_indptr->shape[0] = num_rows + 1;
+//  block->_outdeg->shape[0] = num_rows;
+//  block->_row->shape[0] = new_len;
+//  block->_col->shape[0] = new_len;
+//  block->_new_row->shape[0] = new_len;
+//  block->_new_col->shape[0] = new_len;
 
-  //  picked_row = picked_row.CreateView({new_len}, picked_row->dtype);
-  //  picked_col = picked_col.CreateView({new_len}, picked_col->dtype);
+    block->_row = picked_row.CreateView({new_len}, picked_row->dtype);
+    block->_col = picked_col.CreateView({new_len}, picked_col->dtype);
   //  picked_idx = picked_idx.CreateView({new_len}, picked_idx->dtype);
   //
   //  return COOMatrix(
