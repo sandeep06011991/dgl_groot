@@ -47,21 +47,28 @@ def get_batch(key: int, layers: int = 3, \
     blocks = []
     unique_ids = []
     frontier = None
-    for i in range(layers):
-        gidx = _CAPI_GetBlock(key, i)
-        block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
-        if i >= n_redundant_layers:
-            assert(mode == "SRC_TO_DEST" or mode == "DEST_TO_SRC")
-            if mode == "SRC_TO_DEST":
-                block.scattered_src = _CAPI_GetBlockScatteredSrc(key, i)
-        if i == n_redundant_layers:
-            frontier = _CAPI_GetBlocksFrontier(key, i)
+    if n_redundant_layers != layers:
+        for i in range(layers):
+            gidx = _CAPI_GetBlock(key, i)
+            block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
+            if i >= n_redundant_layers:
+                assert(mode == "SRC_TO_DEST" or mode == "DEST_TO_SRC")
+                if mode == "SRC_TO_DEST":
+                    block.scattered_src = _CAPI_GetBlockScatteredSrc(key, i)
+            if i == n_redundant_layers:
+                frontier = _CAPI_GetBlocksFrontier(key, i)
 
-        unique_ids.insert(0, F.zerocopy_from_dgl_ndarray(_CAPI_GetBlocksUniqueId(key,i)))
-        blocks.insert(0, block)
-    # Todo correctness test
-    if mode == "SRC_TO_DEST":
-        blocks = (blocks, frontier, unique_ids)
+            unique_ids.insert(0, F.zerocopy_from_dgl_ndarray(_CAPI_GetBlocksUniqueId(key,i)))
+            blocks.insert(0, block)
+        # Todo correctness test
+        if mode == "SRC_TO_DEST":
+            blocks = (blocks, frontier, unique_ids)
+    else:
+        for i in range(layers):
+            gidx = _CAPI_GetBlock(key, i)
+            block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
+            blocks.insert(0, block)
+        
     feat = _CAPI_GetFeat(key)
     labels = _CAPI_GetLabel(key)
     return blocks,  F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)

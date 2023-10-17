@@ -54,10 +54,17 @@ class SRC_TO_DEST(torch.nn.Module):
 
     def forward(self, blocks, input, inference = False):
         x = input
+        if self.num_redundant_layers == self.n_layers:
+            for i,(block,layer) in enumerate(zip(blocks, self.layers)):
+                x = layer(block, x)
+                if i != len(self.layers) - 1:
+                    x = self.activation(x)
+                if len(x.shape) == 3:
+                    x = x.flatten(-2)
+            return x
         if not inference:
             blocks, frontier, unique_id_list = blocks
         redundant_layer = self.n_layers - self.num_redundant_layers
-
         # Todo refactor this code such that redundant_layer != 0 is handled automatically
         for i, (block,layer) in enumerate(zip(blocks, self.layers)):
             if not inference:

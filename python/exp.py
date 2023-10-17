@@ -8,8 +8,11 @@ def get_configs(graph_name, system, log_path, data_dir):
     batch_sizes = [4096, 8192]
     models = ["sage"]
     hid_sizes = [128]
-    cache_rates = [0.1]
-    
+    cache_rates = [0]
+    fanouts = [[10,10,10]]
+    batch_sizes = [4096]
+    models = ['gat']
+    hid_sizes = [256]
     configs = []
     for fanout in fanouts:
         for batch_size in batch_sizes:
@@ -31,5 +34,5 @@ def get_configs(graph_name, system, log_path, data_dir):
     return configs
 
 if __name__ == "__main__":
-    configs = get_configs(graph_name="ogbn-arxiv", system="gpu", log_path="./log/log.csv", data_dir="/data/ogbn/processed/")
+    configs = get_configs(graph_name="ogbn-products", system="uva", log_path="./log/dgl.csv", data_dir="/data/ogbn/processed/")
     bench_dgl_batch(configs=configs, test_acc=True)

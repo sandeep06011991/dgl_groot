@@ -1,3 +1,4 @@
+import nvtx
 import torch.multiprocessing
 import torch.nn.functional as F
 import torchmetrics.functional as MF
@@ -40,19 +41,18 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     for config in configs:
         config.cache_rate = 0
         cached_ids = None
-        # try:
-        #     spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
-        #                            num_label, train_idx_list , valid_idx, test_idx, \
-        #                            indptr, indices, edges, max_cache_fraction_queue, partition_map, cached_ids),\
-        #           nprocs=config.world_size, daemon=True, join= True)
-        #
-        # except Exception as e:
-        #     print(e)
-        #     assert(False)
-        # gc.collect()
-        # torch.cuda.empty_cache()
-        # config.cache_rate = max_cache_fraction_queue.get()
-        config.cache_rate = 1
+        try:
+            spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
+                                   num_label, train_idx_list , valid_idx, test_idx, \
+                                   indptr, indices, edges, max_cache_fraction_queue, partition_map, cached_ids),\
+                  nprocs=config.world_size, daemon=True, join= True)
+
+        except Exception as e:
+            print(e)
+            assert(False)
+        gc.collect()
+        torch.cuda.empty_cache()
+        config.cache_rate = max_cache_fraction_queue.get()
         # Todo: bad design, two kinds of config objects with almost similar charecteristics.
         config.cache_percentage = config.cache_rate
         cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
@@ -131,11 +131,15 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         shuffle_training_nodes(randInt)
         edges_per_epoch = 0
         for _ in range(step):
+            nvtx.push_range('minibatch_Start')
             sampling_timer = CudaTimer()
             key = sample_batch_sync()
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
                                 n_redundant_layers = config.num_redundant_layer , mode = "SRC_TO_DEST")
-            local_blocks, _, _ = blocks
+            if config.num_redundant_layer == num_layers:
+                local_blocks == blocks
+            else:
+                local_blocks, _, _ = blocks
             for block in local_blocks:
                 edges_per_epoch += block.num_edges()
             sampling_timer.end()
@@ -150,11 +154,12 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             loss.backward()
             backward_timer.end()
             optimizer.step()
+            nvtx.pop_range()
             sampling_timers.append(sampling_timer)
             feature_timers.append(feat_timer)
             forward_timers.append(forward_timer)
             backward_timers.append(backward_timer)
-            max_memory_used.append(torch.cuda.memory_allocated())
+            max_memory_used.append(torch.cuda.memory_reserved())
     torch.cuda.synchronize()
     duration = timer.duration()
     edges_computed.append(edges_per_epoch)
