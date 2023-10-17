@@ -15,7 +15,7 @@ if __name__ == "__main__":
     config.batch_size = 128
     # config.graph_name = "ogbn-products"
     config.world_size = 4
-    config.cache_percentage = .5
+    config.cache_percentage = 1
     # config.graph_name = "ogbn-papers100M"
     config.test_acc = True
     config.model_type = "gat"

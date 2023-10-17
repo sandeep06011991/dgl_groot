@@ -35,7 +35,8 @@ public:
     const auto [sorted_ids, sorted_idx] = dgl::aten::Sort(cache_ids, 0);
     _ctx = cache_ids->ctx;
     _cache_ids = sorted_ids;
-    _cache_idx = dgl::aten::Range(0, _cache_ids->shape[0], 64, _ctx);
+//    Todo Indexes should always be 64 bits, hacky fix
+    _cache_idx = dgl::aten::Range(0, _cache_ids->shape[0], cache_ids->dtype.bits, _ctx);
     _cpu_feats = cpu_feats;
     num_vertices = _cpu_feats->shape[0];
     LOG(INFO) << "Initializing cache with " << _cache_ids->shape[0] << "/" << _cpu_feats->shape[0]<< " feats";
@@ -44,12 +45,12 @@ public:
     CHECK_EQ(cache_ids->ndim, 1) << "cached ids must have dimension 1";
     CHECK_LE(cache_ids->shape[0], _cpu_feats->shape[0])
         << "cached id must be less than all the feats";
-    ATEN_ID_TYPE_SWITCH(cache_ids->dtype, IdType, {
+    ATEN_ID_TYPE_SWITCH(_cache_ids->dtype, IdType, {
       std::vector<IdType> id_to_idx;
       id_to_idx.resize(num_vertices);
       for (IdType cid = 0; cid < num_vertices; cid++)
         id_to_idx.at(cid) = -1;
-      std::vector<IdType> cached_id_vec = cache_ids.ToVector<IdType>();
+      std::vector<IdType> cached_id_vec = _cache_ids.ToVector<IdType>();
       for (IdType cix = 0; cix < (IdType)cached_id_vec.size(); cix++) {
         IdType cid = cached_id_vec.at(cix);
         id_to_idx.at(cid) = cix;

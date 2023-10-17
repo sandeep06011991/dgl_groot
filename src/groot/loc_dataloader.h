@@ -287,6 +287,7 @@ public:
     blocksPtr->_input_nodes = frontier;
 //    cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
     auto sampling_stream = runtime::getCurrentCUDAStream();
+    blocksPtr->_stream = sampling_stream;
     CHECK_LE(_num_redundant_layers, _fanouts.size() - 1);
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       int64_t num_picks = _fanouts.at(layer);
