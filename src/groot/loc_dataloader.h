@@ -87,12 +87,13 @@ public:
     _syncflags.resize(_max_pool_size);
     //    _uva_feat_streams = CreateStreams(_max_pool_size);
     //    _gpu_feat_streams = CreateStreams(_max_pool_size);
-    _sampling_streams = CreateStreams(_max_pool_size);
+    // _sampling_streams = CreateStreams(_max_pool_size);
     for (int64_t i = 0; i < _max_pool_size; i++) {
       _syncflags.at(i) = false;
       auto blocks = std::make_shared<BlocksObject>(
           _ctx, _world_size, _num_redundant_layers, _fanouts, _batch_size, _feat_width, _id_type,
-          _label_type, _feat_type, _block_type, _sampling_streams.at(i));
+          _label_type, _feat_type, _block_type,runtime::getCurrentCUDAStream());
+          // _sampling_streams.at(i));
       _blocks_pool.push_back(blocks);
     }
     _next_key = 0;
@@ -229,6 +230,7 @@ public:
     auto blocksPtr = _blocks_pool.at(blk_idx);
     blocksPtr->_input_nodes = frontier;
     auto table = blocksPtr->_table;
+    table->_stream = sampling_stream;
     table->Reset();
     table->FillWithUnique(frontier, frontier->shape[0]);
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
@@ -254,7 +256,6 @@ public:
       GPUMapEdges(blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
                   blockPtr->_new_col, table, sampling_stream);
     }
-
     runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
     for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
       auto blockPtr = _blocks_pool.at(blk_idx)->GetBlock(layer);
@@ -268,7 +269,8 @@ public:
     // those two kernels are not sync until later BatchSync is called
     IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                 sampling_stream);
-
+    blocksPtr->_feats = NDArray::Empty({blocksPtr->_output_nodes->shape[0], _feat_width},\
+                                        _feat_type, _ctx);
     if (gpu_cache.IsInitialized()) {
       gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
                                           sampling_stream, sampling_stream);
@@ -378,6 +380,8 @@ public:
     // those two kernels are not sync until later BatchSync is called
     IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                 sampling_stream);
+    blocksPtr->_feats = NDArray::Empty({blocksPtr->_output_nodes->shape[0], _feat_width},\
+                                       _feat_type, _ctx);
     if (gpu_cache.IsInitialized()) {
       gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
                                           sampling_stream, sampling_stream);

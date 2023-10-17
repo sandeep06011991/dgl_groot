@@ -170,7 +170,7 @@ struct BlocksObject : public runtime::Object {
       est_output_nodes *= (fanout + 1);
     _table = std::make_shared<CudaHashTable>(id_type, _ctx, est_output_nodes,
                                              stream);
-    _feats = NDArray::Empty({est_output_nodes, _feat_width}, feat_type, _ctx);
+//    _feats = NDArray::Empty({est_output_nodes, _feat_width}, feat_type, _ctx);
     _labels = NDArray::Empty({batch_size}, label_type, _ctx);
     _query_buffer.Init(est_output_nodes, id_type, _ctx);
   };
