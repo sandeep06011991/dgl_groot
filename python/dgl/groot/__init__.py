@@ -99,16 +99,13 @@ def get_batch_graph(key: int, layers: int = 3, \
             blocks.insert(0, block)
     return blocks
 
-def get_batch_label(key:int) -> Tensor:
+def get_feat_label(key:int) -> Tensor:
     labels = _CAPI_GetLabel(key)
-    return F.zerocopy_from_dgl_ndarray(labels)
-
-def get_batch_feat(key:int) -> Tensor:
     feat = _CAPI_GetFeat(key)
-    return F.zerocopy_from_dgl_ndarray(feat)
+    return F.zerocopy_from_dgl_ndarray(feat), F.zerocopy_from_dgl_ndarray(labels)
 
-def sample_batch_async() -> int:
-    return _CAPI_NextAsync()
+def extract_batch_feat_label(key: int, is_async: bool) -> None:
+    return _CAPI_ExtractFeatLabel(key, is_async)
 
-def sample_batch_sync() -> int:
-    return _CAPI_NextSync()
+def sample_batch_sync(extract_feat: bool) -> int:
+    return _CAPI_NextSync(extract_feat)

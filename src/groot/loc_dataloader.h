@@ -25,10 +25,6 @@ namespace dgl::groot {
     class DataloaderObject : public runtime::Object {
     public:
         std::vector<std::shared_ptr<BlocksObject>> _blocks_pool;
-//  std::vector<cudaStream_t> _sampling_streams;
-        //  std::vector<cudaStream_t> _uva_feat_streams;
-        //  std::vector<cudaStream_t> _gpu_feat_streams;
-//  std::vector<bool> _syncflags;
         std::vector<int64_t> _fanouts;
         NDArray _indptr;  // graph indptr
         NDArray _indices; // graph indices
@@ -52,15 +48,6 @@ namespace dgl::groot {
         DGLDataType _label_type;
         DGLDataType _feat_type;
         GpuCache gpu_cache;
-//  std::vector<cudaStream_t> CreateStreams(size_t len) const {
-//    std::vector<cudaStream_t> res;
-//    auto stream = static_cast<cudaStream_t>(
-//        runtime::DeviceAPI::Get(_ctx)->CreateStream(_ctx));
-//    for (size_t i = 0; i < len; i++) {
-//      res.push_back(stream);
-//    }
-//    return res;
-//  }
 
         DataloaderObject() = default;
 
@@ -81,9 +68,7 @@ namespace dgl::groot {
             // initialize buffer
             _blocks_pool.clear();
             std::vector<std::mutex> mutexes(_max_pool_size);
-//    _syncflags.resize(_max_pool_size);
             for (int64_t i = 0; i < _max_pool_size; i++) {
-//      _syncflags.at(i) = false;
                 auto blocks = std::make_shared<BlocksObject>(
                         _ctx, _world_size, _num_redundant_layers, _fanouts, _batch_size, _feat_width, _id_type,
                         _label_type, _feat_type, _block_type, runtime::getCurrentCUDAStream());
@@ -106,7 +91,6 @@ namespace dgl::groot {
             _batch_size = batch_size;
             _num_redundant_layers = num_redundant_layers;
             _max_pool_size = max_pool_size;
-//    _workers.resize(_max_pool_size);
             _id_type = indices->dtype;
             _label_type = labels->dtype;
             _feat_type = feats->dtype;
@@ -157,35 +141,15 @@ namespace dgl::groot {
 
         std::shared_ptr<BlocksObject> AwaitGetBlocks(int64_t key) {
             int64_t blk_idx = key % _max_pool_size;
-            SyncBlocks(key);
             return _blocks_pool.at(blk_idx);
-        }
-
-        // Q: shall we sample multiple instances or only the top two layers
-        // more fine-grained pipelining might be needed
-        int64_t AsyncSample() {
-            int64_t key = _next_key++;
-            GetBatch(key);
-            return key;
-        }
-
-        void SyncBlocks(int64_t key) {
-//    int blk_idx = key % _max_pool_size;
-//    if (_syncflags.at(blk_idx) == false) {
-//      auto stream = runtime::getCurrentCUDAStream();
-////      auto stream = _sampling_streams.at(
-////          blk_idx); // dataloading is using the sampling stream as well
-//      runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, stream);
-//      _syncflags.at(blk_idx) = true;
-//    }
         }
 
         // TODO sample multiple instance at once
         // Q: shall we sample mutiple instances or only the top two layers
         // more fine grained pipelining might be needed
-        int64_t Sample() {
+        int64_t Sample(bool extract_feat_label) {
             int64_t key = _next_key++;
-            GetBatch(key);
+            GetBatch(key, extract_feat_label);
             return key;
         }
 
@@ -206,23 +170,21 @@ namespace dgl::groot {
                                          start_idx * _id_type.bits / 8);
         }
 
-        void GetBatch(int64_t key) {
+        void GetBatch(int64_t key, bool extract_feat_label) {
             if (_num_redundant_layers == _fanouts.size())
-                GetBatchDP(key);
+                GetBatchDP(key, extract_feat_label);
             else
-                GetBatchHybrid(key);
+                GetBatchHybrid(key, extract_feat_label);
         }
 
-        void GetBatchDP(int64_t key) {
+        void GetBatchDP(int64_t key, bool extract_feat_and_label) {
             int blk_idx = key % _max_pool_size;
-//    _syncflags.at(blk_idx) = false;
             cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
             CUDAThreadEntry::ThreadLocal()->stream = sampling_stream;
             CUDAThreadEntry::ThreadLocal()->data_copy_stream = sampling_stream;
             NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
             auto blocksPtr = _blocks_pool.at(blk_idx);
             blocksPtr->_input_nodes = frontier;
-//    auto table = blocksPtr->_table;
             int64_t est_output_nodes = frontier->shape[0];
             for (auto fanout: _fanouts) est_output_nodes *= (fanout + 1);
             auto table = std::make_shared<CudaHashTable>(_id_type, _ctx, est_output_nodes, sampling_stream);
@@ -262,6 +224,27 @@ namespace dgl::groot {
                 blockPtr->_block_ref = HeteroGraphRef{graph_idx};
             }
 
+            if (extract_feat_and_label){
+                // those two kernels are not sync until later BatchSync is called
+                IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
+                            sampling_stream);
+                blocksPtr->_feats = NDArray::Empty({blocksPtr->_output_nodes->shape[0], _feat_width}, \
+                                        _feat_type, _ctx);
+                if (gpu_cache.IsInitialized()) {
+                    gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
+                                                        sampling_stream, sampling_stream);
+                } else {
+                    IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+                                sampling_stream);
+                }
+            }
+            runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+        }
+
+        void ExtractFeatLabel(int64_t key, bool async) {
+            int blk_idx = key % _max_pool_size;
+            auto sampling_stream = runtime::getCurrentCUDAStream();
+            auto blocksPtr = _blocks_pool.at(blk_idx);
             // those two kernels are not sync until later BatchSync is called
             IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                         sampling_stream);
@@ -274,31 +257,33 @@ namespace dgl::groot {
                 IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
                             sampling_stream);
             }
-            runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
-        }
 
-        void GetBatchHybrid(int64_t key) {
+            if (!async) {
+                runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+            }
+        }
+        void GetBatchHybrid(int64_t key, bool extract_feat_and_label) {
             int blk_idx = key % _max_pool_size;
             int num_partitions = _world_size;
             auto blocksPtr = _blocks_pool.at(blk_idx);
             NDArray frontier = GetNextSeeds(key); // seeds to sample subgraph
             blocksPtr->_input_nodes = frontier;
-//    cudaStream_t sampling_stream = _sampling_streams.at(blk_idx);
             auto sampling_stream = runtime::getCurrentCUDAStream();
 //            blocksPtr->_stream = sampling_stream;
             CHECK_LE(_num_redundant_layers, _fanouts.size() - 1);
             for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++) {
                 int64_t num_picks = _fanouts.at(layer);
                 std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
-//      auto blockTable = blockPtr->_table;
-                auto blockTable = std::make_shared<CudaHashTable>(_id_type, _ctx, frontier.NumElements() * num_picks * num_partitions,
+                auto blockTable = std::make_shared<CudaHashTable>(_id_type, _ctx,
+                                                                  frontier.NumElements() * num_picks * num_partitions,
                                                                   sampling_stream);
                 blockTable->_stream = sampling_stream;
                 blockTable->Reset();
                 if (layer == _num_redundant_layers) {
                     auto partition_index =
                             IndexSelect(_partition_map, frontier, sampling_stream);
-                    blocksPtr->_scattered_frontier = ScatteredArray::Create(frontier->shape[0], num_partitions, _ctx, _id_type, sampling_stream);
+                    blocksPtr->_scattered_frontier = ScatteredArray::Create(frontier->shape[0], num_partitions, _ctx,
+                                                                            _id_type, sampling_stream);
                     Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,
                             num_partitions, _rank, _world_size);
                     frontier = blocksPtr->_scattered_frontier->unique_array;
@@ -308,25 +293,24 @@ namespace dgl::groot {
                                                                 num_picks, false, blockPtr,
                                                                 sampling_stream);
                 });
-//      cudaDeviceSynchronize();
                 if (layer >= _num_redundant_layers && blocksPtr->_blockType == BlockType::SRC_TO_DEST) {
-                        // Todo:: Formally verify this method of insertion
-                        blockTable->FillWithUnique(frontier, frontier.NumElements());
-//          blockTable->FillWithDuplicates(blockPtr->_row,blockPtr->_row->shape[0]);
-                        blockPtr->num_dst = blockTable->NumItem();
-                        blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col->shape[0]);
-                        auto unique_src = blockTable->CopyUnique();
-                        blockPtr->num_src = unique_src->shape[0];
-                        auto partition_index =
-                                IndexSelect(_partition_map, unique_src, sampling_stream);
-                        blockPtr->_scattered_src = ScatteredArray::Create(blockPtr->num_src, num_partitions, _ctx, _id_type, sampling_stream);
-                        Scatter(blockPtr->_scattered_src, unique_src, partition_index,
-                                num_partitions, _rank, _world_size);
-                        frontier = blockPtr->_scattered_src->unique_array;
+                    // Todo:: Formally verify this method of insertion
+                    blockTable->FillWithUnique(frontier, frontier.NumElements());
+                    blockPtr->num_dst = blockTable->NumItem();
+                    blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col->shape[0]);
+                    auto unique_src = blockTable->CopyUnique();
+                    blockPtr->num_src = unique_src->shape[0];
+                    auto partition_index =
+                            IndexSelect(_partition_map, unique_src, sampling_stream);
+                    blockPtr->_scattered_src = ScatteredArray::Create(blockPtr->num_src, num_partitions, _ctx, _id_type,
+                                                                      sampling_stream);
+                    Scatter(blockPtr->_scattered_src, unique_src, partition_index,
+                            num_partitions, _rank, _world_size);
+                    frontier = blockPtr->_scattered_src->unique_array;
                 } else {
                     blockTable->Reset();
                     blockTable->FillWithUnique(frontier, frontier.NumElements());
-                    assert( blockTable->NumItem()== frontier->shape[0]);
+                    assert(blockTable->NumItem() == frontier->shape[0]);
                     blockPtr->num_dst = blockTable->NumItem();
                     blockTable->FillWithDuplicates(blockPtr->_col,
                                                    blockPtr->_col.NumElements());
@@ -357,33 +341,20 @@ namespace dgl::groot {
                 blockPtr->_block_ref = HeteroGraphRef{graph_idx};
             }
 
-            // those two kernels are not sync until later BatchSync is called
-            IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
-                        sampling_stream);
-            blocksPtr->_feats = NDArray::Empty({blocksPtr->_output_nodes->shape[0], _feat_width}, \
-                                       _feat_type, _ctx);
-            if (gpu_cache.IsInitialized()) {
-                gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
-                                                    sampling_stream, sampling_stream);
-            } else {
-                IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+            if (extract_feat_and_label) {
+                // those two kernels are not sync until later BatchSync is called
+                IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                             sampling_stream);
+                blocksPtr->_feats = NDArray::Empty({blocksPtr->_output_nodes->shape[0], _feat_width}, \
+                                       _feat_type, _ctx);
+                if (gpu_cache.IsInitialized()) {
+                    gpu_cache.IndexSelectWithLocalCache(blocksPtr->_output_nodes, blocksPtr,
+                                                        sampling_stream, sampling_stream);
+                } else {
+                    IndexSelect(_cpu_feats, blocksPtr->_output_nodes, blocksPtr->_feats,
+                                sampling_stream);
+                }
             }
-            //      blocksPtr->_output_nodes =frontier;
-            //      blocksPtr->_labels = IndexSelect(_labels, blocksPtr->_input_nodes,
-            //      _gpu_feat_streams.at(blk_idx)); blocksPtr->_feats =
-            //      IndexSelect(_cpu_feats, blocksPtr->_output_nodes,
-            //      _cpu_feat_streams.at(blk_idx));
-            //
-            //      // MapEdges to 0 based indexing
-            //      for (int64_t layer = 0; layer < (int64_t)_fanouts.size(); layer++) {
-            //        auto blockPtr = blocksPtr->GetBlock(layer);
-            //        GPUMapEdges(
-            //            blockPtr->_row, blockPtr->_new_row, blockPtr->_col,
-            //            blockPtr->_new_col, blockPtr->_table,
-            //            _reindex_streams.at(blk_idx));
-            //      }
-
             runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
         }
 

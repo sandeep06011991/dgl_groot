@@ -133,18 +133,25 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         for _ in range(step):
             nvtx.push_range('minibatch_Start')
             sampling_timer = CudaTimer()
-            key = sample_batch_sync()
+            
+            extract_feat_label_flag = False
+            key = sample_batch_sync(extract_feat_label_flag)
+            sampling_timer.end()
+            
+            feat_timer = CudaTimer()
+            is_async = False
+            extract_batch_feat_label(key, is_async)
+            feat_timer.end()
+
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
                                 n_redundant_layers = config.num_redundant_layer , mode = "SRC_TO_DEST")
+            
             if config.num_redundant_layer == num_layers:
                 local_blocks = blocks
             else:
                 local_blocks, _, _ = blocks
             for block in local_blocks:
                 edges_per_epoch += block.num_edges()
-            sampling_timer.end()
-            feat_timer = CudaTimer()
-            feat_timer.end()
             forward_timer = CudaTimer()
             pred = model(blocks, batch_feat)
             loss = torch.nn.functional.cross_entropy(pred, batch_label)
@@ -160,6 +167,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             forward_timers.append(forward_timer)
             backward_timers.append(backward_timer)
             max_memory_used.append(torch.cuda.memory_reserved())
+            
     torch.cuda.synchronize()
     duration = timer.duration()
     edges_computed.append(edges_per_epoch)

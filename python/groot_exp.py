@@ -20,7 +20,7 @@ def get_configs(graph_name, system, log_path, data_dir):
                     for num_redundant_layers in range(len(fanout) + 1):
                         config = Config(graph_name=graph_name,
                                         world_size=4,
-                                        num_epoch=10,
+                                        num_epoch=1,
                                         fanouts=fanout,
                                         batch_size=batch_size,
                                         system=system,

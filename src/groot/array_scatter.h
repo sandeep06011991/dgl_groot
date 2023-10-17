@@ -114,7 +114,7 @@ public:
   static ScatteredArray Create(int expected_size_on_single_gpu, int num_partitions,
                                DGLContext ctx, DGLDataType dtype,
                                cudaStream_t stream) {
-    std::cout << "Creating scattered object with expected size " << expected_size_on_single_gpu << "\n";
+//    std::cout << "Creating scattered object with expected size " << expected_size_on_single_gpu << "\n";
     return ScatteredArray(std::make_shared<ScatteredArrayObject>(
             expected_size_on_single_gpu * num_partitions, num_partitions, ctx, dtype, stream));
   }

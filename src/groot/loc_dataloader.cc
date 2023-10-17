@@ -42,11 +42,11 @@ DGL_REGISTER_GLOBAL("groot._CAPI_InitDataloader")
       *rv = DataloaderObject::Global();
     });
 
-DGL_REGISTER_GLOBAL("groot._CAPI_NextAsync")
-    .set_body([](DGLArgs args, DGLRetValue *rv) {
-      const int64_t key = DataloaderObject::Global()->AsyncSample();
-      *rv = key;
-    });
+//DGL_REGISTER_GLOBAL("groot._CAPI_NextAsync")
+//    .set_body([](DGLArgs args, DGLRetValue *rv) {
+//      const int64_t key = DataloaderObject::Global()->AsyncSample();
+//      *rv = key;
+//    });
 
 DGL_REGISTER_GLOBAL("groot._CAPI_ShuffleIDX")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
@@ -57,7 +57,8 @@ DGL_REGISTER_GLOBAL("groot._CAPI_ShuffleIDX")
 
 DGL_REGISTER_GLOBAL("groot._CAPI_NextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
-      const int64_t key = DataloaderObject::Global()->Sample();
+        const bool extract_feat_label = args[0];
+        const int64_t key = DataloaderObject::Global()->Sample(extract_feat_label);
       *rv = key;
     });
 
@@ -70,6 +71,13 @@ DGL_REGISTER_GLOBAL("groot._CAPI_GetBlock")
                 ->GetBlock(layer)
                 ->_block_ref;
     });
+
+DGL_REGISTER_GLOBAL("groot._CAPI_ExtractFeatLabel")
+.set_body([](DGLArgs args, DGLRetValue *rv) {
+    const int64_t key = args[0];
+    bool async = args[1];
+    DataloaderObject::Global()->ExtractFeatLabel(key, async);
+});
 
 DGL_REGISTER_GLOBAL("groot._CAPI_GetBlocksUniqueId")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
