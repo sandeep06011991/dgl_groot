@@ -34,7 +34,6 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
-    torch.multiprocessing.set_start_method('spawn')
     max_cache_fraction_queue = torch.multiprocessing.Queue(1)
     train_idx_list = []
     for p in range(config.world_size):
@@ -49,8 +48,9 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                   nprocs=config.world_size, daemon=True, join= True)
 
         except Exception as e:
+            write_to_csv(config.log_path, [config], [empty_profiler()])
             print(e)
-            exit(-1)
+            # exit(-1)
         gc.collect()
         torch.cuda.empty_cache()
         config.cache_rate = max_cache_fraction_queue.get()
@@ -64,8 +64,9 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                   nprocs=config.world_size, daemon=True, join= True)
 
         except Exception as e:
+            write_to_csv(config.log_path, [config], [empty_profiler()])
             print(e)
-            assert(False)
+            # assert(False)
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -178,15 +179,22 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     profiler = Profiler(duration=duration, sampling_time=sampling_time,
                         feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
     profiler.edges_computed = sum(edges_computed)/len(edges_computed)
+    print(config.cache_rate, "cache rate check")
+    if config.cache_rate == 0:
+        max_available_memory = 16 * (1024 ** 3) - (max(max_memory_used))
+        percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
+        print("Can cache percentage of nodes", percentage_of_nodes)
+        cache_rate = torch.tensor(percentage_of_nodes).to(rank)
+        dist.all_reduce(cache_rate, op=dist.ReduceOp.SUM)
+        if rank == 0:
+            cudaDeviceSynchronize()
+            print("calculated cache size", cache_rate.item())
+            queue.put(cache_rate.item())
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
-        if config.cache_rate == 0:
-            max_available_memory = 16 * (1024 ** 3) - (max(max_memory_used))
-            percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
-            print("Can cache percentage of nodes", percentage_of_nodes)
-            queue.put(percentage_of_nodes)
-        if not test_acc:
+
+    if not test_acc:
             write_to_csv(config.log_path, [config], [profiler])
     
     dist.barrier()

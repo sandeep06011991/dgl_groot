@@ -49,7 +49,7 @@ class QuiverDglSageSample():
         else:
             self.nids = nids.to(rank) # train_nids
         self.cur_idx = 0
-        self.max_idx = nids.shape[0]
+        self.max_idx = self.nids.shape[0]
         self.shuffle = shuffle
         self.batch_size = batch_size
         self.sampler = QuiverGraphSageSampler(sampler)     
