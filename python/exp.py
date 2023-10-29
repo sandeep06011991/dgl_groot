@@ -6,10 +6,10 @@ import torch.multiprocessing as mp
 
 def get_configs(graph_name, system, log_path, data_dir):
     fanouts = [[10, 10, 10]]
-    batch_sizes = [4096]
-    models = ["sage"]
+    batch_sizes = [1024]
+    models = ["gat"]
     hid_sizes = [128]
-    cache_rates = [0]
+    cache_rates = [0.7]
     # fanouts = [[20,20,20],[20,20,20,20], [30,30,30]]
     # batch_sizes = [1024, 4096]
     # models = ['gat', 'sage']
@@ -43,5 +43,5 @@ if __name__ == "__main__":
     # configs = get_configs(graph_name="ogbn-products", system="gpu", log_path="./log/dgl.csv", data_dir="/data/ogbn/processed/")
     # bench_dgl_batch(configs=configs, test_acc=True)
     SYSTEM = "quiver"
-    configs = get_configs(graph_name="ogbn-arxiv", system=f"gpu-{SYSTEM}", log_path=f"./log/{SYSTEM}.csv", data_dir="/data/ogbn/processed/")
+    configs = get_configs(graph_name="ogbn-products", system=f"gpu-{SYSTEM}", log_path=f"./log/{SYSTEM}.csv", data_dir="/data/ogbn/processed/")
     bench_quiver_batch(configs=configs, test_acc=True)

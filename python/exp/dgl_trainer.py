@@ -29,6 +29,10 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     feat, label, num_label = load_feat_label(in_dir)
     for config in configs:
         try:
+            if config.graph_name == "ogbn-products":
+                config.system = "dgl-gpu"
+            if config.graph_name == "ogbn-papers100M":
+                config.system = "dgl-uva"
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             print(e)

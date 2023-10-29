@@ -26,11 +26,10 @@ def ddp_exit():
 def bench_groot_batch(configs: list[Config], test_acc=False):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
-    
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-    # partition_map = get_metis_partition(config)
-    partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
+    partition_map = get_metis_partition(config)
+    # partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
@@ -39,22 +38,12 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     for p in range(config.world_size):
         train_idx_list.append(train_idx[partition_map[train_idx] == p])
     for config in configs:
-        config.cache_rate = 0
-        cached_ids = None
-        try:
-            spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
-                                   num_label, train_idx_list , valid_idx, test_idx, \
-                                   indptr, indices, edges, max_cache_fraction_queue, partition_map, cached_ids),\
-                  nprocs=config.world_size, daemon=True, join= True)
-
-        except Exception as e:
-            write_to_csv(config.log_path, [config], [empty_profiler()])
-            print(e)
-            # exit(-1)
-        gc.collect()
-        torch.cuda.empty_cache()
-        config.cache_rate = max_cache_fraction_queue.get()
-        # Todo: bad design, two kinds of config objects with almost similar charecteristics.
+        if config.graph_name == "ogbn-products":
+            config.cache_rate = 1
+            config.system = "groot-gpu"
+        if config.graph_name == "ogbn-papers100M":
+            config.cache_rate  = .05
+            config.system = "groot-uva"
         config.cache_percentage = config.cache_rate
         cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
         try:
@@ -126,7 +115,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     max_memory_used = []
     print(f"training model on {device}")
     for epoch in range(config.num_epoch):
-        if rank == 0 and (epoch + 1) % 5 == 0:
+        if rank == 0 and (epoch + 1) % 1 == 0:
             print(f"start epoch {epoch}")
         randInt = torch.randperm(train_idx.shape[0], device = rank)
         shuffle_training_nodes(randInt)
@@ -181,13 +170,12 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     profiler.edges_computed = sum(edges_computed)/len(edges_computed)
     print(config.cache_rate, "cache rate check")
     if config.cache_rate == 0:
-        max_available_memory = 16 * (1024 ** 3) - (max(max_memory_used))
+        max_available_memory = 15 * (1024 ** 3) - (max(max_memory_used))
         percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
         print("Can cache percentage of nodes", percentage_of_nodes)
         cache_rate = torch.tensor(percentage_of_nodes).to(rank)
-        dist.all_reduce(cache_rate, op=dist.ReduceOp.SUM)
+        dist.all_reduce(cache_rate, op=dist.ReduceOp.MIN)
         if rank == 0:
-            cudaDeviceSynchronize()
             print("calculated cache size", cache_rate.item())
             queue.put(cache_rate.item())
     if rank == 0:

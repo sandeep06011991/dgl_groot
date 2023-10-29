@@ -42,60 +42,53 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     import quiver
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
+        assert(config.cache_rate == configs[0].cache_rate)
     if not QuiverVariables.init_p2p:
         quiver.init_p2p(device_list=list(range(config.world_size)))
         QuiverVariables.init_p2p = True
     in_dir = os.path.join(config.data_dir, config.graph_name)
-    assert(config.cache_rate == 0)
     feat, label, num_label = load_feat_label(in_dir)
     cache_policy = "p2p_clique_replicate"
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
-    shared_queue = mp.Queue()
+    if config.graph_name == "ogbn-products":
+        config.cache_rate = .25
+    if config.graph_name == "ogbn-papers100M":
+        config.cache_rate = .05
+
+    cache_size = get_cache_size(feat, config)
+    quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                 cache_policy=cache_policy, device_cache_size=cache_size)
+    quiver_feat.from_cpu_tensor(feat)
 
     for config in configs:
-        for _ in range(4):
-            config.cache_rate = 0
-            for cache_set in [False, True]:
-                if not cache_set:
-                    assert(config.cache_rate == 0)
-                try:
-                    import quiver
-                    assert "uva" in config.system or "gpu"  in config.system
-                    if "uva" in config.system:
-                        quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
-                    if "gpu" in config.system:
-                        quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
-                    time.sleep(10)
-                    cache_size = get_cache_size(feat, config)
-                    quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                                 cache_policy=cache_policy, device_cache_size=cache_size)
-                    quiver_feat.from_cpu_tensor(feat)
-                    print(f"feature cache size is {cache_size}")
+        try:
+            import quiver
+            assert "uva" in config.system or "gpu"  in config.system
+            if "uva" in config.system:
+                quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
+            if "gpu" in config.system:
+                quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
+            print(f"feature cache size is {cache_size}")
+            feat_width = feat.shape[1]
+            spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
+                                   feat_width, label, num_label, train_idx, \
+                                   valid_idx, test_idx), nprocs=config.world_size)
 
-                    feat_width = feat.shape[1]
-                    spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
-                                           feat_width, label, num_label, train_idx, \
-                                           valid_idx, test_idx, shared_queue), nprocs=config.world_size)
-
-                    if not cache_set:
-                        cache_rate = shared_queue.get()
-                        config.cache_rate = cache_rate
-                        print("max cache percentage", cache_rate)
-                except Exception as e:
-                    print(e)
-                    write_to_csv(config.log_path, [config], [empty_profiler()])
-                    break
-                gc.collect()
-                torch.cuda.empty_cache()
+        except Exception as e:
+            print(e)
+            write_to_csv(config.log_path, [config], [empty_profiler()])
+            break
+        gc.collect()
+        torch.cuda.empty_cache()
 
             
 def train_ddp(rank: int, config: Config, test_acc: bool,
               sampler: quiver.pyg.GraphSageSampler, feat: quiver.Feature, feat_width:int, label: torch.Tensor, num_label: int, 
               train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor,\
-                shared_queue : mp.Queue):
+                ):
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
@@ -179,7 +172,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             write_to_csv(config.log_path, [config], [profiler])
         if config.cache_rate == 0:
             print(f"Calculated cache_percentage", cache_rate.item())
-            shared_queue.put(cache_rate.item())
+
     dist.barrier()
     
     if test_acc:

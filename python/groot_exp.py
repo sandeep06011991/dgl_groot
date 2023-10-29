@@ -1,9 +1,105 @@
 import argparse
 from exp.util import *
 from exp.groot_trainer import  bench_groot_batch
+from exp.dgl_trainer import bench_dgl_batch
+class DEFAULT_SETTING:
+    batch_size = 1024
+    hid_size = 256
+    fanouts = [15,15,15]
+    models = ["sage","gat"]
+    num_redundant_layers = 0
+
+def get_number_of_redundant_layers(graph_name, system, log_path, data_dir):
+    fanout = [10,10,10,10,10]
+    hid_size = 64
+    batch_size =  1024
+    configs = []
+    for model in DEFAULT_SETTING.models:
+        for num_redundant_layers in range(0, len(fanout) + 1):
+            config = Config(graph_name=graph_name,
+                            world_size=4,
+                            num_epoch=5,
+                            fanouts=fanout,
+                            batch_size=batch_size,
+                            system=system,
+                            model=model,
+                            cache_rate = 0.05,
+                            hid_size=hid_size,
+                            log_path=log_path,
+                            data_dir=data_dir,)
+            config.num_redundant_layer = num_redundant_layers
+            configs.append(config)
+    return configs
+
+def get_depth_config(graph_name, system, log_path, data_dir):
+    fanouts = [[10,10,10],[10,10,10,10],[10,10,10,10,10]]
+    configs = []
+    for fanout in fanouts:
+        for model in DEFAULT_SETTING.models:
+            config = Config(graph_name=graph_name,
+                            world_size=4,
+                            num_epoch=10,
+                            fanouts=fanout,
+                            batch_size=DEFAULT_SETTING.batch_size,
+                            system=system,
+                            model=model,
+                            cache_rate = 0,
+                            hid_size=DEFAULT_SETTING.hid_size,
+                            log_path=log_path,
+                            data_dir=data_dir,)
+            config.num_redundant_layer = DEFAULT_SETTING.num_redundant_layers
+            configs.append(config)
+    return configs
+
+def get_batchsize_config(graph_name, system, log_path, data_dir):
+    batch_sizes = [1024, 4096, 4096 * 4]
+    configs = []
+    for batch_size in batch_sizes:
+        for model in DEFAULT_SETTING.models:
+            config = Config(graph_name=graph_name,
+                            world_size=4,
+                            num_epoch=10,
+                            fanouts=DEFAULT_SETTING.fanouts,
+                            batch_size=batch_size,
+                            system=system,
+                            model=model,
+                            cache_rate=0,
+                            hid_size=DEFAULT_SETTING.hid_size,
+                            log_path=log_path,
+                            data_dir=data_dir,)
+            config.num_redundant_layer = DEFAULT_SETTING.num_redundant_layers
+            configs.append(config)
+    return configs 
+
+def get_hidden_config(graph_name, system, log_path, data_dir):
+    hidden_sizes = [128, 256, 512, 768]
+    configs = []
+    for hidden_size in hidden_sizes:
+        for model in DEFAULT_SETTING.models:
+            config = Config(graph_name=graph_name,
+                            world_size=4,
+                            num_epoch=10,
+                            fanouts=DEFAULT_SETTING.fanouts,
+                            batch_size=DEFAULT_SETTING.batch_size,
+                            system=system,
+                            model=model,
+                            cache_rate = 0,
+                            hid_size=hidden_size,
+                            log_path=log_path,
+                            data_dir=data_dir,)
+            config.num_redundant_layer = DEFAULT_SETTING.num_redundant_layers
+            configs.append(config)
+    return configs 
+
+def get_abalation_config(graph_name, system, log_path, data_dir):
+    configs = []
+    configs.extend(get_depth_config(graph_name, system, log_path, data_dir))
+    configs.extend(get_batchsize_config(graph_name, system, log_path, data_dir))
+    configs.extend(get_hidden_config(graph_name, system, log_path, data_dir))
+    return configs
 
 def get_configs(graph_name, system, log_path, data_dir):
-    fanouts = [[20,20,20],[20,20,20,20]]
+    fanouts = [[20,20,20],[20,20,20,20],[20,20,20,20,20]]
     batch_sizes = [1024, 4096]
     models = ["gat","sage"]
     hid_sizes = [256,512]
@@ -12,7 +108,7 @@ def get_configs(graph_name, system, log_path, data_dir):
         for batch_size in batch_sizes:
             for model in models:
                 for hid_size in hid_sizes:
-                    for num_redundant_layers in range(1, len(fanout) + 1):
+                    for num_redundant_layers in range(0, len(fanout) + 1):
                         config = Config(graph_name=graph_name,
                                         world_size=4,
                                         num_epoch=10,
@@ -34,10 +130,33 @@ if __name__ == "__main__":
     mp.set_start_method('spawn')
     # configs = get_configs(graph_name="ogbn-products", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
     # bench_groot_batch(configs=configs, test_acc=True)
-    # print("prod uva done !")
-    configs = get_configs(graph_name="ogbn-papers100M", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
-    bench_groot_batch(configs=configs, test_acc=True)
-    print("paper uva done !")
-    configs = get_configs(graph_name="ogbn-products", system="groot-gpu", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
-    bench_groot_batch(configs=configs, test_acc=True)
-    print("prod gpu done ")
+    # print("prod uva doine !")
+    for graph_name in ["ogbn-products","ogbn-papers100M"]:
+        configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
+        bench_dgl_batch(configs=configs, test_acc = True )
+        bench_groot_batch(configs=configs, test_acc=True)
+
+    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+        configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
+                                       data_dir="/data/ogbn/processed/")
+        bench_dgl_batch(configs=configs, test_acc=True)
+        bench_groot_batch(configs=configs, test_acc=True)
+
+    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+        configs = get_hidden_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
+                                    data_dir="/data/ogbn/processed/")
+        bench_dgl_batch(configs=configs, test_acc=True)
+        bench_groot_batch(configs=configs, test_acc=True)
+
+    # configs = get_number_of_redundant_layers(graph_name="ogbn-papers100M", system="groot-uva", log_path="./log/groot-n-red.csv", data_dir="/data/ogbn/processed/")
+    # bench_groot_batch(configs = configs, test_acc = True )
+
+    # print("Start" )
+    # bench_groot_batch(configs = get_fanout_config(graph_name="ogbn-products", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/"), test_acc = True)
+    # configs = get_abalation_config(graph_name="ogbn-papers100M", system="groot-uva", log_path="./log/groot_abalation.csv", data_dir="/data/ogbn/processed/")
+    # print(configs)
+    # bench_groot_batch(configs=configs, test_acc=True)
+    # print("paper uva done !")
+    # configs = get_abalation_config(graph_name="ogbn-products", system="groot-gpu", log_path="./log/groot_abalation.csv", data_dir="/data/ogbn/processed/")
+    # bench_groot_batch(configs=configs, test_acc=True)
+    # print("prod gpu done ")

@@ -230,6 +230,7 @@ class Config:
         self.log_path = log_path
         self.data_dir = data_dir
         self.num_redundant_layer = len(self.fanouts)
+        self.partition_type = "metis"
         
     def header(self):
         return ["graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
