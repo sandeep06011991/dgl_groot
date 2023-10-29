@@ -11,7 +11,7 @@ if __name__ == "__main__":
     config.fanouts = [20,20,20]
     config.random_partition = False
     config.graph_name = "ogbn-arxiv"
-    # config.system = "groot-cache"
+    config.system = "groot-cache"
     config.batch_size = 128
     # config.graph_name = "ogbn-products"
     config.world_size = 4
@@ -20,6 +20,7 @@ if __name__ == "__main__":
     config.test_acc = True
     config.model_type = "gat"
     config.num_epoch = 5
+    print(config)
     if config.system == "dgl-uva":
         dgl_uva(config)
     elif config.system == "dgl-gpu":

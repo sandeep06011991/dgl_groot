@@ -104,9 +104,15 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
         edges_per_epoch = 0
         for i in range(step):
             sampling_timer.start()
-            key = sample_batch_sync()
+            extract_feat_label_flag = False
+            key = sample_batch_sync(extract_feat_label_flag)
+            sampling_timer.stop()
+
+            is_async = False
+            extract_batch_feat_label(key, is_async)
+
             blocks, batch_feat, batch_label = get_batch(key, layers = num_layers, \
-                        n_redundant_layers =num_redundant_layer , mode = "SRC_TO_DEST")
+                                                        n_redundant_layers = config.num_redundant_layers , mode = "SRC_TO_DEST")
             local_blocks, _, _ = blocks
             for block in local_blocks:
                 edges_per_epoch += block.num_edges()
