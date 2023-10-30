@@ -9,7 +9,7 @@ from runner.groot_gpu import groot_gpu
 if __name__ == "__main__":
     config = get_config()
     config.fanouts = [20,20,20]
-    config.random_partition = False
+    config.random_partition = True
     config.graph_name = "ogbn-arxiv"
     config.system = "groot-cache"
     config.batch_size = 128

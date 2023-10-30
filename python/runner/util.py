@@ -2,7 +2,7 @@ from dataclasses import dataclass
 import os
 import torch
 from torch.distributed import init_process_group, destroy_process_group
-from ogb.nodeproppred import PygNodePropPredDataset, DglNodePropPredDataset
+from ogb.nodeproppred import  DglNodePropPredDataset
 import dgl
 import argparse
 import time
