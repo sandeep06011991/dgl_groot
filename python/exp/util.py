@@ -376,4 +376,31 @@ def write_to_csv(out_path, configs: list[Config], profilers: list[Profiler]):
 #     gc.collect()
 #     torch.cuda.empty_cache()
 
+def metis(in_dir):
+    idtype_str = "64"
+    SAVE_PATH = in_dir
+    ws_self_loop = False
+    indptr = torch.load( f'{SAVE_PATH}/indptr_{idtype_str}_{ws_self_loop}.pt')
+    indices = torch.load(f'{SAVE_PATH}/indices_{idtype_str}_{ws_self_loop}.pt')
+    edges = torch.empty(0, dtype=indices.dtype)
+    graph = dgl.DGLGraph(('csc', (indptr,indices, edges)))
+    ntype = torch.load(f'{SAVE_PATH}/ntype.pt')
 
+    num_partitions = 4
+    torch_type = torch.int32
+    for edge_balanced  in [True, False]:
+        partitions = dgl.metis_partition(graph, num_partitions, balance_ntypes=ntype, balance_edges = False)
+        p_map = torch.zeros(graph.num_nodes(), dtype=torch_type)
+        print(partitions)
+        for p_id in partitions.keys():
+            nodes = partitions[p_id].ndata['_ID']
+            p_map[nodes] = p_id
+            print(f"In partiiton {p_id}: nodes{nodes.shape}")
+        p_map = p_map.to(torch_type)
+        torch.save(p_map, f"{SAVE_PATH}/pmap_{edge_balanced}.pt")
+
+if __name__== "__main__":
+    for graph_name in ["ogbn-arxiv", "ogbn-products", "ogbn-papers100M"]:
+        preprocess(graph_name , \
+                    '/data/sandeep/groot_data/ogbn', '/data/sandeep/groot_data/ogbn-processed')
+        print(graph_name , "All done")

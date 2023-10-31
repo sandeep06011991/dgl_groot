@@ -2,10 +2,12 @@ import argparse
 from exp.util import *
 from exp.groot_trainer import  bench_groot_batch
 from exp.dgl_trainer import bench_dgl_batch
+from exp.quiver_trainer import bench_quiver_batch
+
 class DEFAULT_SETTING:
     batch_size = 1024
     hid_size = 256
-    fanouts = [15,15,15]
+    fanouts = [30,30,30]
     models = ["sage","gat"]
     num_redundant_layers = 0
 
@@ -128,35 +130,28 @@ if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
-    # configs = get_configs(graph_name="ogbn-products", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/")
-    # bench_groot_batch(configs=configs, test_acc=True)
-    # print("prod uva doine !")
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc = True )
         bench_groot_batch(configs=configs, test_acc=True)
-
+        bench_quiver_batch(configs = configs, test_acc = True)
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
                                        data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc=True)
         bench_groot_batch(configs=configs, test_acc=True)
+        bench_quiver_batch(configs = configs, test_acc = True)
 
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
-        configs = get_hidden_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
+        configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
                                     data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc=True)
         bench_groot_batch(configs=configs, test_acc=True)
+        bench_quiver_batch(configs = configs, test_acc = True)
 
-    # configs = get_number_of_redundant_layers(graph_name="ogbn-papers100M", system="groot-uva", log_path="./log/groot-n-red.csv", data_dir="/data/ogbn/processed/")
-    # bench_groot_batch(configs = configs, test_acc = True )
+    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+        configs = get_number_of_redundant_layers(graph_name = graph_name, system = "")
+        bench_groot_batch(configs = configs, test_acc = True)
+        configs = get_partition_type(config = configs, test_acc = True)
+        bench_groot_batch(configs = configs, test_acc = True)
 
-    # print("Start" )
-    # bench_groot_batch(configs = get_fanout_config(graph_name="ogbn-products", system="groot-uva", log_path="./log/groot.csv", data_dir="/data/ogbn/processed/"), test_acc = True)
-    # configs = get_abalation_config(graph_name="ogbn-papers100M", system="groot-uva", log_path="./log/groot_abalation.csv", data_dir="/data/ogbn/processed/")
-    # print(configs)
-    # bench_groot_batch(configs=configs, test_acc=True)
-    # print("paper uva done !")
-    # configs = get_abalation_config(graph_name="ogbn-products", system="groot-gpu", log_path="./log/groot_abalation.csv", data_dir="/data/ogbn/processed/")
-    # bench_groot_batch(configs=configs, test_acc=True)
-    # print("prod gpu done ")
