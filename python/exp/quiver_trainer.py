@@ -53,6 +53,10 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
+    if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
+        config.system = "quiver-gpu"
+    if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
+        config.system = "quiver-uva"
     if config.graph_name == "ogbn-products":
         config.cache_rate = .25
     if config.graph_name == "ogbn-papers100M":

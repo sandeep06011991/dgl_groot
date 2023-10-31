@@ -11,6 +11,24 @@ class DEFAULT_SETTING:
     models = ["sage","gat"]
     num_redundant_layers = 0
 
+def get_default_config(graph_name, system, log_path, data_dir):
+    configs = []
+    for model in DEFAULT_SETTING.models:
+       config = Config(graph_name=graph_name,
+                       world_size=4,
+                       num_epoch=5,
+                       fanouts=DEFAULT_SETTING.fanout,
+                       batch_size=DEFAULT_SETTING.batch_size,
+                       system=system,
+                       model=model,
+                       cache_rate = 0.05,
+                       hid_size=DEFAULT_SETTING.hid_size,
+                       log_path=log_path,
+                       data_dir=data_dir,)
+       config.num_redundant_layer = 0
+       configs.append(config)
+    return configs
+
 def get_number_of_redundant_layers(graph_name, system, log_path, data_dir):
     fanout = [10,10,10,10,10]
     hid_size = 64
@@ -30,6 +48,24 @@ def get_number_of_redundant_layers(graph_name, system, log_path, data_dir):
                             log_path=log_path,
                             data_dir=data_dir,)
             config.num_redundant_layer = num_redundant_layers
+            configs.append(config)
+    return configs
+
+def get_partition_type(graph_name, system, log_path, data_dir):
+    for model in DEFAULT_SETTING.models:
+        for partition_type in ["edge_balanced", "node_balanced", "random"]:
+            config = Config(graph_name=graph_name,
+                            world_size=4,
+                            num_epoch=5,
+                            fanouts=DEFAULT_SETTING.fanouts,
+                            batch_size= DEFAULT_SETTING.batch_size,
+                            system=system,
+                            model=model,
+                            cache_rate = 0,
+                            hid_size=DEFAULT_SETTING.hid_size,
+                            log_path=log_path,
+                            data_dir=data_dir,)
+            config.partition_type = partition_type
             configs.append(config)
     return configs
 
@@ -126,32 +162,43 @@ def get_configs(graph_name, system, log_path, data_dir):
                         configs.append(config)
     return configs
 
+def best_configuration():
+    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+        configs = get_number_of_redundant_layers(graph_name = graph_name,\
+                system = "groot", log_path='./log/redundant_layers')
+        bench_groot_batch(configs = configs, test_acc = True)
+        configs = get_partition_type(config = configs, system = "groot",\
+                                     test_acc = True, log_path='./log/partitions')
+        bench_groot_batch(configs = configs, test_acc = True)
+
 if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
+        configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv")
+        bench_dgl_batch(configs=configs, test_acc=True)
+        bench_groot_batch(configs=configs, test_acc=True )
+        bench_quiver_batch(configs = configs, test_acc = True )
+
+
+    for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
-        bench_dgl_batch(configs=configs, test_acc = True )
-        bench_groot_batch(configs=configs, test_acc=True)
-        bench_quiver_batch(configs = configs, test_acc = True)
+        bench_dgl_batch(configs=configs, test_acc = False )
+        bench_groot_batch(configs=configs, test_acc=False )
+        bench_quiver_batch(configs = configs, test_acc = False )
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
                                        data_dir="/data/ogbn/processed/")
-        bench_dgl_batch(configs=configs, test_acc=True)
-        bench_groot_batch(configs=configs, test_acc=True)
-        bench_quiver_batch(configs = configs, test_acc = True)
+        bench_dgl_batch(configs=configs, test_acc=False )
+        bench_groot_batch(configs=configs, test_acc=False )
+        bench_quiver_batch(configs = configs, test_acc = False )
 
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
                                     data_dir="/data/ogbn/processed/")
-        bench_dgl_batch(configs=configs, test_acc=True)
-        bench_groot_batch(configs=configs, test_acc=True)
-        bench_quiver_batch(configs = configs, test_acc = True)
+        bench_dgl_batch(configs=configs, test_acc=False )
+        bench_groot_batch(configs=configs, test_acc=False )
+        bench_quiver_batch(configs = configs, test_acc = False )
 
-    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
-        configs = get_number_of_redundant_layers(graph_name = graph_name, system = "")
-        bench_groot_batch(configs = configs, test_acc = True)
-        configs = get_partition_type(config = configs, test_acc = True)
-        bench_groot_batch(configs = configs, test_acc = True)
 

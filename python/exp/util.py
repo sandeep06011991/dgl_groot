@@ -115,6 +115,17 @@ def get_dataset(graph_name, in_dir):
     dataset = DglNodePropPredDataset(graph_name, in_dir)
     return dataset
 
+def get_metis_partition(in_dir, config, graph):
+    assert config.partition_type in ["edge_balanced", "node_balanced", "random"]
+    if config.partition_type == "random":
+        return torch.randint(0, 4, (graph.num_nodes()), dtype = torch.int32)
+    if config.partition_type == "edge_balanced":
+        edge_balanced = True
+        return torch.load(f'{in_dir}/partition_map_{edge_balanced}')
+    if config.partition_type == "node_balanced":
+        edge_balanced = False
+        return torch.load(f'{in_dir}/partition_map_{edge_balanced}')
+
 def get_dgl_sampler(graph: dgl.DGLGraph, train_idx: torch.Tensor, graph_samler: dgl.dataloading.Sampler, system:str = "cpu", batch_size:int=1024, use_dpp=False) -> dgl.dataloading.dataloader.DataLoader:
     device = torch.cuda.current_device()
     dataloader = None
@@ -262,14 +273,16 @@ class Profiler:
         self.test_acc = test_acc
         self.allocated_mb, self.reserved_mb = get_memory_info()
         self.edges_computed = 0
+        self.edge_skew = 0
     def header(self):
         header = ["duration (s)", "sampling (s)", "feature (s)", "forward (s)", "backward (s)",\
-                    "allocated (MB)", "reserved (MB)", "test accuracy %", "edges_computed"]
+                    "allocated (MB)", "reserved (MB)", "test accuracy %", "edges_computed", "edge_skew"]
         return header
     
     def content(self):
         content = [self.duration, self.sampling_time, self.feature_time, self.forward_time,\
-                   self.backward_time, self.allocated_mb, self.reserved_mb, self.test_acc, self.edges_computed]
+                   self.backward_time, self.allocated_mb, self.reserved_mb, self.test_acc, \
+                   self.edges_computed, self.edge_skew]
         return content
     
     def __repr__(self):

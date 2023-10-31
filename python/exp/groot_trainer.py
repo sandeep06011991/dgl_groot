@@ -28,7 +28,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-    partition_map = get_metis_partition(config)
+    partition_map = get_metis_partition(in_dir, config, graph)
     # partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
@@ -38,10 +38,10 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     for p in range(config.world_size):
         train_idx_list.append(train_idx[partition_map[train_idx] == p])
     for config in configs:
-        if config.graph_name == "ogbn-products":
+        if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
             config.cache_rate = 1
             config.system = "groot-gpu"
-        if config.graph_name == "ogbn-papers100M":
+        if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
             config.cache_rate  = .05
             config.system = "groot-uva"
         config.cache_percentage = config.cache_rate
@@ -168,7 +168,16 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     profiler = Profiler(duration=duration, sampling_time=sampling_time,
                         feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
     profiler.edges_computed = sum(edges_computed)/len(edges_computed)
+    edges_computed_max  = torch.tensor(edges_computed).to(rank)
+    edges_computed_min  = torch.tensor(edges_computed).to(rank)
+    edges_computed_avg  = torch.tensor(edges_computed).to(rank)
+    dist.all_reduce(edges_computed_max, op = dist.ReduceOp.MAX)
+    dist.all_reduce(edges_computed_min, op = dist.ReduceOp.MIN)
+    dist.all_reduce(edges_computed_avg, op = dist.ReduceOp.SUM)
+    profiler.edges_computed = edges_computed_avg.item()/4
+    profiler.edge_skew = edges_computed_max.item() - edges_computed_min.item() / profiler.edges_computed
     print(config.cache_rate, "cache rate check")
+
     if config.cache_rate == 0:
         max_available_memory = 15 * (1024 ** 3) - (max(max_memory_used))
         percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
