@@ -171,17 +171,12 @@ def best_configuration():
                                      test_acc = True, log_path='./log/partitions')
         bench_groot_batch(configs = configs, test_acc = True)
 
-if __name__ == "__main__":
-    import torch
-    import torch.multiprocessing as mp
-    mp.set_start_method('spawn')
+def all_experiments():
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv")
         bench_dgl_batch(configs=configs, test_acc=True)
         bench_groot_batch(configs=configs, test_acc=True )
         bench_quiver_batch(configs = configs, test_acc = True )
-
-
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc = False )
@@ -189,16 +184,20 @@ if __name__ == "__main__":
         bench_quiver_batch(configs = configs, test_acc = False )
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
-                                       data_dir="/data/ogbn/processed/")
-        bench_dgl_batch(configs=configs, test_acc=False )
-        bench_groot_batch(configs=configs, test_acc=False )
-        bench_quiver_batch(configs = configs, test_acc = False )
-
-    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
-        configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
                                     data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc=False )
         bench_groot_batch(configs=configs, test_acc=False )
         bench_quiver_batch(configs = configs, test_acc = False )
+    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+        configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
+                                   data_dir="/data/ogbn/processed/")
+        bench_dgl_batch(configs=configs, test_acc=False )
+        bench_groot_batch(configs=configs, test_acc=False )
+        bench_quiver_batch(configs = configs, test_acc = False )
 
-
+if __name__ == "__main__":
+    import torch
+    import torch.multiprocessing as mp
+    mp.set_start_method('spawn')
+    best_configuration()
+    all_experiments()
