@@ -128,7 +128,7 @@ def get_dataset(graph_name, in_dir):
 def get_metis_partition(in_dir, config, graph):
     assert config.partition_type in ["edge_balanced", "node_balanced", "random"]
     if config.partition_type == "random":
-        return torch.randint(0, 4, (graph.num_nodes()), dtype = torch.int32)
+        return torch.randint(0, 4, (graph.num_nodes(),), dtype = torch.int32)
     if config.partition_type == "edge_balanced":
         edge_balanced = True
         return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)
@@ -239,6 +239,7 @@ class CudaTimer:
 class Config:
     def __init__(self, graph_name, world_size, num_epoch, fanouts,
                  batch_size, system, model, hid_size, cache_rate, log_path, data_dir):
+        self.machine_name = os.environ['MACHINE_NAME']
         self.graph_name = graph_name
         self.world_size = world_size
         self.num_epoch = num_epoch
@@ -251,16 +252,16 @@ class Config:
         self.log_path = log_path
         self.data_dir = data_dir
         self.num_redundant_layer = len(self.fanouts)
-        self.partition_type = "metis"
+        self.partition_type = "edge_balanced"
         
     def header(self):
-        return ["graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
+        return ["machine_name", "graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
                 "batch_size", "system", \
-                    "model", "hid_size", "cache_rate"]
+                    "model", "hid_size", "cache_rate", "partition_type"]
     
     def content(self):
-        return [self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
-                    self.batch_size, self.system, self.model, self.hid_size, self.cache_rate]
+        return [self.machine_name, self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
+                    self.batch_size, self.system, self.model, self.hid_size, self.cache_rate, self.partition_type]
 
     def __repr__(self):
         res = ""

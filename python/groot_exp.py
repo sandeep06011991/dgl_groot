@@ -8,7 +8,7 @@ class DEFAULT_SETTING:
     batch_size = 1024
     hid_size = 256
     fanouts = [30,30,30]
-    models = ["sage","gat"]
+    models = ["gat"]
     num_redundant_layers = 0
 
 def get_default_config(graph_name, system, log_path, data_dir):
@@ -17,7 +17,7 @@ def get_default_config(graph_name, system, log_path, data_dir):
        config = Config(graph_name=graph_name,
                        world_size=4,
                        num_epoch=5,
-                       fanouts=DEFAULT_SETTING.fanout,
+                       fanouts=DEFAULT_SETTING.fanouts,
                        batch_size=DEFAULT_SETTING.batch_size,
                        system=system,
                        model=model,
@@ -52,6 +52,7 @@ def get_number_of_redundant_layers(graph_name, system, log_path, data_dir):
     return configs
 
 def get_partition_type(graph_name, system, log_path, data_dir):
+    configs = []
     for model in DEFAULT_SETTING.models:
         for partition_type in ["edge_balanced", "node_balanced", "random"]:
             config = Config(graph_name=graph_name,
@@ -165,39 +166,56 @@ def get_configs(graph_name, system, log_path, data_dir):
 def best_configuration():
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_number_of_redundant_layers(graph_name = graph_name,\
-                system = "groot", log_path='./log/redundant_layers')
+               system = "groot", log_path='./log/redundant_layers.csv', data_dir="/data/ogbn/processed/")
         bench_groot_batch(configs = configs, test_acc = True)
-        configs = get_partition_type(config = configs, system = "groot",\
-                                     test_acc = True, log_path='./log/partitions')
+        configs = get_partition_type(graph_name = graph_name, system = "groot",\
+                                    log_path='./log/partitions.csv', \
+                                     data_dir="/data/ogbn/processed/")
         bench_groot_batch(configs = configs, test_acc = True)
 
-def all_experiments():
-    for graph_name in ["ogbn-products","ogbn-papers100M"]:
-        configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv")
-        bench_dgl_batch(configs=configs, test_acc=True)
-        bench_groot_batch(configs=configs, test_acc=True )
+def quiver_experiment(graph_name: str):
+        configs = []
+        # config = get_default_config(graph_name, system="quiver", log_path = "./log/default.csv", \
+        #                          data_dir="/data/ogbn/processed/")
+        # configs.append(config)
+        config = get_batchsize_config(graph_name= graph_name, system="quiver", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
+        configs.append(config)
+        configs = get_hidden_config(graph_name=graph_name, system="quiver", log_path="./log/hidden_size.csv",
+                                    data_dir="/data/ogbn/processed/")
+        configs.append(config)
+        configs = get_depth_config(graph_name=graph_name, system="quiver", log_path="./log/depth.csv",
+                                   data_dir="/data/ogbn/processed/")
+        configs.append(config)
         bench_quiver_batch(configs = configs, test_acc = True )
+def all_experiments():
+    for graph_name in ["ogbn-products"]:
+        configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv",\
+                        data_dir="/data/ogbn/processed/")
+        #bench_dgl_batch(configs=configs, test_acc=True)
+        #bench_groot_batch(configs=configs, test_acc=True )
+        bench_quiver_batch(configs = configs, test_acc = True )
+    return    
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc = False )
         bench_groot_batch(configs=configs, test_acc=False )
-        bench_quiver_batch(configs = configs, test_acc = False )
+        #bench_quiver_batch(configs = configs, test_acc = False )
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
                                     data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc=False )
         bench_groot_batch(configs=configs, test_acc=False )
-        bench_quiver_batch(configs = configs, test_acc = False )
+        #bench_quiver_batch(configs = configs, test_acc = False )
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
         configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
                                    data_dir="/data/ogbn/processed/")
         bench_dgl_batch(configs=configs, test_acc=False )
         bench_groot_batch(configs=configs, test_acc=False )
-        bench_quiver_batch(configs = configs, test_acc = False )
+        #bench_quiver_batch(configs = configs, test_acc = False )
 
 if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
-    best_configuration()
+    #best_configuration()
     all_experiments()

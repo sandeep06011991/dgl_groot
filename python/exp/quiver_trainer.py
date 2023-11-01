@@ -41,32 +41,37 @@ def get_cache_size(feat: torch.Tensor, config: Config):
 def bench_quiver_batch(configs: list[Config], test_acc=False):
     import quiver
     for config in configs:
+        if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
+            config.system = "quiver-gpu"
+        if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
+            config.system = "quiver-uva"
+        if config.graph_name == "ogbn-products":
+            config.cache_rate = .25
+        if config.graph_name == "ogbn-papers100M":
+            config.cache_rate = .05
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
         assert(config.cache_rate == configs[0].cache_rate)
     if not QuiverVariables.init_p2p:
         quiver.init_p2p(device_list=list(range(config.world_size)))
         QuiverVariables.init_p2p = True
     in_dir = os.path.join(config.data_dir, config.graph_name)
-    feat, label, num_label = load_feat_label(in_dir)
     cache_policy = "p2p_clique_replicate"
+
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
+    del row, col
+    print("Quiver Topo  ")
+    feat, label, num_label = load_feat_label(in_dir)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
-    if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
-        config.system = "quiver-gpu"
-    if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
-        config.system = "quiver-uva"
-    if config.graph_name == "ogbn-products":
-        config.cache_rate = .25
-    if config.graph_name == "ogbn-papers100M":
-        config.cache_rate = .05
-
     cache_size = get_cache_size(feat, config)
     quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
                                  cache_policy=cache_policy, device_cache_size=cache_size)
     quiver_feat.from_cpu_tensor(feat)
-
+    feat_width = feat.shape[1]
+    print("Created quiver feat")
+    del feat
+    gc.collect()
     for config in configs:
         try:
             import quiver
@@ -76,7 +81,6 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
             if "gpu" in config.system:
                 quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
             print(f"feature cache size is {cache_size}")
-            feat_width = feat.shape[1]
             spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
                                    feat_width, label, num_label, train_idx, \
                                    valid_idx, test_idx), nprocs=config.world_size)
@@ -96,6 +100,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
+    print("Going into DDP")
     dataloader = QuiverDglSageSample(rank=rank, world_size=config.world_size, batch_size=config.batch_size, nids=train_idx, sampler=sampler)
     model = None
     if config.model == "gat":
