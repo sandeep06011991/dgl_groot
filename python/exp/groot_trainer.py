@@ -175,7 +175,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     dist.all_reduce(edges_computed_min, op = dist.ReduceOp.MIN)
     dist.all_reduce(edges_computed_avg, op = dist.ReduceOp.SUM)
     profiler.edges_computed = edges_computed_avg.item()/4
-    profiler.edge_skew = edges_computed_max.item() - edges_computed_min.item() / profiler.edges_computed
+    profiler.edge_skew = (edges_computed_max.item() - edges_computed_min.item()) / profiler.edges_computed
     print(config.cache_rate, "cache rate check")
 
     if config.cache_rate == 0:

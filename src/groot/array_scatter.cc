@@ -51,6 +51,7 @@ NDArray ScatteredArrayObject::shuffle_forward(dgl::runtime::NDArray feat, int ra
       NDArray toShuffle = NDArray::Empty({gather_idx_in_unique_out_shuffled->shape[0], feat->shape[1]},
                                           feat->dtype, feat->ctx);
 
+//      toshuffle = feat[gather_idx_in_unique_out_shuffled]
       IndexSelect(feat, gather_idx_in_unique_out_shuffled, toShuffle, stream);
 
       NDArray  feat_shuffled;
@@ -69,6 +70,7 @@ NDArray ScatteredArrayObject::shuffle_forward(dgl::runtime::NDArray feat, int ra
                                                        {num_nodes, feat->shape[1]}, feat->dtype, 0);
       NDArray partDiscFeat =
           NDArray::Empty({feat_shuffled_reshape->shape[0], feat->shape[1]}, feat_shuffled->dtype, feat->ctx);
+//      partDiscFeat = feat_shuffled_reshape[scatter_idx_in_part_disc_cont]
       IndexSelect(feat_shuffled_reshape, scatter_idx_in_part_disc_cont, partDiscFeat, stream);
 
       assert(partDiscFeat->shape[0] == scattered_tensor_dim);

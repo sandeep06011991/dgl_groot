@@ -191,9 +191,9 @@ def all_experiments():
     for graph_name in ["ogbn-products"]:
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv",\
                         data_dir="/data/ogbn/processed/")
-        #bench_dgl_batch(configs=configs, test_acc=True)
-        #bench_groot_batch(configs=configs, test_acc=True )
-        bench_quiver_batch(configs = configs, test_acc = True )
+        # bench_dgl_batch(configs=configs, test_acc=True)
+        bench_groot_batch(configs=configs, test_acc=True )
+        # bench_quiver_batch(configs = configs, test_acc = True )
     return    
     for graph_name in ["ogbn-products","ogbn-papers100M"]:
         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir="/data/ogbn/processed/")

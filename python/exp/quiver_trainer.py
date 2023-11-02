@@ -55,8 +55,10 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
         quiver.init_p2p(device_list=list(range(config.world_size)))
         QuiverVariables.init_p2p = True
     in_dir = os.path.join(config.data_dir, config.graph_name)
-    cache_policy = "p2p_clique_replicate"
-
+    if config.machine_name == "p3.8xlarge":
+        cache_policy = "p2p_clique_replicate"
+    else:
+        assert(False)
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
