@@ -42,9 +42,9 @@ IdArray Diff(IdArray prefix_sum) {
 
 template <typename T, ncclDataType_t NCCL_DATA_TYPE>
 void NCCLAllToAll(IdArray send_buffer, IdArray send_offset, IdArray recv_buffer,\
- IdArray recv_offset, int expand_size, int rank, int world_size, ncclComm_t nccl_comm) {
-  auto stream = CUDAThreadEntry::ThreadLocal()->stream;
-  auto data_copy_stream = CUDAThreadEntry::ThreadLocal()->data_copy_stream;
+ IdArray recv_offset, int expand_size, int rank, int world_size, ncclComm_t nccl_comm, cudaStream_t stream) {
+//  auto stream = CUDAThreadEntry::ThreadLocal()->stream;
+//  auto data_copy_stream = CUDAThreadEntry::ThreadLocal()->data_copy_stream;
   T* send_buffer_ptr = send_buffer.Ptr<T>();
   T* recv_buffer_ptr = recv_buffer.Ptr<T>();
   int type_bytes = sizeof(T);
@@ -65,8 +65,8 @@ void NCCLAllToAll(IdArray send_buffer, IdArray send_offset, IdArray recv_buffer,
 
   CUDACHECK(cudaMemcpyAsync(recv_buffer_ptr + recv_offset_ptr[rank] * expand_size, 
                        send_buffer_ptr + send_offset_ptr[rank] * expand_size, 
-                       (send_offset_ptr[rank + 1] - send_offset_ptr[rank]) * expand_size * type_bytes, cudaMemcpyDeviceToDevice, data_copy_stream));
-  CUDACHECK(cudaStreamSynchronize(data_copy_stream));
+                       (send_offset_ptr[rank + 1] - send_offset_ptr[rank]) * expand_size * type_bytes, cudaMemcpyDeviceToDevice, stream));
+  CUDACHECK(cudaStreamSynchronize(stream));
 }
 
 std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
@@ -101,7 +101,7 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
       IdArray range_seq = Range(0, world_size + 1, 64, host_dgl_context);
       // scheduler->TryComm(thread_id);
       NCCLAllToAll<int64_t, ncclInt64>(send_sizes, range_seq, \
-                                       recv_sizes, range_seq, 1, rank, world_size, nccl_comm);
+                                       recv_sizes, range_seq, 1, rank, world_size, nccl_comm, stream);
       CUDACHECK(cudaStreamSynchronize(stream));
       // scheduler->FinishComm();
       recv_offset = CumSum(recv_sizes, true);
@@ -116,15 +116,15 @@ std::pair<IdArray, IdArray> Alltoall(IdArray input, IdArray send_offset,\
     //   scheduler->TryComm(thread_id);
     if(input->dtype.code == 0){
       if(input->dtype.bits == 32) {
-        NCCLAllToAll<int, ncclInt32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+        NCCLAllToAll<int, ncclInt32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm, stream);
       } else {
-        NCCLAllToAll<int64_t, ncclInt64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+        NCCLAllToAll<int64_t, ncclInt64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm, stream);
       }
     }else{
       if(input->dtype.bits == 32) {
-        NCCLAllToAll<float, ncclFloat32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+        NCCLAllToAll<float, ncclFloat32>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm, stream);
       } else {
-        NCCLAllToAll<double, ncclFloat64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm);
+        NCCLAllToAll<double, ncclFloat64>(input, host_send_offset, recvbuff, host_recv_offset, expand_size, rank, world_size, nccl_comm, stream);
       }
     }
     CUDACHECK(cudaStreamSynchronize(stream));

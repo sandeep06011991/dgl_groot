@@ -181,3 +181,7 @@ src/*.a
 src/CMakeFiles
 src/cmake/
 src/cmake_install.cmake
+
+log/
+log-run1/
+nohup.out

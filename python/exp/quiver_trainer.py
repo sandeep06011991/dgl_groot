@@ -38,19 +38,39 @@ def get_cache_size(feat: torch.Tensor, config: Config):
     res = int(res * config.cache_rate)
     return f"{res}MB"
 
+def subprocess(rank, config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
+               train_idx, valid_idx, test_idx):
+    print(config)
+    cache_size = get_cache_size(feat, config)
+    quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                 cache_policy=cache_policy, device_cache_size=cache_size)
+    quiver_feat.from_cpu_tensor(feat)
+    assert "uva" in config.system or "gpu"  in config.system
+    if "uva" in config.system:
+        quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
+    if "gpu" in config.system:
+        quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
+    print(f"feature cache size is {cache_size}")
+    spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
+                           feat_width, label, num_label, train_idx, \
+                           valid_idx, test_idx), nprocs=config.world_size)
+
 def bench_quiver_batch(configs: list[Config], test_acc=False):
     import quiver
     for config in configs:
-        if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
-            config.system = "quiver-gpu"
-        if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
-            config.system = "quiver-uva"
         if config.graph_name == "ogbn-products":
-            config.cache_rate = .25
+            config.system = "quiver-gpu"
+            if config.model == "sage":
+                config.cache_rate = .25
+            if config.model == "gat":
+                config.cache_rate = .25
         if config.graph_name == "ogbn-papers100M":
-            config.cache_rate = .05
-        assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
-        assert(config.cache_rate == configs[0].cache_rate)
+            config.system = "quiver-uva"
+            if config.model == "sage":
+                config.cache_rate = .15
+            if config.model == "gat":
+                config.cache_rate = .05
+            assert(config.graph_name == configs[0].graph_name)
     if not QuiverVariables.init_p2p:
         quiver.init_p2p(device_list=list(range(config.world_size)))
         QuiverVariables.init_p2p = True
@@ -58,43 +78,44 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     if config.machine_name == "p3.8xlarge":
         cache_policy = "p2p_clique_replicate"
     else:
-        assert(False)
+        cache_policy = "device_replicate"
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
+    del graph
+    gc.collect()
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     del row, col
     print("Quiver Topo  ")
     feat, label, num_label = load_feat_label(in_dir)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
-    cache_size = get_cache_size(feat, config)
-    quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                 cache_policy=cache_policy, device_cache_size=cache_size)
-    quiver_feat.from_cpu_tensor(feat)
     feat_width = feat.shape[1]
     print("Created quiver feat")
-    del feat
-    gc.collect()
     for config in configs:
         try:
-            import quiver
-            assert "uva" in config.system or "gpu"  in config.system
-            if "uva" in config.system:
-                quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
-            if "gpu" in config.system:
-                quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
-            print(f"feature cache size is {cache_size}")
-            spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
-                                   feat_width, label, num_label, train_idx, \
-                                   valid_idx, test_idx), nprocs=config.world_size)
+            torch.multiprocessing.spawn(subprocess, (config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
+                                          train_idx, valid_idx, test_idx), nprocs = 1, join = True)
 
+            print(config)
+            # cache_size = get_cache_size(feat, config)
+            # quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+            #                              cache_policy=cache_policy, device_cache_size=cache_size)
+            # quiver_feat.from_cpu_tensor(feat)
+            # assert "uva" in config.system or "gpu"  in config.system
+            # if "uva" in config.system:
+            #     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
+            # if "gpu" in config.system:
+            #     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
+            # print(f"feature cache size is {cache_size}")
+            # spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
+            #                        feat_width, label, num_label, train_idx, \
+            #                        valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             print(e)
             write_to_csv(config.log_path, [config], [empty_profiler()])
-            break
         gc.collect()
         torch.cuda.empty_cache()
 
-            
+
 def train_ddp(rank: int, config: Config, test_acc: bool,
               sampler: quiver.pyg.GraphSageSampler, feat: quiver.Feature, feat_width:int, label: torch.Tensor, num_label: int, 
               train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor,\
@@ -131,11 +152,12 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     feature_timers = []
     forward_timers = []
     backward_timers = []
-    
+    edges_computed = []
     for epoch in range(config.num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")
         sampling_timer = CudaTimer()
+        edges_computed_epoch = 0
         for input_nodes, output_nodes, blocks in dataloader:
             sampling_timer.end()
             
@@ -143,7 +165,10 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             batch_feat = feat[input_nodes]
             batch_label = label[output_nodes]
             feat_timer.end()            
-            
+
+            for block in blocks:
+                edges_computed_epoch = edges_computed_epoch + block.num_edges()
+
             forward_timer = CudaTimer()
             batch_pred = model(blocks, batch_feat)
             batch_loss = F.cross_entropy(batch_pred, batch_label)
@@ -161,7 +186,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             backward_timers.append(backward_timer)
 
             sampling_timer = CudaTimer()
-            
+        edges_computed.append(edges_computed_epoch)
     torch.cuda.synchronize()
     duration = timer.duration()
     sampling_time = get_duration(sampling_timers)
@@ -171,6 +196,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     profiler = Profiler(duration=duration, sampling_time=sampling_time,\
                         feature_time=feature_time, forward_time=forward_time,\
                         backward_time=backward_time, test_acc=0)
+    profile_edge_skew(edges_computed, profiler, rank, dist)
     if config.cache_rate == 0:
         cache_rate = min(.25, (((16 * 1024 - profiler.reserved_mb) * (1024 ** 2))
                                / (feat.shape[0] * feat.shape[1] * 4)))

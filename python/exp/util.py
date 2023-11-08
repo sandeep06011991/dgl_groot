@@ -336,6 +336,18 @@ def write_to_csv(out_path, configs: list[Config], profilers: list[Profiler]):
     print("Experiment result has been written to: ", out_path)
 
 
+def profile_edge_skew(edges_computed, profiler, rank, dist):
+    profiler.edges_computed = sum(edges_computed)/len(edges_computed)
+    edges_computed = sum(edges_computed)/len(edges_computed)
+    edges_computed_max  = torch.tensor(edges_computed).to(rank)
+    edges_computed_min  = torch.tensor(edges_computed).to(rank)
+    edges_computed_avg  = torch.tensor(edges_computed).to(rank)
+    dist.all_reduce(edges_computed_max, op = dist.ReduceOp.MAX)
+    dist.all_reduce(edges_computed_min, op = dist.ReduceOp.MIN)
+    dist.all_reduce(edges_computed_avg, op = dist.ReduceOp.SUM)
+    profiler.edges_computed = edges_computed_avg.item()/4
+    profiler.edge_skew = (edges_computed_max.item() - edges_computed_min.item()) / profiler.edges_computed
+
 # This is identical to the run function except it assumes the graph has been loaded into the memory
 # def run_batch_helper(config: Config, graph, train_idx):
 #     e2eTimer = Timer()

@@ -9,6 +9,7 @@ from dgl.utils import pin_memory_inplace, gather_pinned_tensor_rows
 
 from .dgl_model import *
 from .util import *
+import time
 
 def ddp_setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
@@ -22,17 +23,23 @@ def ddp_exit():
 def bench_dgl_batch(configs: list[Config], test_acc=False):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
-    
+    print("Start data loading")
+    t1 = time.time()
+    print(config)
     in_dir = os.path.join(config.data_dir, config.graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
+    graph.create_formats_()
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     feat, label, num_label = load_feat_label(in_dir)
+    print("Data loading total time", time.time() - t1)
     for config in configs:
+        if config.graph_name == "ogbn-products"  or config.system =="com-orkut":
+            config.system = "dgl-gpu"
+            config.cache_rate = 1
+        if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
+            config.system = "dgl-uva"
+            config.cache_rate = 0
         try:
-            if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
-                config.system = "dgl-gpu"
-            if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
-                config.system = "dgl-uva"
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             print(e)
@@ -49,14 +56,13 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
     dataloader, graph = get_dgl_sampler(graph=graph, train_idx=train_idx,
                                         graph_samler=graph_sampler, system=config.system, batch_size=config.batch_size, use_dpp=True)
-    if "uva" in config.system:
+    assert config.cache_rate in [0, 1]
+    if config.cache_rate == 0:
         feat_nd  = pin_memory_inplace(feat)
         label_nd = pin_memory_inplace(label)
-    
-    elif "gpu" in config.system:
+    if config.cache_rate == 1:
         feat = feat.to(device)
         label = label.to(device)
-        
     model = None
     if config.model == "gat":
         model = DGLGat(in_feats=feat.shape[1], hid_feats=config.hid_size, num_layers=len(config.fanouts), out_feats=num_label, num_heads=4)
@@ -72,16 +78,12 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     for input_nodes, output_nodes, blocks in dataloader:
         batch_feat = None
         batch_label = None
-        if "uva" in config.system:
+        if config.cache_rate == 0:
             batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
             batch_label = gather_pinned_tensor_rows(label, output_nodes)
-        elif "gpu" in config.system:
+        if config.cache_rate == 1:
             batch_feat = feat[input_nodes]
             batch_label = label[output_nodes]
-        else:
-            batch_feat = feat[input_nodes].to(device)
-            batch_label = label[output_nodes].to(device)
-            blocks = [block.to(device) for block in blocks]
         batch_pred = model(blocks, batch_feat)
         batch_loss = F.cross_entropy(batch_pred, batch_label)
         optimizer.zero_grad()
@@ -94,10 +96,11 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     feature_timers = []
     forward_timers = []
     backward_timers = []
-    
+    edges_computed = []
     for epoch in range(config.num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")
+        edges_computed_epoch = 0
         sampling_timer = CudaTimer()
         for input_nodes, output_nodes, blocks in dataloader:
             sampling_timer.end()
@@ -105,20 +108,18 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             feat_timer = CudaTimer()
             batch_feat = None
             batch_label = None
-            if "uva" in config.system:
+            if  config.cache_rate == 0:
                 batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
                 batch_label = gather_pinned_tensor_rows(label, output_nodes)
-            elif "gpu" in config.system:
+            elif config.cache_rate == 1:
                 batch_feat = feat[input_nodes]
                 batch_label = label[output_nodes]
-            else:
-                batch_feat = feat[input_nodes].to(device)
-                batch_label = label[output_nodes].to(device)
-                blocks = [block.to(device) for block in blocks]
-                
+
             feat_timer.end()            
             
             forward_timer = CudaTimer()
+            for block in blocks:
+                edges_computed_epoch += block.num_edges()
             batch_pred = model(blocks, batch_feat)
             batch_loss = F.cross_entropy(batch_pred, batch_label)
             forward_timer.end()
@@ -129,13 +130,14 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             optimizer.step()
             backward_timer.end()
             
+
             sampling_timers.append(sampling_timer)
             feature_timers.append(feat_timer)
             forward_timers.append(forward_timer)
             backward_timers.append(backward_timer)
 
             sampling_timer = CudaTimer()
-            
+        edges_computed.append(edges_computed_epoch)
     torch.cuda.synchronize()
     duration = timer.duration()
     sampling_time = get_duration(sampling_timers)
@@ -143,6 +145,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     forward_time = get_duration(forward_timers)
     backward_time = get_duration(backward_timers)
     profiler = Profiler(duration=duration, sampling_time=sampling_time, feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
+    profile_edge_skew(edges_computed, profiler, rank, dist)
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
@@ -162,16 +165,16 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             with torch.no_grad():
                 batch_feat = None
                 batch_label = None
-                if "uva" in config.system:
+                if config.cache_rate == 0:
                     batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
                     batch_label = gather_pinned_tensor_rows(label, output_nodes)
-                elif "gpu" in config.system:
+                else:
                     batch_feat = feat[input_nodes]
                     batch_label = label[output_nodes]
-                else:
-                    batch_feat = feat[input_nodes].to(device)
-                    batch_label = label[output_nodes].to(device)
-                    blocks = [block.to(device) for block in blocks]
+                # else:
+                #     batch_feat = feat[input_nodes].to(device)
+                #     batch_label = label[output_nodes].to(device)
+                #     blocks = [block.to(device) for block in blocks]
                 ys.append(batch_label)
                 batch_pred = model(blocks, batch_feat)
                 y_hats.append(batch_pred)  

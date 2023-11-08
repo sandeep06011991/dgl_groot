@@ -33,28 +33,38 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
-    max_cache_fraction_queue = torch.multiprocessing.Queue(1)
     train_idx_list = []
     for p in range(config.world_size):
         train_idx_list.append(train_idx[partition_map[train_idx] == p])
     for config in configs:
-        if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
-            config.cache_rate = 1
+        # Default settings
+        if (config.graph_name == "ogbn-products"):
+            dgl_cache_rate = 1
+            quiver_cache_rate = .25
             config.system = "groot-gpu"
+        if (config.graph_name == "com-orkut") :
+            pass
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
-            config.cache_rate  = .05
+            if config.model == "sage":
+                quiver_cache_rate  = .15
+            if config.model == "gat":
+                quiver_cache_rate = .15
+            dgl_cache_rate = 0
             config.system = "groot-uva"
-        config.cache_percentage = config.cache_rate
-        cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
-        try:
-            spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
-                                   num_label, train_idx_list, valid_idx, test_idx, \
-                                   indptr, indices, edges, None , partition_map, cached_ids), \
-                  nprocs=config.world_size, daemon=True, join= True)
+        for cache_rate in [dgl_cache_rate, quiver_cache_rate]:
+            config.cache_percentage = cache_rate
+            config.cache_rate = cache_rate 
+            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
+            try:
+                spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
+                                       num_label, train_idx_list, valid_idx, test_idx, \
+                                       indptr, indices, edges,  partition_map, cached_ids), \
+                      nprocs=config.world_size, daemon=True, join= True)
+            except Exception as e:
+                write_to_csv(config.log_path, [config], [empty_profiler()])
+                print(e)
+                # This is to handle cases where probaly went out of memory
 
-        except Exception as e:
-            write_to_csv(config.log_path, [config], [empty_profiler()])
-            print(e)
             # assert(False)
         gc.collect()
         torch.cuda.empty_cache()
@@ -63,19 +73,24 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
               graph: dgl.DGLGraph, feat: torch.Tensor, label: torch.Tensor, num_label: int, 
               train_idx_list: [torch.Tensor], valid_idx: torch.Tensor, test_idx: torch.Tensor,
               indptr: torch.Tensor, indices: torch.Tensor, edges:torch.Tensor, \
-                queue: torch.multiprocessing.Queue, partition_map: torch.Tensor, cached_ids):
+                 partition_map: torch.Tensor, cached_ids):
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
-    indptr_handle = pin_memory_inplace(indptr)
-    indices_handle = pin_memory_inplace(indices)
-    edge_id_handle = pin_memory_inplace(edges)
 
     if "uva" in config.system:
+        indptr_handle = pin_memory_inplace(indptr)
+        indices_handle = pin_memory_inplace(indices)
+        edge_id_handle = pin_memory_inplace(edges)
+    if "gpu" in config.system:
+        indptr = indptr.to(rank)
+        indices = indices.to(rank)
+        edges = edges.to(rank)
+
+    if config.cache_rate != 1:
         feat_nd  = pin_memory_inplace(feat)
         label_nd = pin_memory_inplace(label)
-    
-    elif "gpu" in config.system:
+    else:
         feat = feat.to(device)
         label = label.to(device)
 
@@ -92,7 +107,6 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         train_idx, valid_idx, test_idx, partition_map
     )
     if cached_ids != None:
-
         cache_id = cached_ids[rank].to(rank)
         # cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
         init_groot_dataloader_cache(cache_id.to(indptr.dtype))
@@ -167,17 +181,8 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     backward_time = get_duration(backward_timers)
     profiler = Profiler(duration=duration, sampling_time=sampling_time,
                         feature_time=feature_time, forward_time=forward_time, backward_time=backward_time, test_acc=0)
-    profiler.edges_computed = sum(edges_computed)/len(edges_computed)
-    edges_computed_max  = torch.tensor(edges_computed).to(rank)
-    edges_computed_min  = torch.tensor(edges_computed).to(rank)
-    edges_computed_avg  = torch.tensor(edges_computed).to(rank)
-    dist.all_reduce(edges_computed_max, op = dist.ReduceOp.MAX)
-    dist.all_reduce(edges_computed_min, op = dist.ReduceOp.MIN)
-    dist.all_reduce(edges_computed_avg, op = dist.ReduceOp.SUM)
-    profiler.edges_computed = edges_computed_avg.item()/4
-    profiler.edge_skew = (edges_computed_max.item() - edges_computed_min.item()) / profiler.edges_computed
+    profile_edge_skew(edges_computed, profiler, rank, dist)
     print(config.cache_rate, "cache rate check")
-
     if config.cache_rate == 0:
         max_available_memory = 15 * (1024 ** 3) - (max(max_memory_used))
         percentage_of_nodes = min(1.0, max_available_memory/(feat.shape[0] * feat.shape[1] * 4))
@@ -186,7 +191,6 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         dist.all_reduce(cache_rate, op=dist.ReduceOp.MIN)
         if rank == 0:
             print("calculated cache size", cache_rate.item())
-            queue.put(cache_rate.item())
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
@@ -209,16 +213,16 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             with torch.no_grad():
                 batch_feat = None
                 batch_label = None
-                if "uva" in config.system:
+                if config.cache_rate != 1 :
                     batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
                     batch_label = gather_pinned_tensor_rows(label, output_nodes)
-                elif "gpu" in config.system:
+                else:
                     batch_feat = feat[input_nodes]
                     batch_label = label[output_nodes]
-                else:
-                    batch_feat = feat[input_nodes].to(device)
-                    batch_label = label[output_nodes].to(device)
-                    blocks = [block.to(device) for block in blocks]
+                # else:
+                #     batch_feat = feat[input_nodes].to(device)
+                #     batch_label = label[output_nodes].to(device)
+                #     blocks = [block.to(device) for block in blocks]
                 ys.append(batch_label)
                 batch_pred = model(blocks, batch_feat, inference = True)
                 y_hats.append(batch_pred)  
