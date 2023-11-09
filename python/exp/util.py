@@ -1,6 +1,6 @@
 import os, dgl, torch, time, csv, gc
 from ogb.nodeproppred import DglNodePropPredDataset
-
+import pandas as pd
 def _build_dgl_graph(indptr, indices, edges) -> dgl.DGLGraph:
     graph = dgl.graph(("csc", (indptr, indices, edges)))
     return graph
@@ -253,14 +253,23 @@ class Config:
         self.data_dir = data_dir
         self.num_redundant_layer = len(self.fanouts)
         self.partition_type = "edge_balanced"
-        
+
+
+    def get_file_name(self):
+        if "groot" not in self.system:
+            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}" + \
+                     f"{len(self.fanouts)}x{self.fanouts[0]}")
+        else:
+            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}" + \
+                    f"{len(self.fanouts)}x{self.fanouts[0]}_{self.num_redundant_layer}")
+
     def header(self):
-        return ["machine_name", "graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
+        return ["timestamp","machine_name", "graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
                 "batch_size", "system", \
                     "model", "hid_size", "cache_rate", "partition_type"]
     
     def content(self):
-        return [self.machine_name, self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
+        return [  pd.Timestamp('now'), self.machine_name, self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
                     self.batch_size, self.system, self.model, self.hid_size, self.cache_rate, self.partition_type]
 
     def __repr__(self):
@@ -285,15 +294,16 @@ class Profiler:
         self.allocated_mb, self.reserved_mb = get_memory_info()
         self.edges_computed = 0
         self.edge_skew = 0
+        self.run_time = 0
     def header(self):
         header = ["duration (s)", "sampling (s)", "feature (s)", "forward (s)", "backward (s)",\
-                    "allocated (MB)", "reserved (MB)", "test accuracy %", "edges_computed", "edge_skew"]
+                    "allocated (MB)", "reserved (MB)", "test accuracy %", "edges_computed", "edge_skew", "run_time"]
         return header
     
     def content(self):
         content = [self.duration, self.sampling_time, self.feature_time, self.forward_time,\
                    self.backward_time, self.allocated_mb, self.reserved_mb, self.test_acc, \
-                   self.edges_computed, self.edge_skew]
+                   self.edges_computed, self.edge_skew, self.run_time]
         return content
     
     def __repr__(self):
@@ -309,6 +319,12 @@ def empty_profiler():
     empty = -1
     profiler = Profiler(duration=empty, sampling_time=empty, feature_time=empty, forward_time=empty, backward_time=empty, test_acc=empty)
     return profiler
+
+def oom_profiler():
+    oom = "oom"
+    profiler = Profiler(duration=oom, sampling_time=oom, feature_time=oom, forward_time=oom, backward_time=oom, test_acc=oom)
+    return profiler
+
 
 def get_duration(timers: list[CudaTimer], rb=3)->float:
     res = 0.0

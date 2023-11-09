@@ -110,8 +110,13 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
             #                        feat_width, label, num_label, train_idx, \
             #                        valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
-            print(e)
-            write_to_csv(config.log_path, [config], [empty_profiler()])
+            if "CUDA out of memory"in str(e):
+                write_to_csv(config.log_path, configs[config], [oom_profiler()])
+            else:
+
+                write_to_csv(config.log_path, [config], [empty_profiler()])
+                with open(f"exceptions/{config.get_file_name()}") as fp:
+                    fp.write(e)
         gc.collect()
         torch.cuda.empty_cache()
 
@@ -123,6 +128,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
+    start_time = time.time()
     print("Going into DDP")
     dataloader = QuiverDglSageSample(rank=rank, world_size=config.world_size, batch_size=config.batch_size, nids=train_idx, sampler=sampler)
     model = None
@@ -231,6 +237,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         acc = round(acc.item() * 100 / config.world_size, 2)
         profiler.test_acc = acc  
         if rank == 0:
+            profiler.run_time = time.time() - start_time
             print(f"test accuracy={acc}%")
             write_to_csv(config.log_path, [config], [profiler])
     ddp_exit()

@@ -1,4 +1,5 @@
 import pandas as pd
+import pandas 
 
 def clean_and_sort(filename):
     df = pd.read_csv(filename)
@@ -21,16 +22,27 @@ def merge():
                  "partitions.csv","redundant_layers.csv"]:
 # filename = "default.csv"
         df1 = pandas.read_csv('log/' + filename)
-        df2 = pandas.read_csv('log/' + filename + '_no_dup.csv')
-        df3 = pandas.read_csv('log-run1/' + filename)
-        df = pandas.concat([df1,df2, df3])
+        df2 = pandas.read_csv('temp/' + filename )
+        #df3 = pandas.read_csv('log-run1/' + filename)
+        df = pandas.concat([df1,df2])
         with open('log/' + filename,'w') as fp:
             fp.write(df.to_csv(index = False))
         print("Done", filename)
 
+from io import StringIO
+def correction(filename):
+    with open(filename,'r') as fp:
+        for line in fp.readlines():
+            csvStringIO = StringIO(line)
+            df = pd.read_csv(csvStringIO, sep=",", header=None)
+            print(len(df.cols))
+
+            
 if __name__ == "__main__":
+    # correction('temp/default.csv')
+    # merge()
     filenames= ["batch_size", "depth", "partitions", \
-        "default", "hidden_size", "redundant_layers"]
+       "default", "hidden_size", "redundant_layers"]
     #filenames = ["default"]
     for filename in filenames:
-        clean_and_sort(f'log/{filename}.csv')
+       clean_and_sort(f'log/{filename}.csv')

@@ -61,8 +61,14 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                                        indptr, indices, edges,  partition_map, cached_ids), \
                       nprocs=config.world_size, daemon=True, join= True)
             except Exception as e:
-                write_to_csv(config.log_path, [config], [empty_profiler()])
-                print(e)
+                if "CUDA out of memory"in str(e):
+                    write_to_csv(config.log_path, configs[config], [oom_profiler()])
+                else:
+
+                    write_to_csv(config.log_path, [config], [empty_profiler()])
+                    with open(f"exceptions/{config.get_file_name()}") as fp:
+                        fp.write(e)
+
                 # This is to handle cases where probaly went out of memory
 
             # assert(False)
@@ -77,7 +83,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
-
+    start_time = time.time()
     if "uva" in config.system:
         indptr_handle = pin_memory_inplace(indptr)
         indices_handle = pin_memory_inplace(indices)
@@ -231,7 +237,9 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         acc = round(acc.item() * 100 / config.world_size, 2)
         profiler.test_acc = acc  
         if rank == 0:
+            profiler.run_time = time.time() - start_time
             print(f"test accuracy={acc}%")
             write_to_csv(config.log_path, [config], [profiler])
     ddp_exit()
+
 
