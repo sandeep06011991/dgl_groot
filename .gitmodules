@@ -37,3 +37,6 @@
 [submodule "third_party/parallel-hashmap"]
 	path = third_party/parallel-hashmap
 	url = https://github.com/greg7mdp/parallel-hashmap.git
+[submodule "third_party/torch-quiver"]
+	path = third_party/torch-quiver
+	url = https://github.com/sandeep06011991/torch-quiver.git
