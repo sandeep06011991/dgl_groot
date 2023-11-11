@@ -24,56 +24,53 @@ def ddp_setup(rank, world_size):
 def ddp_exit():
     dist.destroy_process_group()
 
-def get_cache_size(feat: torch.Tensor, config: Config):
-    res = 1
-    if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
-        res *= 4
-    elif torch.float64 == feat.dtype or torch.int64 == feat.dtype:
-        res *= 8
-    
-    for s in feat.shape:
-        res *= s
-    
-    res /= 1024 * 1024
-    res = int(res * config.cache_rate)
-    return f"{res}MB"
 
 def subprocess(rank, config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
                train_idx, valid_idx, test_idx):
     print(config)
-    cache_size = get_cache_size(feat, config)
     quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                 cache_policy=cache_policy, device_cache_size=cache_size)
+                                 cache_policy=cache_policy, device_cache_size=config.cache_size)
     quiver_feat.from_cpu_tensor(feat)
     assert "uva" in config.system or "gpu"  in config.system
     if "uva" in config.system:
         quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
     if "gpu" in config.system:
         quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
-    print(f"feature cache size is {cache_size}")
+    print(f"feature cache size is {config.cache_size}")
     spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
                            feat_width, label, num_label, train_idx, \
                            valid_idx, test_idx), nprocs=config.world_size)
 
+# retuns list of cache percentage in decreasing order
+def get_quiver_cache_percentage(feat, policy):
+    MAX_GPU = 14 * 1024
+    res = 1
+    if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
+        res *= 4
+    elif torch.float64 == feat.dtype or torch.int64 == feat.dtype:
+        res *= 8
+    for s in feat.shape:
+        res *= s
+    res = res / (1024 * 1024)
+    if policy == "device_replicate":
+        max_size = min(MAX_GPU, res)
+    if policy == "p2p_clique_replicate":
+        max_size = min(MAX_GPU, res/4)
+    cache_sizes = []
+    cache_size = max_size
+    while cache_size > 0:
+        cache_sizes.append(f"{cache_size}MB")
+        cache_size = (cache_size // 1024 ) * 1024 - 1024
+    return cache_sizes
+
 def bench_quiver_batch(configs: list[Config], test_acc=False):
     import quiver
     for config in configs:
-        if config.graph_name == "ogbn-products":
+        if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
             config.system = "quiver-gpu"
-            if config.model == "sage":
-                config.cache_rate = .25
-            if config.model == "gat":
-                config.cache_rate = .25
-        if config.graph_name == "ogbn-papers100M":
+        if config.graph_name == "ogbn-papers100M" or config.graph_name== "com-friendser":
             config.system = "quiver-uva"
-            if config.model == "sage":
-                config.cache_rate = .15
-            if config.model == "gat":
-                config.cache_rate = .05
             assert(config.graph_name == configs[0].graph_name)
-    if not QuiverVariables.init_p2p:
-        quiver.init_p2p(device_list=list(range(config.world_size)))
-        QuiverVariables.init_p2p = True
     in_dir = os.path.join(config.data_dir, config.graph_name)
     if config.machine_name == "p3.8xlarge":
         cache_policy = "p2p_clique_replicate"
@@ -91,34 +88,26 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     feat_width = feat.shape[1]
     print("Created quiver feat")
     for config in configs:
-        try:
-            torch.multiprocessing.spawn(subprocess, (config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
-                                          train_idx, valid_idx, test_idx), nprocs = 1, join = True)
+        cache_sizes = get_quiver_cache_percentage(feat, cache_policy)
+        for id,cache_size in cache_sizes:
+            try:
+                config.cache_size = cache_size
+                torch.multiprocessing.spawn(subprocess, (config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
+                                              train_idx, valid_idx, test_idx), nprocs = 1, join = True)
 
-            print(config)
-            # cache_size = get_cache_size(feat, config)
-            # quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-            #                              cache_policy=cache_policy, device_cache_size=cache_size)
-            # quiver_feat.from_cpu_tensor(feat)
-            # assert "uva" in config.system or "gpu"  in config.system
-            # if "uva" in config.system:
-            #     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
-            # if "gpu" in config.system:
-            #     quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
-            # print(f"feature cache size is {cache_size}")
-            # spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
-            #                        feat_width, label, num_label, train_idx, \
-            #                        valid_idx, test_idx), nprocs=config.world_size)
-        except Exception as e:
-            if "CUDA out of memory"in str(e):
-                write_to_csv(config.log_path, configs[config], [oom_profiler()])
-            else:
-
-                write_to_csv(config.log_path, [config], [empty_profiler()])
-                with open(f"exceptions/{config.get_file_name()}") as fp:
-                    fp.write(e)
-        gc.collect()
-        torch.cuda.empty_cache()
+                break
+            except Exception as e:
+                if "CUDA out of memory"in str(e):
+                    if id == (len(cache_sizes) - 1):
+                        write_to_csv(config.log_path, [config], [oom_profiler()])
+                else:
+                    write_to_csv(config.log_path, [config], [empty_profiler()])
+                    with open(f"exceptions/{config.get_file_name()}" , 'w') as fp:
+                        fp.write(str(e))
+                        break
+            torch.cuda.ipc_collect()
+            gc.collect()
+            torch.cuda.empty_cache()
 
 
 def train_ddp(rank: int, config: Config, test_acc: bool,

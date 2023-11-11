@@ -23,6 +23,31 @@ def ddp_setup(rank, world_size):
 def ddp_exit():
     dist.destroy_process_group()
 
+# retuns list of cache percentage in decreasing order
+def get_groot_cache_percentage(feat, config: Config):
+    MAX_GPU = 14 * 1024
+    res = 1
+    if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
+        res *= 4
+    elif torch.float64 == feat.dtype or torch.int64 == feat.dtype:
+        res *= 8
+    for s in feat.shape:
+        res *= s
+    res = res / (1024 * 1024)
+    if config.machine_name == "p3.8xlarge":
+        max_size = min(MAX_GPU, res/4)
+    else:
+        max_size = min(MAX_GPU, res)
+    cache_sizes = []
+    cache_size = max_size
+    while cache_size > 0:
+        cache_ratio = cache_size / res
+        cache_sizes.append((round(cache_ratio,2), f"{cache_size}MB"))
+        cache_size = (cache_size // 1024 ) * 1024 - 1024
+    return cache_sizes
+
+
+
 def bench_groot_batch(configs: list[Config], test_acc=False):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
@@ -38,23 +63,27 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
         train_idx_list.append(train_idx[partition_map[train_idx] == p])
     for config in configs:
         # Default settings
-        if (config.graph_name == "ogbn-products"):
-            dgl_cache_rate = 1
-            quiver_cache_rate = .25
+        cache_rates = []
+        quiver_cache_rate = -1
+        if  config.graph_name == "com-orkut":
+            dgl_cache_size = 0
+            dgl_cache_size = 0
             config.system = "groot-gpu"
-        if (config.graph_name == "com-orkut") :
-            pass
+        if (config.graph_name == "ogbn-products") :
+            dgl_cache_rate = 1
+            dgl_cache_size = f"{feat.shape[0] * feat.shape[1]  * 4/ (1024 ** 2)}MB"
+            config.system = "groot-gpu"
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
-            if config.model == "sage":
-                quiver_cache_rate  = .15
-            if config.model == "gat":
-                quiver_cache_rate = .15
             dgl_cache_rate = 0
+            dgl_cache_size = 0
             config.system = "groot-uva"
-        for cache_rate in [dgl_cache_rate, quiver_cache_rate]:
+        cache_rates.extend([(dgl_cache_rate, dgl_cache_size)])
+        cache_rates.extend(get_groot_cache_percentage(feat, config))
+        for id, (cache_rate, cache_size) in enumerate(cache_rates):
             config.cache_percentage = cache_rate
-            config.cache_rate = cache_rate 
-            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list)
+            config.cache_rate = cache_rate
+            config.cache_size = cache_size
+            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list, partition_map)
             try:
                 spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
                                        num_label, train_idx_list, valid_idx, test_idx, \
@@ -62,18 +91,23 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                       nprocs=config.world_size, daemon=True, join= True)
             except Exception as e:
                 if "CUDA out of memory"in str(e):
-                    write_to_csv(config.log_path, configs[config], [oom_profiler()])
+                    if id != len(cache_rates)-1:
+                        write_to_csv(config.log_path, [config], [oom_profiler()])
+                    continue
                 else:
-
                     write_to_csv(config.log_path, [config], [empty_profiler()])
-                    with open(f"exceptions/{config.get_file_name()}") as fp:
-                        fp.write(e)
 
+                    with open(f"exceptions/{config.get_file_name()}", 'w') as fp:
+                        fp.write(str(e))
+            # since id == 0 is dgl setting and id > 0 is quiver setting
+            if id > 0:
+                break
+            gc.collect()
+            torch.cuda.empty_cache()
                 # This is to handle cases where probaly went out of memory
 
             # assert(False)
-        gc.collect()
-        torch.cuda.empty_cache()
+
 
 def train_ddp(rank: int, config: Config, test_acc: bool,
               graph: dgl.DGLGraph, feat: torch.Tensor, label: torch.Tensor, num_label: int, 
@@ -114,7 +148,6 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     )
     if cached_ids != None:
         cache_id = cached_ids[rank].to(rank)
-        # cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
         init_groot_dataloader_cache(cache_id.to(indptr.dtype))
 
     n_classes = torch.max(label) + 1

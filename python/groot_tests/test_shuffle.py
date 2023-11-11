@@ -35,6 +35,11 @@ def run_proc(rank, world_size):
      #    Create all torch layers
      #Test forward and Backward Pass on this object
 
+def run_naive(rank):
+    pass
+#   Init distributed process group
+#   get random frontier in range
+
 
 if __name__ == "__main__":
     world_size = 4

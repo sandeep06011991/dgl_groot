@@ -1,4 +1,5 @@
 # Contruct a n-layer GNN model
+import dgl
 from dgl.nn.pytorch.conv import GATConv, SAGEConv
 import torch.nn as nn
 import torch

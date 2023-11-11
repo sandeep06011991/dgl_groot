@@ -3,7 +3,7 @@ import pandas
 
 def clean_and_sort(filename):
     df = pd.read_csv(filename)
-
+    df = df.sort_values(by=['timestamp'])
     is_duplicate = df.duplicated(subset=['machine_name', 'graph_name', 'world_size', 'num_epoch', 'fanouts',
                                          'num_redundant_layers', 'batch_size', 'system', 'model', 'hid_size',
                                          'cache_rate', 'partition_type'], keep = 'last')
@@ -37,7 +37,7 @@ def correction(filename):
             df = pd.read_csv(csvStringIO, sep=",", header=None)
             print(len(df.cols))
 
-            
+
 if __name__ == "__main__":
     # correction('temp/default.csv')
     # merge()

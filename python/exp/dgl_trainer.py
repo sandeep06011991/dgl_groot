@@ -25,7 +25,6 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     print("Start data loading")
     t1 = time.time()
-    print(config)
     in_dir = os.path.join(config.data_dir, config.graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
     graph.create_formats_()
@@ -33,7 +32,7 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     feat, label, num_label = load_feat_label(in_dir)
     print("Data loading total time", time.time() - t1)
     for config in configs:
-        if config.graph_name == "ogbn-products"  or config.system =="com-orkut":
+        if config.graph_name == "ogbn-products"  or config.graph_name =="com-orkut":
             config.system = "dgl-gpu"
             config.cache_rate = 1
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
@@ -43,12 +42,12 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             if "CUDA out of memory"in str(e):
-                write_to_csv(config.log_path, configs[config], [oom_profiler()])
+                write_to_csv(config.log_path, [config], [oom_profiler()])
             else:
 
                 write_to_csv(config.log_path, [config], [empty_profiler()])
-                with open(f"exceptions/{config.get_file_name()}") as fp:
-                    fp.write(e)
+                with open(f"exceptions/{config.get_file_name()}",'w') as fp:
+                    fp.write(str(e))
         gc.collect()
         torch.cuda.empty_cache()
             

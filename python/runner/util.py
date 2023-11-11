@@ -199,7 +199,7 @@ def load_dgl_dataset(config: RunConfig):
             train_idx_partition.append(train_idx[torch.where(partition_map[train_idx] == i)[0]])
         if config.cache_percentage != 0:
             print("need to cache")
-            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_partition)
+            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_partition, partition_map)
             print(cached_ids)
         train_idx = train_idx_partition
         print("Label test", label[train_idx_partition[0]])
@@ -247,7 +247,8 @@ def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dg
 
 def get_cache_ids_by_sampling(config: RunConfig, 
                               graph: dgl.DGLGraph, 
-                              seeds: list[torch.Tensor]):
+                              seeds: list[torch.Tensor],
+                              partition_map: torch.Tensor):
     use_uva = False
     device = torch.device('cpu')
     if use_uva:
@@ -257,13 +258,15 @@ def get_cache_ids_by_sampling(config: RunConfig,
     num_cached = int(config.cache_percentage * num_nodes)
     sampler = dgl.dataloading.NeighborSampler(config.fanouts)
     cached_ids = []
-    for local_seeds in seeds:
+    for id, local_seeds in enumerate(seeds):
         dataloader = dgl.dataloading.DataLoader(graph = graph,
                                             indices = local_seeds,
                                             graph_sampler = sampler,
                                             use_uva=use_uva,
                                             batch_size=config.batch_size)
         sample_freq = torch.zeros(num_nodes, dtype=torch.int32, device=device )
+        nds = torch.where(partition_map == id)[0]
+        sample_freq [nds] = len(config.fanouts)
         for batch_input, batch_seeds, batch_blocks in dataloader:
             sample_freq[batch_input] += 1
 

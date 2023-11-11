@@ -55,7 +55,6 @@ def train_cache(rank: int, world_size, config: RunConfig, indptr, indices, edge_
 
     if cached_ids != None:
         cache_id = cached_ids[rank].to(rank)
-        # cache_id = get_cache_ids_by_sampling(config, graph, train_idx)
         init_groot_dataloader_cache(cache_id.to(indptr.dtype))
     else:
         print("skipping cache")

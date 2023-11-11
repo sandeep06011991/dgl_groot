@@ -185,3 +185,4 @@ src/cmake_install.cmake
 log/
 log-run1/
 nohup.out
+exceptions/

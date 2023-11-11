@@ -3,12 +3,12 @@ from exp.util import *
 from exp.groot_trainer import  bench_groot_batch
 from exp.dgl_trainer import bench_dgl_batch
 from exp.quiver_trainer import bench_quiver_batch
-
+import quiver
 class DEFAULT_SETTING:
     batch_size = 1024
-    hid_size =128
+    hid_size =256
     fanouts = [30,30,30]
-    models = [ "sage","gat"]
+    models = [ "gat","sage"]
     num_redundant_layers = 0
 
 def get_default_config(graph_name, system, log_path, data_dir):
@@ -21,7 +21,6 @@ def get_default_config(graph_name, system, log_path, data_dir):
                        batch_size=DEFAULT_SETTING.batch_size,
                        system=system,
                        model=model,
-                       cache_rate = 0.05,
                        hid_size=DEFAULT_SETTING.hid_size,
                        log_path=log_path,
                        data_dir=data_dir,)
@@ -60,7 +59,6 @@ def get_partition_type(graph_name, system, log_path, data_dir):
                             batch_size= DEFAULT_SETTING.batch_size,
                             system=system,
                             model=model,
-                            cache_rate = 0,
                             hid_size=DEFAULT_SETTING.hid_size,
                             log_path=log_path,
                             data_dir=data_dir,)
@@ -80,7 +78,6 @@ def get_depth_config(graph_name, system, log_path, data_dir):
                             batch_size=DEFAULT_SETTING.batch_size,
                             system=system,
                             model=model,
-                            cache_rate = 0,
                             hid_size=DEFAULT_SETTING.hid_size,
                             log_path=log_path,
                             data_dir=data_dir,)
@@ -100,7 +97,6 @@ def get_batchsize_config(graph_name, system, log_path, data_dir):
                             batch_size=batch_size,
                             system=system,
                             model=model,
-                            cache_rate=0,
                             hid_size=DEFAULT_SETTING.hid_size,
                             log_path=log_path,
                             data_dir=data_dir,)
@@ -120,7 +116,6 @@ def get_hidden_config(graph_name, system, log_path, data_dir):
                             batch_size=DEFAULT_SETTING.batch_size,
                             system=system,
                             model=model,
-                            cache_rate = 0,
                             hid_size=hidden_size,
                             log_path=log_path,
                             data_dir=data_dir,)
@@ -188,12 +183,13 @@ def quiver_experiment(graph_name: str):
         bench_quiver_batch(configs = configs, test_acc = True )
 
 def all_experiments():
-    # for graph_name in ["ogbn-papers100M"]:
-    #     configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv",\
-    #                     data_dir="/ssd/ogbn/processed/")
+    for graph_name in ["ogbn-products"]:
+        configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
+                                     data_dir="/data/sandeep/groot_data/ogbn/processed/")
     #     # bench_dgl_batch(configs=configs, test_acc=True)
     #     # bench_quiver_batch(configs = configs, test_acc = True )
-    #     bench_groot_batch(configs=configs, test_acc=True )
+        bench_groot_batch(configs=configs, test_acc=True )
+    return
     # #return
     # print("Default experiment done")
     # for graph_name in ["ogbn-papers100M"]:
@@ -211,24 +207,34 @@ def all_experiments():
     # print("Hidden Experiment Done")
     for graph_name in ["ogbn-products"]:
         configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
-                                   data_dir="/data/sandeep/groot_data/ogbn/processed/")
+                                   data_dir="/data/sandeep/groot_data/ogbn-processed/")
         bench_dgl_batch(configs=configs, test_acc=True )
         # bench_groot_batch(configs=configs, test_acc=True)
         #bench_quiver_batch(configs = configs, test_acc = False )
     print("Hidden Experiment Done")
 
 def max_memory_measurement():
+    configs = []
     for graph_name in ["ogbn-products"]:
-        configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/memory.csv",
+        config = get_depth_config(graph_name=graph_name, system="dgl", log_path="./log/memory.csv",
                                    data_dir="/data/sandeep/groot_data/ogbn/processed/")
-        bench_dgl_batch(configs=configs, test_acc=True )
+        configs.extend(config)
+        # configs = get_hidden_config(graph_name=graph_name, system="dgl", log_path="./log/memory.csv",
+        #                             data_dir="/data/sandeep/groot_data/ogbn/processed/")
+        # configs.extend(config)
+        # configs = get_batchsize_config(graph_name=graph_name, system="dgl", log_path="./log/memory.csv",
+        #                             data_dir="/data/sandeep/groot_data/ogbn/processed/")
+        # configs.extend(config)
+        bench_quiver_batch(configs=configs, test_acc=True)
         # bench_groot_batch(configs=configs, test_acc=True)
         #bench_quiver_batch(configs = configs, test_acc = False )
-    print("Hidden Experiment Done")
+        print("Memory measurements", graph_name)
 if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
     #best_configuration()
     # all_experiments()
-    max_memory_measurement()
+    all_experiments()
+    # quiver.init_p2p(device_list=list(range(4)))
+    # max_memory_measurement()

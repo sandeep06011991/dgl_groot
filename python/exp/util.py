@@ -238,7 +238,7 @@ class CudaTimer:
     
 class Config:
     def __init__(self, graph_name, world_size, num_epoch, fanouts,
-                 batch_size, system, model, hid_size, cache_rate, log_path, data_dir):
+                 batch_size, system, model, hid_size,  log_path, data_dir):
         self.machine_name = os.environ['MACHINE_NAME']
         self.graph_name = graph_name
         self.world_size = world_size
@@ -248,7 +248,7 @@ class Config:
         self.system = system
         self.model = model
         self.hid_size = hid_size
-        self.cache_rate = cache_rate
+        self.cache_size = -1
         self.log_path = log_path
         self.data_dir = data_dir
         self.num_redundant_layer = len(self.fanouts)
@@ -257,20 +257,20 @@ class Config:
 
     def get_file_name(self):
         if "groot" not in self.system:
-            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}" + \
-                     f"{len(self.fanouts)}x{self.fanouts[0]}")
+            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}_" + \
+                     f"{len(self.fanouts)}x{self.fanouts[0]}_{self.cache_size}")
         else:
-            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}" + \
-                    f"{len(self.fanouts)}x{self.fanouts[0]}_{self.num_redundant_layer}")
+            return (f"{self.system}_{self.graph_name}_{self.model}_{self.batch_size}_{self.hid_size}_" + \
+                    f"{len(self.fanouts)}x{self.fanouts[0]}_{self.num_redundant_layer}_{self.cache_size}")
 
     def header(self):
         return ["timestamp","machine_name", "graph_name", "world_size", "num_epoch", "fanouts", "num_redundant_layers", \
                 "batch_size", "system", \
-                    "model", "hid_size", "cache_rate", "partition_type"]
+                    "model", "hid_size", "cache_size", "partition_type"]
     
     def content(self):
         return [  pd.Timestamp('now'), self.machine_name, self.graph_name, self.world_size, self.num_epoch, self.fanouts, self.num_redundant_layer, \
-                    self.batch_size, self.system, self.model, self.hid_size, self.cache_rate, self.partition_type]
+                    self.batch_size, self.system, self.model, self.hid_size, self.cache_size, self.partition_type]
 
     def __repr__(self):
         res = ""
@@ -450,6 +450,14 @@ def metis(in_dir, graph_name):
             print(f"In partiiton {p_id}: nodes{nodes.shape}")
         p_map = p_map.to(torch_type)
         torch.save(p_map, f"{SAVE_PATH}/pmap_{edge_balanced}.pt")
+
+def active_python():
+    import psutil
+    count = 0
+    for i in psutil.process_iter():
+        if "python" in i.name():
+            count = count + 1
+    return count == 1
 
 if __name__== "__main__":
     for graph_name in ["ogbn-arxiv"]:
