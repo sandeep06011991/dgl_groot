@@ -183,6 +183,9 @@ src/cmake/
 src/cmake_install.cmake
 
 log/
+!log/README
 log-run1/
 nohup.out
 exceptions/
+!exceptions/README
+

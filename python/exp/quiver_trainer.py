@@ -33,8 +33,10 @@ def subprocess(rank, config, feat, cache_policy, csr_topo, test_acc, feat_width,
     quiver_feat.from_cpu_tensor(feat)
     assert "uva" in config.system or "gpu"  in config.system
     if "uva" in config.system:
+        print("Using uva sampler")
         quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="UVA")
     if "gpu" in config.system:
+        print("Using gpu sampler")
         quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
     print(f"feature cache size is {config.cache_size}")
     spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
@@ -59,7 +61,7 @@ def get_quiver_cache_percentage(feat, policy):
     cache_sizes = []
     cache_size = max_size
     while cache_size > 0:
-        cache_sizes.append(f"{cache_size}MB")
+        cache_sizes.append(f"{round(cache_size,2)}MB")
         cache_size = (cache_size // 1024 ) * 1024 - 1024
     return cache_sizes
 
@@ -89,7 +91,7 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     print("Created quiver feat")
     for config in configs:
         cache_sizes = get_quiver_cache_percentage(feat, cache_policy)
-        for id,cache_size in cache_sizes:
+        for id,cache_size in enumerate(cache_sizes):
             try:
                 config.cache_size = cache_size
                 torch.multiprocessing.spawn(subprocess, (config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
@@ -98,6 +100,7 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
                 break
             except Exception as e:
                 if "CUDA out of memory"in str(e):
+                    print("out of memory for config",config)
                     if id == (len(cache_sizes) - 1):
                         write_to_csv(config.log_path, [config], [oom_profiler()])
                 else:
@@ -192,18 +195,11 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
                         feature_time=feature_time, forward_time=forward_time,\
                         backward_time=backward_time, test_acc=0)
     profile_edge_skew(edges_computed, profiler, rank, dist)
-    if config.cache_rate == 0:
-        cache_rate = min(.25, (((16 * 1024 - profiler.reserved_mb) * (1024 ** 2))
-                               / (feat.shape[0] * feat.shape[1] * 4)))
-        cache_rate = torch.tensor(cache_rate).to(rank)
-        dist.all_reduce(cache_rate, op = dist.ReduceOp.MIN)
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
         if not test_acc:
             write_to_csv(config.log_path, [config], [profiler])
-        if config.cache_rate == 0:
-            print(f"Calculated cache_percentage", cache_rate.item())
 
     dist.barrier()
     

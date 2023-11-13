@@ -66,7 +66,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
         cache_rates = []
         quiver_cache_rate = -1
         if  config.graph_name == "com-orkut":
-            dgl_cache_size = 0
+            dgl_cache_rate = 0
             dgl_cache_size = 0
             config.system = "groot-gpu"
         if (config.graph_name == "ogbn-products") :
@@ -91,6 +91,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                       nprocs=config.world_size, daemon=True, join= True)
             except Exception as e:
                 if "CUDA out of memory"in str(e):
+                    print("out of memory for config",config)
                     if id != len(cache_rates)-1:
                         write_to_csv(config.log_path, [config], [oom_profiler()])
                     continue

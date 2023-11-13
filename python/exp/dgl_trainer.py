@@ -32,19 +32,22 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     feat, label, num_label = load_feat_label(in_dir)
     print("Data loading total time", time.time() - t1)
     for config in configs:
-        if config.graph_name == "ogbn-products"  or config.graph_name =="com-orkut":
+        if config.graph_name == "com-orkut":
             config.system = "dgl-gpu"
-            config.cache_rate = 1
+            config.cache_size = 0
+        if config.graph_name == "ogbn-products" :
+            config.system = "dgl-gpu"
+            config.cache_size = 1
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
             config.system = "dgl-uva"
-            config.cache_rate = 0
+            config.cache_size = 0
+        spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         try:
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
-            if "CUDA out of memory"in str(e):
+            if "out of memory"in str(e):
                 write_to_csv(config.log_path, [config], [oom_profiler()])
             else:
-
                 write_to_csv(config.log_path, [config], [empty_profiler()])
                 with open(f"exceptions/{config.get_file_name()}",'w') as fp:
                     fp.write(str(e))
@@ -54,6 +57,8 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
 def train_ddp(rank: int, config: Config, test_acc: bool,
               graph: dgl.DGLGraph, feat: torch.Tensor, label: torch.Tensor, num_label: int, 
               train_idx: torch.Tensor, valid_idx: torch.Tensor, test_idx: torch.Tensor):
+    if rank == 0:
+        print(config)
     ddp_setup(rank, config.world_size)
     device = torch.cuda.current_device()
     e2eTimer = Timer()
@@ -61,11 +66,11 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     graph_sampler = dgl.dataloading.NeighborSampler(config.fanouts)
     dataloader, graph = get_dgl_sampler(graph=graph, train_idx=train_idx,
                                         graph_samler=graph_sampler, system=config.system, batch_size=config.batch_size, use_dpp=True)
-    assert config.cache_rate in [0, 1]
-    if config.cache_rate == 0:
+    assert config.cache_size in [0, 1]
+    if config.cache_size == 0:
         feat_nd  = pin_memory_inplace(feat)
         label_nd = pin_memory_inplace(label)
-    if config.cache_rate == 1:
+    if config.cache_size == 1:
         feat = feat.to(device)
         label = label.to(device)
     model = None
@@ -80,13 +85,14 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
 
     
     print(f"pre-heating model on device: {device}")
+
     for input_nodes, output_nodes, blocks in dataloader:
         batch_feat = None
         batch_label = None
-        if config.cache_rate == 0:
+        if config.cache_size == 0:
             batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
             batch_label = gather_pinned_tensor_rows(label, output_nodes)
-        if config.cache_rate == 1:
+        if config.cache_size == 1:
             batch_feat = feat[input_nodes]
             batch_label = label[output_nodes]
         batch_pred = model(blocks, batch_feat)
@@ -113,10 +119,10 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             feat_timer = CudaTimer()
             batch_feat = None
             batch_label = None
-            if  config.cache_rate == 0:
+            if  config.cache_size == 0:
                 batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
                 batch_label = gather_pinned_tensor_rows(label, output_nodes)
-            elif config.cache_rate == 1:
+            elif config.cache_size == 1:
                 batch_feat = feat[input_nodes]
                 batch_label = label[output_nodes]
 
@@ -170,7 +176,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             with torch.no_grad():
                 batch_feat = None
                 batch_label = None
-                if config.cache_rate == 0:
+                if config.cache_size == 0:
                     batch_feat = gather_pinned_tensor_rows(feat, input_nodes)
                     batch_label = gather_pinned_tensor_rows(label, output_nodes)
                 else:

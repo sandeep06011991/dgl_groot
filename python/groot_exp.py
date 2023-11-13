@@ -6,10 +6,13 @@ from exp.quiver_trainer import bench_quiver_batch
 import quiver
 class DEFAULT_SETTING:
     batch_size = 1024
-    hid_size =256
+    hid_size =128
     fanouts = [30,30,30]
     models = [ "gat","sage"]
     num_redundant_layers = 0
+
+DATA_DIR_OGBN = "/data/ogbn/processed/"
+DATA_DIR_SNAP = "/data/snap/"
 
 def get_default_config(graph_name, system, log_path, data_dir):
     configs = []
@@ -182,13 +185,19 @@ def quiver_experiment(graph_name: str):
         configs.append(config)
         bench_quiver_batch(configs = configs, test_acc = True )
 
-def all_experiments():
-    for graph_name in ["ogbn-products"]:
-        configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
-                                     data_dir="/data/sandeep/groot_data/ogbn/processed/")
-    #     # bench_dgl_batch(configs=configs, test_acc=True)
-    #     # bench_quiver_batch(configs = configs, test_acc = True )
-        bench_groot_batch(configs=configs, test_acc=True )
+def experiment_one():
+    for graph_name in [ "ogbn-products"]:
+        if "ogbn" in graph_name:
+            configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
+                                         data_dir=DATA_DIR_OGBN)
+            test_acc = True
+        else:
+            configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
+                                         data_dir=DATA_DIR_SNAP)
+            test_acc = False
+        bench_dgl_batch(configs=configs, test_acc=test_acc)
+        bench_quiver_batch(configs = configs, test_acc = test_acc )
+        bench_groot_batch(configs=configs, test_acc=test_acc )
     return
     # #return
     # print("Default experiment done")
@@ -233,8 +242,10 @@ if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
+    quiver.init_p2p(device_list=list(range(4)))
+    experiment_one()
     #best_configuration()
     # all_experiments()
-    all_experiments()
-    # quiver.init_p2p(device_list=list(range(4)))
+    # all_experiments()
+
     # max_memory_measurement()
