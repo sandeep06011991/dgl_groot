@@ -25,7 +25,7 @@ def ddp_exit():
 
 # retuns list of cache percentage in decreasing order
 def get_groot_cache_percentage(feat, config: Config):
-    MAX_GPU = 14 * 1024
+    MAX_GPU = 12 * 1024
     res = 1
     if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
         res *= 4
@@ -42,7 +42,7 @@ def get_groot_cache_percentage(feat, config: Config):
     cache_size = max_size
     while cache_size > 0:
         cache_ratio = cache_size / res
-        cache_sizes.append((round(cache_ratio,2), f"{cache_size}MB"))
+        cache_sizes.append((round(cache_ratio,2), f"{round(cache_size,2)}MB"))
         cache_size = (cache_size // 1024 ) * 1024 - 1024
     return cache_sizes
 
@@ -71,7 +71,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
             config.system = "groot-gpu"
         if (config.graph_name == "ogbn-products") :
             dgl_cache_rate = 1
-            dgl_cache_size = f"{feat.shape[0] * feat.shape[1]  * 4/ (1024 ** 2)}MB"
+            dgl_cache_size = 1
             config.system = "groot-gpu"
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
             dgl_cache_rate = 0
@@ -79,6 +79,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
             config.system = "groot-uva"
         cache_rates.extend([(dgl_cache_rate, dgl_cache_size)])
         cache_rates.extend(get_groot_cache_percentage(feat, config))
+        print("Calculated cache_rates", cache_rates)
         for id, (cache_rate, cache_size) in enumerate(cache_rates):
             config.cache_percentage = cache_rate
             config.cache_rate = cache_rate
@@ -89,22 +90,24 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
                                        num_label, train_idx_list, valid_idx, test_idx, \
                                        indptr, indices, edges,  partition_map, cached_ids), \
                       nprocs=config.world_size, daemon=True, join= True)
+                # id > 0 which succesfully completes is best cache scenario
+                if id > 0:
+                    break
             except Exception as e:
-                if "CUDA out of memory"in str(e):
-                    print("out of memory for config",config)
+                if "out of memory"in str(e):
+                    print("out of memory for", config)
                     if id != len(cache_rates)-1:
                         write_to_csv(config.log_path, [config], [oom_profiler()])
                     continue
                 else:
                     write_to_csv(config.log_path, [config], [empty_profiler()])
-
                     with open(f"exceptions/{config.get_file_name()}", 'w') as fp:
                         fp.write(str(e))
             # since id == 0 is dgl setting and id > 0 is quiver setting
-            if id > 0:
-                break
+
             gc.collect()
             torch.cuda.empty_cache()
+            torch.cuda.ipc_collect()
                 # This is to handle cases where probaly went out of memory
 
             # assert(False)
@@ -235,7 +238,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
 
-    if not test_acc:
+    if not test_acc and rank == 0:
             write_to_csv(config.log_path, [config], [profiler])
     
     dist.barrier()

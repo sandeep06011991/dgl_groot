@@ -32,17 +32,17 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     feat, label, num_label = load_feat_label(in_dir)
     print("Data loading total time", time.time() - t1)
     for config in configs:
-        if config.graph_name == "com-orkut":
+        if config.graph_name  == "com-orkut":
             config.system = "dgl-gpu"
             config.cache_size = 0
-        if config.graph_name == "ogbn-products" :
+        if config.graph_name == "ogbn-products":
             config.system = "dgl-gpu"
             config.cache_size = 1
         if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
             config.system = "dgl-uva"
             config.cache_size = 0
-        spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         try:
+            print(config)
             spawn(train_ddp, args=(config, test_acc, graph, feat, label, num_label, train_idx, valid_idx, test_idx), nprocs=config.world_size)
         except Exception as e:
             if "out of memory"in str(e):

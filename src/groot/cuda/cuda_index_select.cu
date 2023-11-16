@@ -26,6 +26,7 @@ FindUVAKernelConfig(int feat_len, int feat_width, int feat_bytes = 4,
   // round num threads to the nearest 32 that is no larger than
   // CUDA_MAX_THREAD_NUM
   int num_threads = ((feat_width + warp_size - 1) / warp_size) * warp_size;
+  num_threads = std::min(CUDA_MAX_THREAD_NUM, num_threads);
   int per_block_request = (num_threads * feat_bytes + 127) / 128;
   ;
   if (num_threads < feat_width) {

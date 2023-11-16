@@ -70,7 +70,7 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     for config in configs:
         if config.graph_name == "ogbn-products" or config.graph_name == "com-orkut":
             config.system = "quiver-gpu"
-        if config.graph_name == "ogbn-papers100M" or config.graph_name== "com-friendser":
+        if config.graph_name == "ogbn-papers100M" or config.graph_name== "com-friendster":
             config.system = "quiver-uva"
             assert(config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(config.data_dir, config.graph_name)
@@ -99,15 +99,14 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
 
                 break
             except Exception as e:
-                if "CUDA out of memory"in str(e):
-                    print("out of memory for config",config)
+                if "out of memory"in str(e):
+                    print("oom config", config)
                     if id == (len(cache_sizes) - 1):
                         write_to_csv(config.log_path, [config], [oom_profiler()])
                 else:
                     write_to_csv(config.log_path, [config], [empty_profiler()])
                     with open(f"exceptions/{config.get_file_name()}" , 'w') as fp:
                         fp.write(str(e))
-                        break
             torch.cuda.ipc_collect()
             gc.collect()
             torch.cuda.empty_cache()
@@ -195,6 +194,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
                         feature_time=feature_time, forward_time=forward_time,\
                         backward_time=backward_time, test_acc=0)
     profile_edge_skew(edges_computed, profiler, rank, dist)
+
     if rank == 0:
         print(f"train for {config.num_epoch} epochs in {duration}s")
         print(f"finished experiment {config} in {e2eTimer.duration()}s")
