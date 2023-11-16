@@ -20,10 +20,16 @@ class DEFAULT_SETTING:
             return DEFAULT_SETTING.ogbn_fanouts
 
 def get_data_dir(graph_name):
-    if "com" in graph_name:
-        return "/data/snap/"
-    if "ogbn" in graph_name:
-        return "/data/ogbn/processed/"
+    if os.environ['MACHINE_NAME'] == "p3.8xlarge":
+        if "com" in graph_name:
+            return "/data/snap/"
+        if "ogbn" in graph_name:
+            return "/data/ogbn/processed/"
+    else:
+        if "com" in graph_name:
+            return "/ssd/snap/"
+        if "ogbn" in graph_name:
+            return "/ssd/ogbn/processed/"
 
 def get_default_config(graph_name, system, log_path, data_dir):
     configs = []
@@ -173,14 +179,14 @@ def quiver_experiment(graph_name: str):
         bench_quiver_batch(configs = configs, test_acc = True )
 
 def all_experiments():
-    for graph_name in ["ogbn-products","ogbn-papers100M"]:
+    for graph_name in ["ogbn-papers100M","ogbn-products", "com-orkut", "com-friendster"]:
+    #for graph_name in ["com-orkut", "com-friendster"]:
         test_acc = "ogbn" in graph_name
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
         bench_quiver_batch(configs = configs, test_acc = test_acc )
-        bench_dgl_batch(configs=configs, test_acc= test_acc)
-        bench_groot_batch(configs=configs, test_acc= test_acc)
-
+        #bench_dgl_batch(configs=configs, test_acc= test_acc)
+        #bench_groot_batch(configs=configs, test_acc=test_acc)
     return
     # #return
     # print("Default experiment done")
@@ -225,7 +231,8 @@ if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
-    quiver.init_p2p(device_list=list(range(4)))
+    if os.environ['MACHINE_NAME'] == "p3.8xlarge":
+        quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
     # all_experiments()
     all_experiments()
