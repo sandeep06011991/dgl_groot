@@ -1,3 +1,4 @@
+import torch.cuda
 import torch.nn.functional as F
 import torchmetrics.functional as MF
 import torch.distributed as dist
@@ -25,12 +26,31 @@ def ddp_exit():
     dist.destroy_process_group()
 
 
-def subprocess(rank, config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
-               train_idx, valid_idx, test_idx):
+def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, test_acc, in_dir, cache_size):
     print(config)
-    quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                 cache_policy=cache_policy, device_cache_size=config.cache_size)
-    quiver_feat.from_cpu_tensor(feat)
+    if config.machine_name == "p3.8xlarge":
+        assert(feat != None)
+        config.cache_size = cache_size
+        quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo=csr_topo)
+        torch.cuda.ipc_collect()
+        quiver_feat.from_cpu_tensor(feat)
+    else:
+        assert(feat == None)
+        t1 = time.time()
+        feat, label, num_label = load_feat_label(in_dir)
+        t2 = time.time()
+        print("Redoing Data loading time ", t2 - t1)
+        train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
+        feat_width = feat.shape[1]
+        print("Created quiver feat")
+        config.cache_size = cache_size
+        quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo=csr_topo)
+        torch.cuda.ipc_collect()
+        quiver_feat.from_cpu_tensor(feat)
+        del feat
+        gc.collect()
     assert "uva" in config.system or "gpu"  in config.system
     if "uva" in config.system:
         print("Using uva sampler")
@@ -45,7 +65,7 @@ def subprocess(rank, config, feat, cache_policy, csr_topo, test_acc, feat_width,
 
 # retuns list of cache percentage in decreasing order
 def get_quiver_cache_percentage(feat, policy):
-    MAX_GPU = 14 * 1024
+    MAX_GPU = 12 * 1024
     res = 1
     if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
         res *= 4
@@ -63,6 +83,7 @@ def get_quiver_cache_percentage(feat, policy):
     while cache_size > 0:
         cache_sizes.append(f"{round(cache_size,2)}MB")
         cache_size = (cache_size // 1024 ) * 1024 - 1024
+    cache_sizes.append(f"0MB")
     return cache_sizes
 
 def bench_quiver_batch(configs: list[Config], test_acc=False):
@@ -85,20 +106,20 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     del row, col
     print("Quiver Topo  ")
-    feat, label, num_label = load_feat_label(in_dir)
-    train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
-    feat_width = feat.shape[1]
-    print("Created quiver feat")
     for config in configs:
+        feat, label, num_label = load_feat_label(in_dir)
         cache_sizes = get_quiver_cache_percentage(feat, cache_policy)
+        if config.machine_name != "p3.8xlarge":
+            del feat
+            feat = None
+            gc.collect()
         for id,cache_size in enumerate(cache_sizes):
             try:
-                config.cache_size = cache_size
-                torch.multiprocessing.spawn(subprocess, (config, feat, cache_policy, csr_topo, test_acc, feat_width, label, num_label, \
-                                              train_idx, valid_idx, test_idx), nprocs = 1, join = True)
-
+                torch.multiprocessing.spawn(subprocess, (config,  feat, label, num_label, \
+                                                         cache_policy, csr_topo, test_acc, in_dir, cache_size), nprocs = 1, join = True)
                 break
             except Exception as e:
+                print(e, "exception")
                 if "out of memory"in str(e):
                     print("oom config", config)
                     if id == (len(cache_sizes) - 1):
@@ -121,6 +142,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     e2eTimer = Timer()
     start_time = time.time()
     print("Going into DDP")
+    print("start")
     dataloader = QuiverDglSageSample(rank=rank, world_size=config.world_size, batch_size=config.batch_size, nids=train_idx, sampler=sampler)
     model = None
     if config.model == "gat":
@@ -131,7 +153,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     model = DDP(model, device_ids=[rank])
     label = label.to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-
+    
     
     print(f"pre-heating model on device: {device}")
     for input_nodes, output_nodes, blocks in dataloader:
