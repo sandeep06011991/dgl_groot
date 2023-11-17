@@ -1,6 +1,8 @@
 import os, dgl, torch, time, csv, gc
 from ogb.nodeproppred import DglNodePropPredDataset
 import pandas as pd
+import numpy as np
+
 def _build_dgl_graph(indptr, indices, edges) -> dgl.DGLGraph:
     graph = dgl.graph(("csc", (indptr, indices, edges)))
     return graph
@@ -238,8 +240,11 @@ class CudaTimer:
     
 class Config:
     def __init__(self, graph_name, world_size, num_epoch, fanouts,
-                 batch_size, system, model, hid_size,  log_path, data_dir):
-        self.machine_name = os.environ['MACHINE_NAME']
+                 batch_size, system, model, hid_size, cache_size, log_path, data_dir):
+        try:
+            self.machine_name = os.environ['MACHINE_NAME']
+        except Exception as e:
+            self.machine_name = "jupiter"
         self.graph_name = graph_name
         self.world_size = world_size
         self.num_epoch = num_epoch
@@ -247,13 +252,14 @@ class Config:
         self.batch_size = batch_size
         self.system = system
         self.model = model
+        self.in_feat = -1
+        self.num_classes = -1
+        self.cache_size = cache_size
         self.hid_size = hid_size
-        self.cache_size = -1
         self.log_path = log_path
         self.data_dir = data_dir
         self.num_redundant_layer = len(self.fanouts)
         self.partition_type = "edge_balanced"
-
 
     def get_file_name(self):
         if "groot" not in self.system:
@@ -279,6 +285,7 @@ class Config:
         
         for header, ctn in zip(header, content):
             res += f"{header}={ctn} | "
+        res += f"num_classes={self.num_classes}"
         res += "\n"
         return res    
 
