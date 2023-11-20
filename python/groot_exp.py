@@ -17,7 +17,7 @@ class DEFAULT_SETTING:
         if "ogbn" in graph_name:
             return DEFAULT_SETTING.ogbn_fanouts
         if "com" in graph_name:
-            return DEFAULT_SETTING.ogbn_fanouts
+            return DEFAULT_SETTING.snap_fanouts
 
 def get_data_dir(graph_name):
     if os.environ['MACHINE_NAME'] == "p3.8xlarge":
@@ -179,14 +179,14 @@ def quiver_experiment(graph_name: str):
         bench_quiver_batch(configs = configs, test_acc = True )
 
 def all_experiments():
-    for graph_name in ["ogbn-papers100M","ogbn-products", "com-orkut", "com-friendster"]:
+    for graph_name in [  "ogbn-papers100M"]:
     #for graph_name in ["com-orkut", "com-friendster"]:
         test_acc = "ogbn" in graph_name
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
-        bench_quiver_batch(configs = configs, test_acc = test_acc )
+        #bench_quiver_batch(configs = configs, test_acc = test_acc)
         #bench_dgl_batch(configs=configs, test_acc= test_acc)
-        #bench_groot_batch(configs=configs, test_acc=test_acc)
+        bench_groot_batch(configs=configs, test_acc=test_acc)
     return
     # #return
     # print("Default experiment done")

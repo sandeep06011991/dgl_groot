@@ -25,7 +25,7 @@ def ddp_exit():
 
 # retuns list of cache percentage in decreasing order
 def get_groot_cache_percentage(feat, config: Config):
-    MAX_GPU = 12 * 1024
+    MAX_GPU = 10 * 1024
     res = 1
     if torch.float32 == feat.dtype or torch.int32 == feat.dtype:
         res *= 4
@@ -33,9 +33,9 @@ def get_groot_cache_percentage(feat, config: Config):
         res *= 8
     for s in feat.shape:
         res *= s
-    res = res / (1024 * 1024)
+    res = res // (1024 * 1024)
     if config.machine_name == "p3.8xlarge":
-        max_size = min(MAX_GPU, res/4)
+        max_size = min(MAX_GPU, res//4)
     else:
         max_size = min(MAX_GPU, res)
     cache_sizes = []

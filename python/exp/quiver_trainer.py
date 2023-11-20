@@ -32,7 +32,7 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
         assert(feat != None)
         config.cache_size = cache_size
         quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo=csr_topo)
+                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo = csr_topo)
         torch.cuda.ipc_collect()
         quiver_feat.from_cpu_tensor(feat)
     else:
@@ -45,8 +45,13 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
         feat_width = feat.shape[1]
         print("Created quiver feat")
         config.cache_size = cache_size
-        quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
-                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo=csr_topo)
+        if config.graph_name != "com-friendster" and config.graph_name != "ogbn-papers100M":
+            quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                     cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo = csr_topo)
+        else:
+            quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
+                                     cache_policy=cache_policy, device_cache_size=config.cache_size)
+            
         torch.cuda.ipc_collect()
         quiver_feat.from_cpu_tensor(feat)
         del feat
@@ -73,11 +78,11 @@ def get_quiver_cache_percentage(feat, policy):
         res *= 8
     for s in feat.shape:
         res *= s
-    res = res / (1024 * 1024)
+    res = res // (1024 * 1024)
     if policy == "device_replicate":
         max_size = min(MAX_GPU, res)
     if policy == "p2p_clique_replicate":
-        max_size = min(MAX_GPU, res/4)
+        max_size = min(MAX_GPU, res// 4)
     cache_sizes = []
     cache_size = max_size
     while cache_size > 0:
@@ -114,9 +119,11 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
             feat = None
             gc.collect()
         for id,cache_size in enumerate(cache_sizes):
+            config.cache_size = cache_size
             try:
                 torch.multiprocessing.spawn(subprocess, (config,  feat, label, num_label, \
-                                                         cache_policy, csr_topo, test_acc, in_dir, cache_size), nprocs = 1, join = True)
+                                                         cache_policy, csr_topo, test_acc, in_dir,\
+                                                         cache_size), nprocs = 1, join = True)
                 break
             except Exception as e:
                 print(e, "exception")
