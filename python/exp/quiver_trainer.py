@@ -35,6 +35,9 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
                                      cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo = csr_topo)
         torch.cuda.ipc_collect()
         quiver_feat.from_cpu_tensor(feat)
+        feat_width = feat.shape[1]
+        train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
+
     else:
         assert(feat == None)
         t1 = time.time()
@@ -45,6 +48,7 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
         feat_width = feat.shape[1]
         print("Created quiver feat")
         config.cache_size = cache_size
+
         if config.graph_name != "com-friendster" and config.graph_name != "ogbn-papers100M":
             quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
                                      cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo = csr_topo)
@@ -52,6 +56,7 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
             quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
                                      cache_policy=cache_policy, device_cache_size=config.cache_size)
             
+
         torch.cuda.ipc_collect()
         quiver_feat.from_cpu_tensor(feat)
         del feat
@@ -105,7 +110,10 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     else:
         cache_policy = "device_replicate"
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
+    print(graph)
+
     row, col = graph.adj_tensors("coo")
+    
     del graph
     gc.collect()
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
@@ -113,6 +121,7 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     print("Quiver Topo  ")
     for config in configs:
         feat, label, num_label = load_feat_label(in_dir)
+        print(feat.shape)
         cache_sizes = get_quiver_cache_percentage(feat, cache_policy)
         if config.machine_name != "p3.8xlarge":
             del feat
