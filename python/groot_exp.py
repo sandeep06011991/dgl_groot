@@ -106,9 +106,9 @@ def get_depth_config(graph_name, system, log_path, data_dir):
     return configs
 
 def get_batchsize_config(graph_name, system, log_path, data_dir):
-    batch_sizes = [1024, 4096, 4096 * 4]
+    batch_sizes = [ 4096 * 4]
     configs = []
-    fanouts = [20,20]
+    fanouts = [20,20,20]
     for batch_size in batch_sizes:
         for model in DEFAULT_SETTING.models:
             config = Config(graph_name=graph_name,
@@ -117,6 +117,7 @@ def get_batchsize_config(graph_name, system, log_path, data_dir):
                             fanouts=fanouts,
                             batch_size=batch_size,
                             system=system,
+                            cache_size = 0,
                             model=model,
                             hid_size=DEFAULT_SETTING.hid_size,
                             log_path=log_path,
@@ -193,11 +194,11 @@ def main_experiments():
     # #return
     # print("Default experiment done")
 def all_experiments():    
-    #for graph_name in ["ogbn-papers100M","ogbn-products"]:
-    #     configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir=get_data_dir(graph_name))
-    #     bench_dgl_batch(configs=configs, test_acc =True )
-    #     bench_groot_batch(configs=configs, test_acc=True )
-    #     bench_quiver_batch(configs = configs, test_acc = True )
+    for graph_name in ["ogbn-papers100M","ogbn-products"]:
+         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir=get_data_dir(graph_name))
+         bench_dgl_batch(configs=configs, test_acc = False)
+         bench_groot_batch(configs=configs, test_acc= False)
+         bench_quiver_batch(configs = configs, test_acc = False )
     #return
     # print("Batch experiment done")
     for graph_name in ["ogbn-products", "ogbn-papers100M"]:
@@ -239,7 +240,7 @@ if __name__ == "__main__":
     if os.environ['MACHINE_NAME'] == "p3.8xlarge":
         quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
-    # all_experiments()
-    main_experiments()
+    all_experiments()
+    #main_experiments()
     # quiver.init_p2p(device_list=list(range(4)))
     # max_memory_measurement()
