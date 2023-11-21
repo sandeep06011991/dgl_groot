@@ -272,6 +272,8 @@ if(USE_CUDA)
           src/groot/cuda/alltoall.cu
           src/groot/cuda/partition_continuous.cu
           src/groot/cuda/array_gather.cu
+          src/groot/cuda/rowwise_sampling_v2.cu
+          src/groot/cuda/rowwise_sampling_v2.cuh
   )
 else(USE_CUDA)
 endif(USE_CUDA)
@@ -284,7 +286,7 @@ if(ZMQ_INCLUDE_DIR AND ZMQ_LIBRARY)
   message(STATUS "  (Headers) ${ZMQ_INCLUDE_DIR}")
   message(STATUS "  (Library) ${ZMQ_LIBRARY}")
 else()
-  message(FATAL_ERROR "ZeorMQ not found")
+  message(FATAL_ERROR "ZeroMQ not found")
 endif()
 target_include_directories(dgl PRIVATE ${ZMQ_INCLUDE_DIR})
 list(APPEND DGL_LINKER_LIBS ${ZMQ_LIBRARY})

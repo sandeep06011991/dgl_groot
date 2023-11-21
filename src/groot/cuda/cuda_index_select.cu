@@ -472,17 +472,13 @@ NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream) {
 };
 
 void IndexSelect(NDArray array, IdArray index, NDArray &out_buff,
-                 cudaStream_t stream) {
-  std::string header = "IndexSelect";
-  if (index.NumElements() <= 8192) {
-    header += "Label";
-  } else {
+                 cudaStream_t stream, std::string header) {
+
     if (array.IsPinned()) {
-      header += "FeatureUVA";
+      header += "UVA";
     } else {
-      header += "FeatureGPU";
+      header += "GPU";
     }
-  }
   nvtx3::scoped_range index_select{header};
   ATEN_DTYPE_BITS_ONLY_SWITCH(array->dtype, DType, "values", {
     ATEN_ID_TYPE_SWITCH(index->dtype, IdType, {
@@ -492,8 +488,7 @@ void IndexSelect(NDArray array, IdArray index, NDArray &out_buff,
 };
 
 void IndexSelect(NDArray array, IdArray in_index, IdArray out_index,
-                 NDArray &out_buff, cudaStream_t stream) {
-  std::string header = "IndexSelect";
+                 NDArray &out_buff, cudaStream_t stream, std::string header) {
   CHECK_EQ(in_index->dtype, out_index->dtype);
   CHECK_EQ(in_index->shape[0], out_index->shape[0])
       << "in_index and out_index must have the same shape";

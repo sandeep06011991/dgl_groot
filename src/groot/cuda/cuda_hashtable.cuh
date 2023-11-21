@@ -181,7 +181,7 @@ public:
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
       const IdType *unique{nullptr};
       IdType num_unique = _handle->RefUnique(unique);
-      if(num_input + num_unique >=  _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input <<"\n";}
+      if(num_input + num_unique >=  _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input + num_unique <<"\n";}
       assert(num_input +  num_unique < _capacity);
 
       _handle->FillWithUnique(arr.Ptr<IdType>(), num_input, _stream);
@@ -194,7 +194,7 @@ public:
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
       const IdType *unique{nullptr};
       IdType num_unique = _handle->RefUnique(unique);
-      if(num_input + num_unique >= _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input <<"\n";}
+      if(num_input + num_unique >= _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input + num_unique <<"\n";}
       assert(num_input +  num_unique < _capacity);
 
       _handle->FillWithDupRevised(arr.Ptr<IdType>(), num_input, _stream);

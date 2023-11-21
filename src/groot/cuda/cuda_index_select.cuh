@@ -12,9 +12,9 @@ namespace dgl {
 namespace groot {
 NDArray IndexSelect(NDArray array, IdArray index, cudaStream_t stream);
 void IndexSelect(NDArray array, IdArray index, NDArray &out_buff,
-                 cudaStream_t stream);
+                 cudaStream_t stream, std::string header="IndexSelect");
 void IndexSelect(NDArray array, IdArray index, IdArray out_idx,
-                 NDArray &out_buff, cudaStream_t stream);
+                 NDArray &out_buff, cudaStream_t stream, std::string header="IndexSelect");
 // template <typename DType, typename IdType>
 // NDArray IndexScatter(NDArray input_arr, NDArray output_arr, IdArray index);
 } // namespace groot

@@ -18,6 +18,7 @@
 #include "cuda/cuda_mapping.cuh"
 #include "cuda/gpu_cache.cuh"
 #include "cuda/rowwise_sampling.cuh"
+#include "cuda/rowwise_sampling_v2.cuh"
 #include <thread>
 #include "core.h"
 
@@ -40,6 +41,9 @@ namespace dgl::groot {
         int64_t _max_pool_size;
         int64_t _batch_size;
         int64_t _next_key;
+        int64_t _valid_start_key{0};
+        int64_t _valid_end_key{0};
+
         int64_t _table_capacity;
         int64_t _feat_width;
         BlockType _block_type; // TODO initalize this
@@ -67,7 +71,6 @@ namespace dgl::groot {
         void InitBuffer() {
             // initialize buffer
             _blocks_pool.clear();
-            std::vector<std::mutex> mutexes(_max_pool_size);
             for (int64_t i = 0; i < _max_pool_size; i++) {
                 auto blocks = std::make_shared<BlocksObject>(
                         _ctx, _world_size, _num_redundant_layers, _fanouts, _batch_size, _feat_width, _id_type,
@@ -117,9 +120,9 @@ namespace dgl::groot {
             InitBuffer();
 
             LOG(INFO) << "Initialized dataloader at rank " << _rank << " world_size "
-                      << _world_size;
+                      << _world_size << " with pool size " << _max_pool_size;
 
-            if (world_size != 0) {
+            if (world_size > 1) {
                 int thread_num = 1;
                 bool enable_kernel_control = false;
                 bool enable_comm_control = false;
@@ -144,13 +147,22 @@ namespace dgl::groot {
             return _blocks_pool.at(blk_idx);
         }
 
-        // TODO sample multiple instance at once
         // Q: shall we sample mutiple instances or only the top two layers
         // more fine grained pipelining might be needed
         int64_t Sample(bool extract_feat_label) {
             int64_t key = _next_key++;
             GetBatch(key, extract_feat_label);
             return key;
+        }
+
+        // TODO sample multiple instance at once
+        // Q: shall we sample mutiple instances or only the top two layers
+        // more fine grained pipelining might be needed
+        std::pair<int64_t, int64_t> BatchSample(int64_t num_batches, bool extract_feat_label) {
+            int64_t start_key = _next_key;
+            int64_t end_key = GetBatches(start_key, num_batches, extract_feat_label);
+            _next_key = end_key + 1;
+            return std::make_pair(start_key, end_key);
         }
 
         void ShuffleTrainingNodes(NDArray randInt) {
@@ -170,11 +182,32 @@ namespace dgl::groot {
                                          start_idx * _id_type.bits / 8);
         }
 
+        std::vector<NDArray> GetNextSeeds(int64_t key, int64_t num_batches) {
+            auto num_steps = _train_idx.NumElements() / _batch_size;
+            int64_t num_epoch = key / num_steps;
+            std::vector<NDArray> res;
+            int64_t num_seeds = 0;
+            while (num_seeds < num_batches && (num_seeds + key) / num_steps == num_epoch) {
+                res.emplace_back(GetNextSeeds(key + num_seeds));
+                num_seeds++;
+            }
+
+            for (auto & seed: res) {
+                CHECK(seed.NumElements()>0) << "Frontier should have a length greater than 0";
+            }
+
+            return res;
+        }
+
         void GetBatch(int64_t key, bool extract_feat_label) {
             if (_num_redundant_layers == _fanouts.size())
                 GetBatchDP(key, extract_feat_label);
             else
                 GetBatchHybrid(key, extract_feat_label);
+        }
+
+        int64_t GetBatches(int64_t key, int64_t num_batches, bool extract_feat_label) {
+            return GetBatchDPv1(key, num_batches, extract_feat_label);
         }
 
         void GetBatchDP(int64_t key, bool extract_feat_and_label) {
@@ -224,7 +257,7 @@ namespace dgl::groot {
                 blockPtr->_block_ref = HeteroGraphRef{graph_idx};
             }
 
-            if (extract_feat_and_label){
+            if (extract_feat_and_label) {
                 // those two kernels are not sync until later BatchSync is called
                 IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
                             sampling_stream);
@@ -239,6 +272,134 @@ namespace dgl::groot {
                 }
             }
             runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+        }
+
+        // TODO: Batched dataloading and sampling in two different steps
+        int64_t GetBatchDPv1(int64_t key, int num_batches, bool extract_feat_and_label = false) {
+            CHECK(num_batches <= this->_max_pool_size)
+                << "Number of batches should be no greater than the capacity of the pool";
+            CHECK(num_batches >= 1 )
+                << "Number of batches should be at least 1";
+
+            cudaStream_t sampling_stream = runtime::getCurrentCUDAStream();
+            CUDAThreadEntry::ThreadLocal()->stream = sampling_stream;
+            CUDAThreadEntry::ThreadLocal()->data_copy_stream = sampling_stream;
+
+            std::vector<NDArray> frontiers = GetNextSeeds(key, num_batches); // seeds to sample subgraph
+            const int64_t blk_idx = key % _max_pool_size;
+
+            for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++){
+                int num_picks = _fanouts.at(layer);
+                std::vector<std::shared_ptr<BlockObject>> block_vec;
+                for (size_t idx = 0; idx < frontiers.size(); idx++){
+                    int cur_idx = (blk_idx + idx) % _max_pool_size;
+                    auto batchPtr = _blocks_pool.at(cur_idx);
+                    auto blockPtr = batchPtr->_blocks.at(layer);
+                    block_vec.push_back(blockPtr);
+                }
+
+                ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
+                    CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(_indptr, _indices, frontiers,
+                                                                num_picks, false, block_vec,
+                                                                sampling_stream);
+                });
+
+                for (size_t idx = 0; idx < frontiers.size(); idx++) {
+                    auto& blockPtr = block_vec.at(idx);
+                    auto& frontier = frontiers.at(idx);
+                    int64_t est_src_nodes = frontier.NumElements() * (num_picks + 1);
+                    auto table = std::make_shared<CudaHashTable>(_id_type, _ctx, est_src_nodes, sampling_stream);
+                    table->FillWithUnique(frontier, frontier.NumElements());
+                    table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+                    blockPtr->_unique_dst = frontier.Clone();
+                    blockPtr->_unique_src = table->CopyUnique();
+                    blockPtr->num_dst = blockPtr->_unique_dst.NumElements();
+                    blockPtr->num_src = blockPtr->_unique_src.NumElements();
+                    GPUMapEdges(blockPtr->_row, blockPtr->_row,
+                                blockPtr->_col, blockPtr->_col,
+                                table, sampling_stream);
+//                    dgl_format_code_t code = COO_CODE; // COO_CODE | CSR_CODE | CSC_CODE
+                    auto graph_idx = CreateFromCOO(2, blockPtr->num_src, blockPtr->num_dst,
+                                                   blockPtr->_col, blockPtr->_row,
+                                                   false, false, COO_CODE);
+                    blockPtr->_block_ref = HeteroGraphRef{graph_idx};
+                }
+
+                frontiers.clear();
+                for (auto blockPtr: block_vec) {
+                    frontiers.push_back(blockPtr->_unique_src);
+                }
+            }
+
+            for (size_t idx = 0; idx < frontiers.size(); idx++) {
+                int cur_idx = (blk_idx + idx) % _max_pool_size;
+                int max_layer = _fanouts.size() - 1;
+                auto batchPtr = _blocks_pool.at(cur_idx);
+                batchPtr->_input_nodes = batchPtr->_blocks.at(max_layer)->_unique_src;
+                batchPtr->_output_nodes = batchPtr->_blocks.at(0)->_unique_dst;
+            }
+
+            runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+            _valid_start_key = key;
+            _valid_end_key = key + frontiers.size() - 1;
+            return _valid_end_key;
+
+//            auto blocksPtr = _blocks_pool.at(blk_idx);
+//            blocksPtr->_input_nodes = frontier;
+//            int64_t est_output_nodes = frontier->shape[0];
+//            for (auto fanout: _fanouts) est_output_nodes *= (fanout + 1);
+//            auto table = std::make_shared<CudaHashTable>(_id_type, _ctx, est_output_nodes, sampling_stream);
+//            table->Reset();
+//            table->FillWithUnique(frontier, frontier->shape[0]);
+//            for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++) {
+//                int64_t num_picks = _fanouts.at(layer);
+//                std::shared_ptr<BlockObject> blockPtr = blocksPtr->_blocks.at(layer);
+//                blockPtr->num_dst = frontier->shape[0];
+//                ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
+//                    CSRRowWiseSamplingUniform<kDGLCUDA, IdType>(_indptr, _indices, frontier,
+//                                                                num_picks, false, blockPtr,
+//                                                                sampling_stream);
+//                });
+//                // get the unique rows as frontier
+//                table->FillWithDuplicates(blockPtr->_col, blockPtr->_col.NumElements());
+//                frontier = table->RefUnique();
+//                blockPtr->num_src = frontier.NumElements();
+//            }
+//            // must wait for the sampling_stream to be done before starting Mapping
+//            // and Feature extraction
+//            blocksPtr->_output_nodes = table->CopyUnique();
+//            // MapEdges to 0 based indexing
+//            for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++) {
+//                auto blockPtr = blocksPtr->GetBlock(layer);
+//                GPUMapEdges(blockPtr->_row, blockPtr->_row,
+//                            blockPtr->_col, blockPtr->_col,
+//                            table, sampling_stream);
+//            }
+//            runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
+//            for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++) {
+//                auto blockPtr = _blocks_pool.at(blk_idx)->GetBlock(layer);
+//                dgl_format_code_t code = COO_CODE; // COO_CODE | CSR_CODE | CSC_CODE
+//                auto graph_idx = CreateFromCOO(2, blockPtr->num_src, blockPtr->num_dst,
+//                                               blockPtr->_col, blockPtr->_row,
+//                                               false, false, code);
+//                blockPtr->_block_ref = HeteroGraphRef{graph_idx};
+//            }
+
+//            if (extract_feat_and_label) {
+//                // those two kernels are not sync until later BatchSync is called
+//                IndexSelect(_labels, blocksPtr->_input_nodes, blocksPtr->_labels,
+//                            sampling_stream);
+//                blocksPtr->_feats = NDArray::Empty({blocksPtr->_unique_dst->shape[0], _feat_width}, \
+//                                         _feat_type, _ctx);
+//                if (gpu_cache.IsInitialized()) {
+//                    gpu_cache.IndexSelectWithLocalCache(blocksPtr->_unique_dst, blocksPtr,
+//                                                        sampling_stream, sampling_stream);
+//                } else {
+//                    IndexSelect(_cpu_feats, blocksPtr->_unique_dst, blocksPtr->_feats,
+//                                sampling_stream);
+//                }
+//            }
+
         }
 
         void ExtractFeatLabel(int64_t key, bool async) {
@@ -262,6 +423,7 @@ namespace dgl::groot {
                 runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
             }
         }
+
         void GetBatchHybrid(int64_t key, bool extract_feat_and_label) {
             int blk_idx = key % _max_pool_size;
             int num_partitions = _world_size;
