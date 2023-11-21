@@ -125,7 +125,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             elif config.cache_size == 1:
                 batch_feat = feat[input_nodes]
                 batch_label = label[output_nodes]
-
+            torch.distributed.barrier()
             feat_timer.end()            
             
             forward_timer = CudaTimer()

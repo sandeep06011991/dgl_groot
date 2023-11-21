@@ -5,10 +5,10 @@ from exp.dgl_trainer import bench_dgl_batch
 from exp.quiver_trainer import bench_quiver_batch
 import quiver
 class DEFAULT_SETTING:
-    batch_size = 1024
+    batch_size = 256
     hid_size =256
     ogbn_fanouts = [20,20,20]
-    snap_fanouts = [20,20]
+    snap_fanouts = [20,20,20]
     models = [ "gat","sage"]
     num_redundant_layers = 0
 
@@ -41,6 +41,7 @@ def get_default_config(graph_name, system, log_path, data_dir):
                        batch_size=DEFAULT_SETTING.batch_size,
                        system=system,
                        model=model,
+                       cache_size = 0,
                        hid_size=DEFAULT_SETTING.hid_size,
                        log_path=log_path,
                        data_dir=data_dir,)
@@ -182,13 +183,13 @@ def quiver_experiment(graph_name: str):
 
 
 def main_experiments():
-    #for graph_name in ["ogbn-products","ogbn-papers100M", "com-orkut", "com-friendster"]:
-    for graph_name in ["ogbn-papers100M", "ogbn-products"]:
+    for graph_name in ["ogbn-products","ogbn-papers100M", "com-orkut", "com-friendster"]:
+    #for graph_name in ["ogbn-papers100M", "ogbn-products"]:
         test_acc = "ogbn" in graph_name
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
-        #bench_quiver_batch(configs = configs, test_acc = test_acc)
-        #bench_dgl_batch(configs=configs, test_acc= test_acc)
+        bench_quiver_batch(configs = configs, test_acc = test_acc)
+        bench_dgl_batch(configs=configs, test_acc= test_acc)
         bench_groot_batch(configs=configs, test_acc=test_acc)
     return
     # #return
@@ -240,7 +241,7 @@ if __name__ == "__main__":
     if os.environ['MACHINE_NAME'] == "p3.8xlarge":
         quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
-    all_experiments()
-    #main_experiments()
+    #all_experiments()
+    main_experiments()
     # quiver.init_p2p(device_list=list(range(4)))
     # max_memory_measurement()
