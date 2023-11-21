@@ -88,6 +88,8 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
             config.cache_percentage = cache_rate
             config.cache_rate = cache_rate
             config.cache_size = cache_size
+            if (id != 0):
+                continue
             cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list, partition_map)
             try:
                 spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
@@ -247,7 +249,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     
     dist.barrier()
     
-    if test_acc :
+    if test_acc and rank == 0 :
         print(f"testing model accuracy on {device}")
         graph_sampler = dgl.dataloading.NeighborSampler(fanouts=config.fanouts)
         dataloader, graph = get_dgl_sampler(graph=graph, train_idx=test_idx, \
@@ -274,7 +276,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
                 batch_pred = model(blocks, batch_feat, inference = True)
                 y_hats.append(batch_pred)  
         acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=num_label)
-        dist.all_reduce(acc, op=dist.ReduceOp.SUM)
+        # dist.all_reduce(acc, op=dist.ReduceOp.SUM)
         acc = round(acc.item() * 100 / config.world_size, 2)
         profiler.test_acc = acc  
         if rank == 0:
