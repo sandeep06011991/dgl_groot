@@ -88,8 +88,6 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
             config.cache_percentage = cache_rate
             config.cache_rate = cache_rate
             config.cache_size = cache_size
-            if (id != 0):
-                continue
             cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list, partition_map)
             try:
                 spawn(train_ddp, args=(config, test_acc, graph, feat, label, \

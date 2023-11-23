@@ -49,7 +49,7 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
         print("Created quiver feat")
         config.cache_size = cache_size
 
-        if config.graph_name != "com-friendster" and config.graph_name != "ogbn-papers100M":
+        if config.graph_name != "com-friendster" :
             quiver_feat = quiver.Feature(0, device_list=list(range(config.world_size)), \
                                      cache_policy=cache_policy, device_cache_size=config.cache_size, csr_topo = csr_topo)
         else:
@@ -199,6 +199,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             feat_timer = CudaTimer()
             batch_feat = feat[input_nodes]
             batch_label = label[output_nodes]
+            torch.distributed.barrier()
             feat_timer.end()            
 
             for block in blocks:

@@ -214,6 +214,9 @@ def main_experiments():
         # for num_redundant_layers in [0,2]:
         #     configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
         #                                  data_dir=get_data_dir(graph_name), num_redundant_layers = num_redundant_layers)
+        #bench_quiver_batch(configs = configs, test_acc = test_acc)
+        #bench_dgl_batch(configs=configs, test_acc= test_acc)
+
         bench_groot_batch(configs=configs, test_acc=test_acc)
     return
     # #return
