@@ -1,4 +1,6 @@
 import torch.cuda
+import os
+import torch.distributed as dist
 
 import dgl
 import  dgl.backend as F
@@ -43,7 +45,7 @@ class ShuffleAlt(torch.autograd.Function):
         for recv in frontier_recv_idx:
             to_send.append(feat[recv])
         torch.cuda.synchronize()
-        for i,send_size in enumerate(frontier_send_idx):
+        for send_size in frontier_send_idx:
             to_recv.append(torch.empty((send_size.shape[0], feat.shape[1]), device = rank, dtype  = feat.dtype))
         dist.all_to_all(to_recv, to_send)
         out = torch.zeros((original_frontier_size,feat.shape[1]), device = rank, dtype = feat.dtype)
@@ -119,59 +121,48 @@ def run_proc(rank, world_size):
 def run_naive(rank, world_size):
     ddp_setup(rank, world_size)
     torch.cuda.set_device(rank)
-    key = 0
-    for key in range(1):
+    frontier = torch.arange(1000).to(rank)
+    partition_map = frontier % world_size
+    num_partitions = 4
+    local_idx_frontier_send = []
+    idx_size = []
+    to_send_frontier = []
+    for i in range(4):
+        idx = (torch.where(partition_map == i)[0])
+        to_send_frontier.append(frontier[idx])
+        idx_size.append(idx.shape[0])
+        local_idx_frontier_send.append(idx)
+    send_size = torch.tensor(idx_size).to(torch.int64).to(rank)
+    recv_size = torch.empty(send_size.shape, dtype = torch.int64, device = rank)
+    dist.all_to_all_single(recv_size, send_size)
+    recv_frontiers = []
+    for i in recv_size.tolist():
+        recv_frontiers.append(torch.empty(i, dtype = torch.int64, device = rank))
+    dist.all_to_all(recv_frontiers, to_send_frontier)
+    unique_frontier = torch.unique(torch.cat(recv_frontiers, dim = 0))
+    frontier_recieved_idx = []
+    for frontier_l in recv_frontiers:
+        frontier_recieved_idx.append(torch.searchsorted(unique_frontier, frontier_l))
 
-        frontier = torch.from_numpy(
-            np.fromfile(f'/data/log/_frontier_sample{key}_rank{rank}', dtype = np.int32)).to(rank)
-        partition_map = torch.from_numpy(
-            np.fromfile(f'/data/log/_partition_index_sample{key}_rank{rank}', dtype = np.int32)).to(rank)
 
-        e1 = torch.cuda.Event(enable_timing=  True)
-        e2 = torch.cuda.Event(enable_timing= True)
-        for _ in range(3):
-            e1.record()
+    ### All frontier data exchanged.
+    input_features = torch.rand(unique_frontier.shape[0], 128, requires_grad= True).to(rank)
+    out = Shuffle.apply(input_features, local_idx_frontier_send, frontier_recieved_idx, rank, world_size, frontier.shape[0])
+    out.sum().backward()
+    # Need indices for forward pass, backward pass and training
+    # Case 1 Use hash maps
+    # Case 2 Use sorting.
+    # Init distributed process group
+    # get random frontier in range
+    #### Do forward pass
 
-        # frontier = torch.arange(1000).to(rank)
-    # partition_map = frontier % world_size
-            num_partitions = 4
-            local_idx_frontier_send = []
-            idx_size = []
-            to_send_frontier = []
-            for i in range(4):
-                idx = (torch.where(partition_map == i)[0])
-                to_send_frontier.append(frontier[idx])
-                idx_size.append(idx.shape[0])
-                local_idx_frontier_send.append(idx)
-            send_size = torch.tensor(idx_size).to(torch.int32).to(rank)
-            recv_size = torch.empty(send_size.shape, dtype = torch.int32, device = rank)
-            dist.all_to_all_single(recv_size, send_size)
-            recv_frontiers = []
-            for i in recv_size.tolist():
-                recv_frontiers.append(torch.empty(i, dtype = torch.int32, device = rank))
-            dist.all_to_all(recv_frontiers, to_send_frontier)
-            unique_frontier = torch.unique(torch.cat(recv_frontiers, dim = 0))
-            frontier_recieved_idx = []
-            for frontier_l in recv_frontiers:
-                frontier_recieved_idx.append(torch.searchsorted(unique_frontier, frontier_l))
+    #### Do backward pass
 
-            e2.record()
-            ### All frontier data exchanged.
-            input_features = torch.ones(unique_frontier.shape[0], 128, requires_grad= True).to(rank)
-            out = ShuffleAlt.apply(input_features, local_idx_frontier_send, frontier_recieved_idx, rank, world_size, frontier.shape[0])
-            # out.sum().backward()
-            print("Out ", out.sum())
-            e2.synchronize()
-            if rank == 0:
-                print(e1.elapsed_time(e2)/1000, "naive index creation time")
-    #   Init distributed process group
-#   get random frontier in range
 
 
 if __name__ == "__main__":
     world_size = 4
-    mp.spawn(run_proc, (world_size,),nprocs = world_size)
-    mp.spawn(run_naive, (world_size,),nprocs = world_size)
+    mp.spawn(run_naive,(world_size,),nprocs = world_size)
 
 
 
