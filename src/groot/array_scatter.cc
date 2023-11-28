@@ -127,7 +127,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   assert(num_partitions == world_size);
 
   auto table = std::make_shared<CudaHashTable>(frontier->dtype, frontier->ctx,
-                                               frontier.NumElements() * num_partitions);
+                                               array->expectedSize * num_partitions);
 //  if(array->debug){
 //    array->table->Reset();
 //    array->table->FillWithDuplicates(frontier, frontier->shape[0]);
@@ -205,7 +205,7 @@ DGL_REGISTER_GLOBAL("groot._CAPI_getScatteredArrayObject")
       int  world_size = args[4];
       cudaStream_t stream = runtime::getCurrentCUDAStream();
       CUDAThreadEntry::ThreadLocal()->stream = stream;
-      ScatteredArray scatter_array = ScatteredArray::Create(frontier->shape[0], 4,\
+      ScatteredArray scatter_array = ScatteredArray::Create(frontier->shape[0] * 2,  4,\
                                                             frontier->ctx, frontier->dtype, stream);
       Scatter(scatter_array, frontier, partition_map, num_partitions, rank , world_size);
       *rv = scatter_array;

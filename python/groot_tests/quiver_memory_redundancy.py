@@ -59,6 +59,7 @@ def train_ddp(rank: int,\
     forward_timers = []
     backward_timers = []
     edges_computed = []
+    tt = torch.tensor([0,0,0,0], device = rank, dtype = torch.int64)
     for epoch in range(num_epoch):
         if rank == 0 and (epoch + 1) % 5 == 0:
             print(f"start epoch {epoch}")
@@ -82,27 +83,50 @@ def train_ddp(rank: int,\
                     (dgl.backend.zerocopy_to_dgl_ndarray(hit_nodes), \
                      dgl.backend.zerocopy_to_dgl_ndarray(p_map[hit_nodes]), \
                      num_partitions, rank, world_size)
-                print("Cache ratio", cache_hit.shape[0], cache_miss.shape[0], scattered_array.unique_array.shape)
+                total_data_moved_GPU_GPU = hit_nodes.shape[0]
+                non_redundant_data_moved_GPU_GPU = scattered_array.unique_array.shape[0]
+                total_data_moved_CPU_GPU = miss_nodes.shape[0]
+                scattered_array = _CAPI_getScatteredArrayObject \
+                    (dgl.backend.zerocopy_to_dgl_ndarray(miss_nodes), \
+                     dgl.backend.zerocopy_to_dgl_ndarray(p_map[miss_nodes]), \
+                     num_partitions, rank, world_size)
+                non_redundant_data_moved_CPU_GPU = scattered_array.unique_array.shape[0]
+                t = torch.tensor([total_data_moved_GPU_GPU, non_redundant_data_moved_GPU_GPU,\
+                              total_data_moved_CPU_GPU, non_redundant_data_moved_CPU_GPU]).to(rank)
+                dist.reduce(t, dist.ReduceOp.SUM)
+                tt += t
+    if rank == 0:
+        total_data_moved_GPU_GPU, non_redundant_data_moved_GPU_GPU, \
+            total_data_moved_CPU_GPU, non_redundant_data_moved_CPU_GPU = tt.tolist()
+        print("Percentage Red GPU-GPU comm",\
+              round(1 - (non_redundant_data_moved_GPU_GPU/total_data_moved_GPU_GPU),3))
+        print("Percentage Red GPU-CPU comm",\
+              round(1 - (non_redundant_data_moved_CPU_GPU/total_data_moved_CPU_GPU),3))
+        total_data = total_data_moved_GPU_GPU + total_data_moved_CPU_GPU
+        print("Percentage non Red GPU-GPU out of total comm", \
+              round(1 - (non_redundant_data_moved_GPU_GPU/total_data),3))
+        print("Percentage non Red GPU-CPU out of total comm", \
+              round(1 - (non_redundant_data_moved_CPU_GPU/total_data),3))
 
     ddp_exit()
 
 
 
 if __name__== "__main__":
-    graph_name = "ogbn-products"
-    system = "quiver-gpu"
+    graph_name = "ogbn-papers100M"
+    system = "quiver-uva"
     cache_policy = "p2p_clique_replicate"
-    cache_policy = "device_replicate"
+    # cache_policy = "device_replicate"
     in_dir = "/data/ogbn/processed"
     in_dir = os.path.join(in_dir, graph_name)
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     feat, label, num_label = load_feat_label(in_dir)
-    cache_size = "100M"
+    cache_size = "8G"
     world_size = 4
-    batch_size = 1024
-    num_epoch = 5
+    batch_size = 256
+    num_epoch = 1
     quiver.init_p2p(device_list= list(range(world_size)))
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
 
