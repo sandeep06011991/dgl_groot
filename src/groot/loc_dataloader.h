@@ -7,7 +7,7 @@
 
 #include <dgl/array.h>
 #include <dgl/aten/array_ops.h>
-
+#include <nvtx3/nvtx3.hpp>
 #include <memory>
 #include <mutex>
 
@@ -20,8 +20,30 @@
 #include "cuda/rowwise_sampling.cuh"
 #include <thread>
 #include "core.h"
+//#include <ofstream>
+#include <iterator>
+#include <string>
+#include <vector>
+#include <iostream>
+#include <fstream>
 
 namespace dgl::groot {
+
+    void write_to_file(NDArray array, std::string filename){
+        if(array->dtype.bits == 64){
+          auto vector = array.ToVector<int64_t>();
+          std::ofstream fout(filename, std::ios::out | std::ios::binary);
+          fout.write((char*)vector.data(), vector.size() * sizeof(long));
+          fout.close();
+        }
+        if(array->dtype.bits == 32){
+          auto vector = array.ToVector<int32_t>();
+          std::ofstream fout(filename, std::ios::out | std::ios::binary);
+          fout.write((char*)vector.data(), vector.size() * sizeof(long));
+          fout.close();
+        }
+
+    }
     class DataloaderObject : public runtime::Object {
     public:
         std::vector<std::shared_ptr<BlocksObject>> _blocks_pool;
@@ -48,6 +70,11 @@ namespace dgl::groot {
         DGLDataType _label_type;
         DGLDataType _feat_type;
         GpuCache gpu_cache;
+        std::string log_path = "/data/log";
+        bool store_frontiers = true;
+        std::string get_file_name(int key, std::string fname, int rank){
+          return log_path + "_" + fname + "_sample" + std::to_string(key) + "_rank" + std::to_string(rank);
+          }
 
         DataloaderObject() = default;
 
@@ -270,6 +297,7 @@ namespace dgl::groot {
             blocksPtr->_input_nodes = frontier;
             auto sampling_stream = runtime::getCurrentCUDAStream();
 //            blocksPtr->_stream = sampling_stream;
+            nvtxRangePushA("sampling");
             CHECK_LE(_num_redundant_layers, _fanouts.size() - 1);
             for (int64_t layer = 0; layer < (int64_t) _fanouts.size(); layer++) {
                 int64_t num_picks = _fanouts.at(layer);
@@ -284,8 +312,14 @@ namespace dgl::groot {
                             IndexSelect(_partition_map, frontier, sampling_stream);
                     blocksPtr->_scattered_frontier = ScatteredArray::Create(frontier->shape[0], num_partitions, _ctx,
                                                                             _id_type, sampling_stream);
+                    nvtxRangePushA("scatter");
                     Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,
                             num_partitions, _rank, _world_size);
+                    nvtxRangePop();
+                    if(store_frontiers and key <20){
+                      write_to_file(frontier, get_file_name(key, "frontier", _rank));
+                      write_to_file(partition_index, get_file_name(key, "partition_index", _rank));
+                    }
                     frontier = blocksPtr->_scattered_frontier->unique_array;
                 }
                 ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
@@ -300,6 +334,7 @@ namespace dgl::groot {
                     blockTable->FillWithDuplicates(blockPtr->_col, blockPtr->_col->shape[0]);
                     auto unique_src = blockTable->CopyUnique();
                     blockPtr->num_src = unique_src->shape[0];
+                    nvtxRangePushA("scatter");
                     auto partition_index =
                             IndexSelect(_partition_map, unique_src, sampling_stream);
                     blockPtr->_scattered_src = ScatteredArray::Create(blockPtr->num_src, num_partitions, _ctx, _id_type,
@@ -307,6 +342,7 @@ namespace dgl::groot {
                     Scatter(blockPtr->_scattered_src, unique_src, partition_index,
                             num_partitions, _rank, _world_size);
                     frontier = blockPtr->_scattered_src->unique_array;
+                    nvtxRangePop();
                 } else {
                     blockTable->Reset();
                     blockTable->FillWithUnique(frontier, frontier.NumElements());
@@ -327,7 +363,7 @@ namespace dgl::groot {
             }
             blocksPtr->_output_nodes = frontier;
 
-
+            nvtxRangePop();
             // must wait for the sampling_stream to be done before starting Mapping and
             // Feature extraction since the hash table must be populated correctly to
             // provide the mapping and unique nodes fetch feature data and label data0

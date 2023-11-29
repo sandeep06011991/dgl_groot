@@ -2,7 +2,7 @@
 #include "../groot/cuda/cuda_mapping.cuh"
 #include "cuda/alltoall.h"
 #include "../groot/cuda/cuda_index_select.cuh"
-
+#include <nvtx3/nvtx3.hpp>
 namespace dgl {
 namespace groot {
 using namespace runtime;
@@ -57,7 +57,7 @@ NDArray ScatteredArrayObject::shuffle_forward(dgl::runtime::NDArray feat, int ra
       NDArray  feat_shuffled;
       NDArray feat_offsets;
       cudaDeviceSynchronize();
-      assert(shuffled_recv_offsets.ToVector<int64_t>()[4] == toShuffle->shape[0]);
+      assert(shuffled_recv_offsets.ToVector<int64_t>()[world_size] == toShuffle->shape[0]);
 
       std::tie(feat_shuffled, feat_offsets) \
           = ds::Alltoall(toShuffle, shuffled_recv_offsets, \
@@ -141,6 +141,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   // Compute partition continuos array
   cudaStream_t stream =  runtime::getCurrentCUDAStream();
   // Todo: Why not runtime stream
+  nvtxRangePushA("create_send_msg");
   auto [boundary_offsets, gather_idx_in_part_disc_cont, scatter_idx_in_part_disc_cont]\
       = compute_partition_continuous_indices<IndexType>(array->partitionMap, num_partitions, stream);
 
@@ -153,7 +154,8 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
     cudaStreamSynchronize(stream);
     assert(boundary_offsets.ToVector<int64_t>()[4] == array->partitionContinuousArray->shape[0]);
   }
-
+  nvtxRangePop();
+  nvtxRangePushA("Shuffle");
   if (world_size != 1) {
     std::tie(array->shuffled_array, array->shuffled_recv_offsets) = ds::Alltoall\
         (array->partitionContinuousArray, boundary_offsets, 1, rank, world_size);
@@ -161,13 +163,14 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
     array->shuffled_array = array->partitionContinuousArray;
     array->shuffled_recv_offsets = boundary_offsets;
   }
-
+  nvtxRangePop();
 
   // Todo: Why table stream is different from main stream
 //  array->table->_stream = stream;
 //  array->table->Reset();
 //  array->table->FillWithDuplicates(array->shuffled_array,
 //                                   array->shuffled_array->shape[0]);
+  nvtxRangePushA("recv_msg");
   table->FillWithDuplicates(array->shuffled_array, array->shuffled_array->shape[0]);
   array->unique_array = table->CopyUnique();
   array->unique_tensor_dim = array->unique_array->shape[0];
@@ -175,6 +178,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
       std::vector<int64_t>{array->shuffled_array->shape[0]},
       array->shuffled_array->dtype, array->shuffled_array->ctx);
   GPUMapEdges(array->shuffled_array, array->gather_idx_in_unique_out_shuffled, table, stream);
+  nvtxRangePop();
 }
 
 

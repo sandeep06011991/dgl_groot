@@ -53,8 +53,11 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-    partition_map = get_metis_partition(in_dir, config, graph)
-    # partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
+    if config.partition_type == "random":
+        partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
+    else:
+        partition_map = get_metis_partition(in_dir, config, graph)
+
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)

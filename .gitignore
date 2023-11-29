@@ -188,4 +188,5 @@ log-run1/
 nohup.out
 exceptions/
 !exceptions/README
-
+*.nsys-rep
+*.sqlite

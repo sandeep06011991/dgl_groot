@@ -277,9 +277,14 @@ def get_cache_ids_by_sampling(config: RunConfig,
 
 def get_metis_partition(config: RunConfig):
     path = f"/data/ogbn/{config.graph_name}".replace("-", "_")
-    assert (os.path.exists(f"{path}/partition_map"))
-    p_map = torch.load(f"{path}/partition_map")
-    assert(torch.all(p_map < 4))
+    if config.world_size == 4:
+        assert (os.path.exists(f"{path}/partition_map"))
+        p_map = torch.load(f"{path}/partition_map")
+        assert(torch.all(p_map < 4))
+    assert config.world_size in [2,8]
+    assert (os.path.exists(f"{path}/partition_map_{config.world_size"))
+    p_map = torch.load(f"{path}/partition_map_{config.world_size")
+    assert(torch.all(p_map < config.world_size))
     return p_map
 
 def metis_partition(config:RunConfig):
