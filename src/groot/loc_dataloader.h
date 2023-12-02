@@ -39,7 +39,7 @@ namespace dgl::groot {
         if(array->dtype.bits == 32){
           auto vector = array.ToVector<int32_t>();
           std::ofstream fout(filename, std::ios::out | std::ios::binary);
-          fout.write((char*)vector.data(), vector.size() * sizeof(long));
+          fout.write((char*)vector.data(), vector.size() * sizeof(int));
           fout.close();
         }
 
@@ -70,8 +70,8 @@ namespace dgl::groot {
         DGLDataType _label_type;
         DGLDataType _feat_type;
         GpuCache gpu_cache;
-        std::string log_path = "/data/log";
-        bool store_frontiers = true;
+        std::string log_path = "/data/log/";
+        bool store_frontiers = false;
         std::string get_file_name(int key, std::string fname, int rank){
           return log_path + "_" + fname + "_sample" + std::to_string(key) + "_rank" + std::to_string(rank);
           }
@@ -316,10 +316,7 @@ namespace dgl::groot {
                     Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,
                             num_partitions, _rank, _world_size);
                     nvtxRangePop();
-                    if(store_frontiers and key <20){
-                      write_to_file(frontier, get_file_name(key, "frontier", _rank));
-                      write_to_file(partition_index, get_file_name(key, "partition_index", _rank));
-                    }
+
                     frontier = blocksPtr->_scattered_frontier->unique_array;
                 }
                 ATEN_ID_TYPE_SWITCH(_id_type, IdType, {
@@ -342,6 +339,11 @@ namespace dgl::groot {
                     Scatter(blockPtr->_scattered_src, unique_src, partition_index,
                             num_partitions, _rank, _world_size);
                     frontier = blockPtr->_scattered_src->unique_array;
+                    if(store_frontiers and key <20 and (layer == (_fanouts.size() - 1))){
+                      cudaDeviceSynchronize();
+                      write_to_file(unique_src, get_file_name(key, "frontier", _rank));
+                      write_to_file(partition_index, get_file_name(key, "partition_index", _rank));
+                    }
                     nvtxRangePop();
                 } else {
                     blockTable->Reset();

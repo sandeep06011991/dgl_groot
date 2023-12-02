@@ -35,7 +35,7 @@ def get_groot_cache_percentage(feat, config: Config):
         res *= s
     res = res // (1024 * 1024)
     if config.machine_name == "p3.8xlarge":
-        max_size = min(MAX_GPU, res//4)
+        max_size = min(MAX_GPU, res//config.world_size)
     else:
         max_size = min(MAX_GPU, res)
     cache_sizes = []
@@ -53,19 +53,20 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
-    if config.partition_type == "random":
-        partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
-    else:
-        partition_map = get_metis_partition(in_dir, config, graph)
 
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir)
-    train_idx_list = []
-    for p in range(config.world_size):
-        train_idx_list.append(train_idx[partition_map[train_idx] == p])
+
     for config in configs:
         # Default settings
+        if config.partition_type == "random":
+            partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
+        else:
+            partition_map = get_metis_partition(in_dir, config, graph)
+        train_idx_list = []
+        for p in range(config.world_size):
+            train_idx_list.append(train_idx[partition_map[train_idx] == p])
         cache_rates = []
         quiver_cache_rate = -1
         if  config.graph_name == "com-orkut":

@@ -133,7 +133,10 @@ def get_metis_partition(in_dir, config, graph):
         return torch.randint(0, 4, (graph.num_nodes(),), dtype = torch.int32)
     if config.partition_type == "edge_balanced":
         edge_balanced = True
-        return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)
+        if config.world_size == 4:
+            return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)
+        if config.world_size in [2,8]:
+            return torch.load(f'{in_dir}/partition_map_{edge_balanced}_{config.world_size}').to(torch.int32)
     if config.partition_type == "node_balanced":
         edge_balanced = False
         return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)

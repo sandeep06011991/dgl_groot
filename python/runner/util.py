@@ -282,8 +282,8 @@ def get_metis_partition(config: RunConfig):
         p_map = torch.load(f"{path}/partition_map")
         assert(torch.all(p_map < 4))
     assert config.world_size in [2,8]
-    assert (os.path.exists(f"{path}/partition_map_{config.world_size"))
-    p_map = torch.load(f"{path}/partition_map_{config.world_size")
+    assert (os.path.exists(f"{path}/partition_map_{config.world_size}"))
+    p_map = torch.load(f"{path}/partition_map_{config.world_size}")
     assert(torch.all(p_map < config.world_size))
     return p_map
 
