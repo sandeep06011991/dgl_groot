@@ -1,3 +1,5 @@
+import os
+
 from dgl._ffi.function import _init_api
 import dgl
 _init_api("dgl.groot", __name__)
@@ -11,7 +13,8 @@ from exp.quiver_sampler import *
 import torch.distributed as dist
 import torch.multiprocessing as mp
 
-
+class Offset:
+    end_ = 0
 def ddp_setup(rank, world_size):
     os.environ["MASTER_ADDR"] = "localhost"
     os.environ["MASTER_PORT"] = "12355"
@@ -71,8 +74,19 @@ def train_ddp(rank: int,\
             batch_feat = feat[input_nodes]
             local_ordering = feat.feature_order[input_nodes]
             if feat.cache_policy == "device_replicate":
-                cache_hit = torch.where(local_ordering < offset.end_)
-                cache_miss = torch.where(local_ordering > offset.end_)
+                cache_hit = torch.where(local_ordering < offset.end_)[0]
+                cache_miss = torch.where(local_ordering > offset.end_)[0]
+                miss_nodes = input_nodes[cache_miss]
+                total_data_moved_CPU_GPU = miss_nodes.shape[0]
+                scattered_array = _CAPI_getScatteredArrayObject \
+                    (dgl.backend.zerocopy_to_dgl_ndarray(miss_nodes), \
+                     dgl.backend.zerocopy_to_dgl_ndarray(p_map[miss_nodes]), \
+                     num_partitions, rank, world_size)
+                non_redundant_data_moved_CPU_GPU = scattered_array.unique_array.shape[0]
+                t = torch.tensor([1, 1, \
+                                  total_data_moved_CPU_GPU, non_redundant_data_moved_CPU_GPU]).to(rank)
+                dist.reduce(t, dist.ReduceOp.SUM)
+                tt += t
                 print("Cache ratio", cache_hit.shape[0], cache_miss.shape[0])
             if feat.cache_policy == "p2p_clique_replicate":
                 cache_hit = torch.where(local_ordering < offset.end_)[0]
@@ -113,21 +127,25 @@ def train_ddp(rank: int,\
 
 
 if __name__== "__main__":
-    graph_name = "ogbn-papers100M"
+    graph_name = "ogbn-products"
     system = "quiver-uva"
     cache_policy = "p2p_clique_replicate"
     # cache_policy = "device_replicate"
-    in_dir = "/data/ogbn/processed"
+    in_dir = "/ssd/ogbn/processed"
     in_dir = os.path.join(in_dir, graph_name)
     graph = load_dgl_graph(in_dir, is32=False, wsloop=True)
     row, col = graph.adj_tensors("coo")
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     feat, label, num_label = load_feat_label(in_dir)
-    cache_size = "8G"
+    cache_size = "0G"
     world_size = 4
     batch_size = 256
     num_epoch = 1
-    quiver.init_p2p(device_list= list(range(world_size)))
+    if os.getenv('MACHINE_NAME') == "p3.8xlarge":
+        cache_policy = "p2p_clique_replicate"
+        quiver.init_p2p(device_list= list(range(world_size)))
+    else:
+        cache_policy = "device_replicate"
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=False)
 
     quiver_feat = quiver.Feature(0, device_list=list(range(world_size)), \
@@ -140,12 +158,7 @@ if __name__== "__main__":
         print(offset)
     else:
 
-        for i in range(4):
-            shard = quiver_feat.device_tensor_list[i]
-            offset = shard.shard_tensor_config.tensor_offset_device[i]
-            print(offset.end_)
-
-        assert(False)
+        offset = Offset()
         # Use devece tensor list   assert "uva" in config.system or "gpu"  in config.system
     fanouts = [20,20,20]
     if "uva" in system:
