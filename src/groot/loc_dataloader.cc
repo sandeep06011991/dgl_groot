@@ -59,16 +59,17 @@ namespace dgl::groot {
 
     DGL_REGISTER_GLOBAL("groot._CAPI_NextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
-        const bool extract_feat_label = args[0];
-        const int64_t key = DataloaderObject::Global()->Sample(extract_feat_label);
+        const bool replace = args[0];
+        const int64_t key = DataloaderObject::Global()->Sample(replace);
         *rv = key;
     });
 
     DGL_REGISTER_GLOBAL("groot._CAPI_BatchNextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
         const int64_t num_batches = args[0];
-        const bool extract_feat_label = args[1];
-        const auto [start_key, end_key] = DataloaderObject::Global()->BatchSample(num_batches, extract_feat_label);
+        const int64_t batch_layer = args[1];
+        const bool replace = args[2];
+        const auto [start_key, end_key] = DataloaderObject::Global()->BatchSample(num_batches,batch_layer,replace);
         *rv = end_key;
     });
 

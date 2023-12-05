@@ -577,7 +577,7 @@ COOMatrix CSRRowWiseSampling(
   COOMatrix ret;
   if (IsNullArray(prob_or_mask)) {
     ATEN_CSR_SWITCH_CUDA_UVA(
-        mat, rows, XPU, IdType, "CSRRowWiseSamplingUniform", {
+        mat, rows, XPU, IdType, "CSRRowWiseSamplingUniformBatchV1", {
           ret = impl::CSRRowWiseSamplingUniform<XPU, IdType>(
               mat, rows, num_samples, replace);
         });

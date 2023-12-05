@@ -38,8 +38,8 @@ namespace dgl {
 
             NDArray _row;             // input nodes in original ids (coo format)
             NDArray _col;             // destination nodes in original ids (coo format)
-            NDArray _unique_dst;
-            NDArray _unique_src;
+//            NDArray _unique_dst;
+//            NDArray _unique_src;
             NDArray _true_node_ids;
 
             HeteroGraphRef _block_ref;
@@ -109,7 +109,9 @@ namespace dgl {
 
         struct BlocksObject : public runtime::Object {
 
-            ~BlocksObject() { LOG(INFO) << "Calling Blocks Object destructor"; };
+            ~BlocksObject() {
+//                LOG(INFO) << "Calling Blocks Object destructor";
+            };
             int64_t key, _num_layer, _feat_width, _num_redundant_layers;
             std::vector<std::shared_ptr<BlockObject>> _blocks;
             NDArray _labels;                   // labels of input nodes

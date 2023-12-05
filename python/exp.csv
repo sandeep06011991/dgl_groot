@@ -1,0 +1,12 @@
+machine_name,system,graph_name,world_size,num_epoch,fanouts,batch_size,pool_size,batch_layer,replace,epoch (s),sampling (s),feature (s),forward (s),backward (s),allocated (MB),reserved (MB),test accuracy %
+Elba,batch,ogbn-products,1,1,"[10, 10, 10]",256,1,1,True,5.364,5.364,0.0,0.0,0.0,3768.0,4038.0,0
+Elba,batch,ogbn-products,1,1,"[15, 15, 15]",256,1,1,True,8.242,8.242,0.0,0.0,0.0,7756.0,8466.0,0
+Elba,batch,ogbn-products,1,1,"[10, 10, 10]",256,4,4,True,2.98,2.98,0.0,0.0,0.0,203.0,282.0,0
+Elba,batch,ogbn-products,1,1,"[15, 15, 15]",256,4,4,True,5.272,5.272,0.0,0.0,0.0,553.0,702.0,0
+Elba,batch,ogbn-products,1,1,"[20, 20, 20]",256,4,4,True,8.06,8.06,0.0,0.0,0.0,1095.0,1418.0,0
+Elba,batch,ogbn-products,1,1,"[10, 10, 10]",256,16,16,True,2.935,2.935,0.0,0.0,0.0,314.0,414.0,0
+Elba,batch,ogbn-products,1,1,"[15, 15, 15]",256,16,16,True,5.308,5.308,0.0,0.0,0.0,874.0,1068.0,0
+Elba,batch,ogbn-products,1,1,"[20, 20, 20]",256,16,16,True,8.044,8.044,0.0,0.0,0.0,1791.0,2306.0,0
+Elba,batch,ogbn-products,1,1,"[10, 10, 10]",256,64,64,True,2.922,2.922,0.0,0.0,0.0,761.0,970.0,0
+Elba,batch,ogbn-products,1,1,"[15, 15, 15]",256,64,64,True,5.243,5.243,0.0,0.0,0.0,2160.0,2672.0,0
+Elba,batch,ogbn-products,1,1,"[20, 20, 20]",256,64,64,True,7.923,7.923,0.0,0.0,0.0,4576.0,5854.0,0

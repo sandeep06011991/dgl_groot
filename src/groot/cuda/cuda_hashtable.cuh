@@ -34,6 +34,20 @@ inline std::string ToReadableSize(size_t nbytes) {
   }
 }
 
+    /**
+     * Calculate the number of buckets in the hashtable. To guarantee we can
+     * fill the hashtable in the worst case, we must use a number of buckets which
+     * is a power of two.
+     * https://en.wikipedia.org/wiki/Quadratic_probing#Limitations
+     */
+    inline int64_t EstHashTableSize(const size_t num, int per_id_bytes, const size_t scale = 3) {
+        const size_t next_pow2 = 1 << static_cast<size_t>(1 + std::log2(num >> 1));
+        const int64_t capacity = next_pow2 << scale;
+        const int64_t o2n_bytes = 4 * capacity * per_id_bytes; // each o2n struct has 4 IdType
+        const int64_t n2o_bytes = capacity * per_id_bytes;
+        return o2n_bytes + n2o_bytes;
+    }
+
 template <typename IdType> class OrderedHashTable;
 
 template <typename IdType> class DeviceOrderedHashTable {
@@ -139,6 +153,9 @@ public:
 
   DeviceOrderedHashTable<IdType> DeviceHandle() const;
 
+  size_t NumBytes() const {
+      return sizeof(BucketO2N) * _o2n_size + sizeof(BucketN2O) * _n2o_size;
+  }
 private:
   DGLContext _ctx;
   BucketO2N *_o2n_table;
@@ -227,6 +244,14 @@ public:
       return num_unique;
     });
   }
+
+  int64_t NumBytes() {
+        ATEN_ID_TYPE_SWITCH(_dtype, IdType, {
+            auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
+            return _handle->NumBytes();
+        });
+  }
+
   NDArray CopyUnique() {
     ATEN_ID_TYPE_SWITCH(_dtype, IdType, {
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);

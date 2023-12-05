@@ -39,7 +39,7 @@ def shuffle_training_nodes(randInt: Tensor):
 
 def init_groot_dataloader_cache(cache_idx: Tensor):
     _CAPI_InitCache(F.to_dgl_nd(cache_idx))
-    
+
 def get_batch(key: int, layers: int = 3, \
                 n_redundant_layers:int = 3, mode:str = "DATA_PARALLEL") -> (list[DGLBlock], Tensor, Tensor):
     blocks = []

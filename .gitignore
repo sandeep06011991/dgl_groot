@@ -6,8 +6,6 @@ build/
 cmake-build-release/
 cmake-build-debug/
 
-# profiling
-python/report*
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]

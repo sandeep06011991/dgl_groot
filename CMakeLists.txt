@@ -263,18 +263,8 @@ if(USE_CUDA)
   endif()
   list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
   list(APPEND DGL_LINKER_LIBS $ENV{CUDA_HOME}/targets/x86_64-linux/lib/stubs/libnvidia-ml.so)
-  cuda_add_library(dgl SHARED ${DGL_SRC}
-          src/groot/cuda/cuda_hashtable.cu
-          src/groot/cuda/cuda_index_select.cu
-          src/groot/cuda/cuda_mapping.cu
-          src/groot/cuda/gpu_cache.cu
-          src/groot/cuda/rowwise_sampling.cu
-          src/groot/cuda/alltoall.cu
-          src/groot/cuda/partition_continuous.cu
-          src/groot/cuda/array_gather.cu
-          src/groot/cuda/rowwise_sampling_v2.cu
-          src/groot/cuda/rowwise_sampling_v2.cuh
-  )
+#  list(APPEND DGL_LINKER_LIBS $ENV{CUDA_HOME}/targets/x86_64-linux/lib/libcudadevrt.a)
+  cuda_add_library(dgl SHARED ${DGL_SRC})
 else(USE_CUDA)
 endif(USE_CUDA)
 
