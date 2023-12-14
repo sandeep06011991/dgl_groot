@@ -469,6 +469,33 @@ def active_python():
             count = count + 1
     return count == 1
 
+import argparse
+def get_parser():
+    parser = argparse.ArgumentParser(description='local run script')
+    parser.add_argument('--batch', default=1024, type=int, help='Input batch size on each device (default: 1024)')
+    parser.add_argument('--system', default="groot-gpu", type=str, help='System setting', choices=["dgl-uva", "dgl-cpu", "dgl-gpu","pyg", "quiver", "groot-gpu", "groot-uva", "groot-cache"])
+    parser.add_argument('--model', default="sage", type=str, help='Model type: graphsage,gat, gcn, hgt', choices=['graphsage', 'gat', 'gcn', 'hgt'])
+    parser.add_argument('--graph', default="ogbn-products", type=str, help="Input graph name any of ['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M']", choices=['ogbn-arxiv', 'ogbn-products', 'ogbn-papers100M'])
+    parser.add_argument('--world_size', default=4, type=int, help='Number of GPUs')
+    parser.add_argument('--hid_feat', default=256, type=int, help='Size of hidden feature')
+    parser.add_argument('--cache_size', default=1, type=float, help="percentage of feature data cached on each gpu")
+    parser.add_argument('--sample_only', default=False, type=bool, help="whether test system on sampling only mode", choices=[True, False])
+    parser.add_argument('--test_acc', default=True, type=bool, help="whether test model accuracy", choices=[True, False])
+    parser.add_argument('--num_redundant_layers', default = 0, type = int, help = "number of redundant layers")
+    parser.add_argument('--random_partition', default = False, type = bool)
+    parser.add_argument('--fanout', default='5-5-5', type = str, help = "fanout during neighbour sampling ")
+    return parser
+
+def get_config(log_dir, data_dir):
+    parser = get_parser()
+    args = parser.parse_args()
+    fanout = [int(a) for a in args.fanout.split('-')]
+    config = Config(args.graph, args.world_size, 5,\
+                    fanout, args.batch, args.system , args.model, args.hid_feat,\
+                    args.cache_size, log_dir, data_dir)
+    config.num_redundant_layer = 0
+    return config
+
 if __name__== "__main__":
     for graph_name in ["ogbn-arxiv"]:
         # preprocess(graph_name , \

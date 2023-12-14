@@ -152,7 +152,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   // Compute partition continuos array
   cudaStream_t stream =  runtime::getCurrentCUDAStream();
   // Todo: Why not runtime stream
-  nvtxRangePushA("create_send_msg");
+  nvtxRangePushA("upper_index");
   std::tuple<IdArray,IdArray,IdArray> out;
   if(use_strawman){
           out =
@@ -164,17 +164,20 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   }
   const auto& [boundary_offsets, gather_idx_in_part_disc_cont,
                  scatter_idx_in_part_disc_cont] = out;
+
+  nvtxRangePop();
+  nvtxRangePushA("create_message");
   array->partitionContinuousArray = IndexSelect(frontier, gather_idx_in_part_disc_cont , stream);
   array->gather_idx_in_part_disc_cont = gather_idx_in_part_disc_cont;
   array->scatter_idx_in_part_disc_cont = scatter_idx_in_part_disc_cont;
   array->partitionContinuousOffsets  = boundary_offsets;
+  nvtxRangePop();
 
   if(array->debug){
     cudaStreamSynchronize(stream);
     assert(boundary_offsets.ToVector<int64_t>()[4] == array->partitionContinuousArray->shape[0]);
   }
-  nvtxRangePop();
-  nvtxRangePushA("Shuffle");
+  nvtxRangePushA("shuffle");
   if (world_size != 1) {
     std::tie(array->shuffled_array, array->shuffled_recv_offsets) = ds::Alltoall\
         (array->partitionContinuousArray, boundary_offsets, 1, rank, world_size);
@@ -189,7 +192,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
 //  array->table->Reset();
 //  array->table->FillWithDuplicates(array->shuffled_array,
 //                                   array->shuffled_array->shape[0]);
-  nvtxRangePushA("recv_msg");
+  nvtxRangePushA("lower_index");
   table->FillWithDuplicates(array->shuffled_array, array->shuffled_array->shape[0]);
   array->unique_array = table->CopyUnique();
   array->unique_tensor_dim = array->unique_array->shape[0];
