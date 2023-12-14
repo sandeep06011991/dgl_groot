@@ -40,7 +40,7 @@ inline std::string ToReadableSize(size_t nbytes) {
      * is a power of two.
      * https://en.wikipedia.org/wiki/Quadratic_probing#Limitations
      */
-    inline int64_t EstHashTableSize(const size_t num, int per_id_bytes, const size_t scale = 3) {
+    inline int64_t EstHashTableSize(const size_t num, int per_id_bytes, const size_t scale = 2) {
         const size_t next_pow2 = 1 << static_cast<size_t>(1 + std::log2(num >> 1));
         const int64_t capacity = next_pow2 << scale;
         const int64_t o2n_bytes = 4 * capacity * per_id_bytes; // each o2n struct has 4 IdType
@@ -110,7 +110,7 @@ protected:
 
 template <typename IdType> class OrderedHashTable {
 public:
-  static constexpr size_t kDefaultScale = 3;
+  static constexpr size_t kDefaultScale = 2;
 
   using BucketO2N = typename DeviceOrderedHashTable<IdType>::BucketO2N;
   using BucketN2O = typename DeviceOrderedHashTable<IdType>::BucketN2O;
@@ -211,7 +211,7 @@ public:
       auto _handle = static_cast<OrderedHashTable<IdType> *>(_host_handle_ptr);
       const IdType *unique{nullptr};
       IdType num_unique = _handle->RefUnique(unique);
-      if(num_input + num_unique >= _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input + num_unique <<"\n";}
+      if(num_input + num_unique > _capacity){std::cout << "Expected " << _capacity <<" but got " << num_input + num_unique <<"\n";}
       assert(num_input +  num_unique < _capacity);
 
       _handle->FillWithDupRevised(arr.Ptr<IdType>(), num_input, _stream);

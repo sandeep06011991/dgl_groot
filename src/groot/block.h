@@ -38,6 +38,7 @@ namespace dgl {
 
             NDArray _row;             // input nodes in original ids (coo format)
             NDArray _col;             // destination nodes in original ids (coo format)
+            NDArray _data;
 //            NDArray _unique_dst;
 //            NDArray _unique_src;
             NDArray _true_node_ids;

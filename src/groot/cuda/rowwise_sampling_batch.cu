@@ -20,7 +20,10 @@ namespace dgl {
     namespace groot {
         constexpr size_t BLOCK_SIZE = 32;
         constexpr size_t TILE_SIZE = 1; // number of rows each block will cover
-
+        size_t TableSize(const size_t num, const int scale = 1) {
+            const size_t next_pow2 = 1 << static_cast<size_t>(1 + std::log2(num >> 1));
+            return next_pow2 << scale;
+        }
         namespace impl {
             /**
              * @brief Compute the size of each row in the sampled CSR, without replacement.
@@ -291,14 +294,18 @@ namespace dgl {
             int64_t v_num = indptr.NumElements() - 1;
             auto d_flags = static_cast<bool*>(device->AllocWorkspace(ctx, v_num * sizeof(bool)));
             CUDA_CALL(cudaMemset(d_flags, 0, v_num * sizeof(bool)));
-            int64_t total_frontier_size = 0;
+            NDArray all_nodes = aten::Concat(rows);
             for (const auto &row: rows) {
                 const dim3 block(BLOCK_SIZE);
                 const dim3 grid((row.NumElements() + block.x - 1) / block.x);
-                total_frontier_size += row.NumElements();
+//                total_frontier_size += row.NumElements();
                 CUDA_KERNEL_CALL(impl::_MaskIndex<IdType>, grid, block, 0, stream, static_cast<IdType* >(row->data), row.NumElements(), d_flags);
             }
-
+//            {
+//                const dim3 block(BLOCK_SIZE);
+//                const dim3 grid((all_nodes.NumElements() + block.x - 1) / block.x);
+//                CUDA_KERNEL_CALL(impl::_MaskIndex<IdType>, grid, block, 0, stream, static_cast<IdType* >(all_nodes->data), all_nodes.NumElements(), d_flags);
+//            }
 //
             IdType *d_num_unique = static_cast<IdType*>(device->AllocWorkspace(ctx, sizeof(IdType)));
             IdType h_num_unique = 0;
@@ -311,7 +318,7 @@ namespace dgl {
             CUDA_CALL(cudaMemcpyAsync(&h_num_unique, d_num_unique, sizeof(IdType), cudaMemcpyDeviceToHost, stream));
             device->StreamSync(ctx, stream);
             const IdType num_rows = h_num_unique;
-            LOG(INFO) << "frontier_size:" << total_frontier_size << " | num_unique: " << num_rows << " " << int(1.0 * num_rows / total_frontier_size * 100) <<"%";
+//            LOG(INFO) << "frontier_size:" << total_frontier_size << " | num_unique: " << num_rows << " " << int(1.0 * num_rows / total_frontier_size * 100) <<"%";
             CHECK(num_rows > 0);
 
             NDArray gids = NDArray::Empty({num_rows}, idtype, ctx);
@@ -331,7 +338,7 @@ namespace dgl {
 //            }
 
             IdType *out_deg = static_cast<IdType *>(device->AllocWorkspace(ctx, (num_rows + 1) * sizeof(IdType)));
-            LOG(INFO) << "Compute degree";
+//            LOG(INFO) << "Compute degree";
             {
                 const dim3 block(256);
                 const dim3 grid((num_rows + block.x - 1) / block.x);
@@ -357,8 +364,9 @@ namespace dgl {
             CUDA_CALL(cudaMemcpyAsync(new_len_tensor->data, out_ptr + num_rows, sizeof(IdType), cudaMemcpyDeviceToHost, stream));
             device->StreamSync(ctx, stream);
             const IdType new_len = static_cast<const IdType *>(new_len_tensor->data)[0];
-//            LOG(INFO) << "new len " << new_len;
-            NDArray out_cols_nd = NDArray::Empty({new_len}, idtype, ctx);
+            const int64_t capacity = new_len;
+//            LOG(INFO) << "new len " << new_len << " capacity " << capacity;
+            NDArray out_cols_nd = NDArray::Empty({capacity}, idtype, ctx);
             IdType *out_cols = static_cast<IdType *>(out_cols_nd->data);
             {
                 const dim3 block(BLOCK_SIZE);
@@ -366,9 +374,11 @@ namespace dgl {
                 CUDA_KERNEL_CALL((impl::_CSRRowWiseLoadingKernel<IdType, TILE_SIZE>), grid, block, 0,
                                  stream, num_rows, new_len, slice_rows, in_ptr, in_cols, out_ptr, out_cols);
             }
+            device->StreamSync(ctx, stream);
             device->FreeWorkspace(ctx, d_num_unique);
             device->FreeWorkspace(ctx, d_temp_storage);
-            device->StreamSync(ctx, stream);
+            device->FreeWorkspace(ctx, d_flags);
+            device->FreeWorkspace(ctx, sum_temp_storage);
 
             return BatchCSRv2(v_num, out_ptr_nd, out_cols_nd, gids);
         };
@@ -383,7 +393,7 @@ namespace dgl {
             CHECK(rows.size() == blocks.size()) << "the number of rows should be equal to the number of blocks";
             const auto &ctx = rows[0]->ctx;
             auto idtype = rows[0]->dtype;
-            LOG(INFO) << "BatchLoadingV1 hashtable size: " << ToReadableSize(csr._table->NumBytes());
+//            LOG(INFO) << "BatchLoadingV1 hashtable size: " << ToReadableSize(csr._table->NumBytes());
 
             for (size_t i = 0; i < rows.size(); i++) {
                 auto &row = rows[i];
@@ -424,11 +434,11 @@ namespace dgl {
                 const dim3 block(256);
                 const dim3 grid((csr._v_num + block.x - 1) / block.x);
                 CUDA_KERNEL_CALL(impl::_MapIndptr<IdType>, grid, block, 0, stream, csr._gids.Ptr<IdType>(), csr._gids.NumElements(), remap_indptr.Ptr<IdType>());
-                LOG(INFO) << "BatchLoadingV2 remap indptr size: " << ToReadableSize(remapSize);
+//                LOG(INFO) << "BatchLoadingV2 remap indptr size: " << ToReadableSize(remapSize);
             } else {
                 // use hashmap for remapping
                 table = std::make_shared<CudaHashTable>(idtype, ctx, csr._gids.NumElements() + 1, stream);
-                LOG(INFO) << "BatchLoadingV2 hashtable size: " << ToReadableSize(table->NumBytes());
+//                LOG(INFO) << "BatchLoadingV2 hashtable size: " << ToReadableSize(table->NumBytes());
                 table->FillWithUnique(csr._gids, csr._gids.NumElements());
             }
 

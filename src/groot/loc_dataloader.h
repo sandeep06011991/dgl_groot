@@ -255,7 +255,7 @@ namespace dgl::groot {
             runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
         }
 
-        int64_t GetBatchesDP(int64_t key, int64_t num_batches, int64_t batch_layer, bool replace, bool use_hashmap=false) {
+        int64_t GetBatchesDP(int64_t key, int64_t num_batches, int64_t batch_layer, bool replace) {
             CHECK(num_batches <= this->_max_pool_size)
                 << "Number of batches should be no greater than the capacity of the pool";
             CHECK(num_batches >= 1 )
@@ -283,12 +283,6 @@ namespace dgl::groot {
                     if (layer < batch_layer) {
                         // without using batch laoding
                         CSRRowWiseSamplingUniformBatchV0<kDGLCUDA, IdType>(_indptr, _indices, frontiers,
-                                                                           num_picks, replace, block_vec,
-                                                                           sampling_stream);
-                    } else if (use_hashmap){
-                        // Use batch loading
-                        // Use hashmap to handle mapping
-                        CSRRowWiseSamplingUniformBatchV1<kDGLCUDA, IdType>(_indptr, _indices, frontiers,
                                                                            num_picks, replace, block_vec,
                                                                            sampling_stream);
                     } else {

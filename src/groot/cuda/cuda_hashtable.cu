@@ -661,7 +661,7 @@ OrderedHashTable<IdType>::OrderedHashTable(const size_t size, DGLContext ctx,
 #else
       _o2n_size(size),
 #endif
-      _n2o_size(size), _ctx(ctx), _version(0), _num_items(0) {
+      _n2o_size(TableSize(size, 1)), _ctx(ctx), _version(0), _num_items(0) {
   // make sure we will at least as many buckets as items.
   auto device = runtime::DeviceAPI::Get(_ctx);
   _o2n_table = static_cast<BucketO2N *>(
@@ -673,7 +673,7 @@ OrderedHashTable<IdType>::OrderedHashTable(const size_t size, DGLContext ctx,
                        sizeof(BucketO2N) * _o2n_size));
   CUDA_CALL(cudaMemset(_n2o_table, (int)Constant::kEmptyKey,
                        sizeof(BucketN2O) * _n2o_size));
-//   LOG(INFO) << "cuda hashtable init with " << ToReadableSize(sizeof(BucketO2N) * _o2n_size) << "O2N table size and " << ToReadableSize(sizeof(BucketN2O) * _n2o_size) << " N2O table size";
+//   LOG(INFO) << "cuda hashtable init with " << ToReadableSize(sizeof(BucketO2N) * _o2n_size) << " | O2N table size and " << ToReadableSize(sizeof(BucketN2O) * _n2o_size) << " N2O table size";
 }
 
 template <typename IdType> OrderedHashTable<IdType>::~OrderedHashTable() {

@@ -351,8 +351,9 @@ void CSRRowWiseSamplingUniform(NDArray indptr, NDArray indices, NDArray rows,
 
     block->_row = picked_row.CreateView({new_len}, picked_row->dtype);
     block->_col = picked_col.CreateView({new_len}, picked_col->dtype);
-  //  picked_idx = picked_idx.CreateView({new_len}, picked_idx->dtype);
+    block->_data = picked_idx.CreateView({new_len}, picked_idx->dtype);
   //
+
   //  return COOMatrix(
   //      mat.num_rows, mat.num_cols, picked_row, picked_col, picked_idx);
   device->StreamSync(ctx, stream);
