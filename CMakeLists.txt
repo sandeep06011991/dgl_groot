@@ -46,7 +46,7 @@ else()
   dgl_option(
       USE_CUDA
       "Build with CUDA"
-      OFF
+      ON
   )
   dgl_option(
       TORCH_PYTHON_INTERPS

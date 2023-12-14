@@ -9,7 +9,7 @@ class DEFAULT_SETTING:
     hid_size =256
     ogbn_fanouts = [20,20,20]
     snap_fanouts = [20,20,20]
-    models = [ "gat","sage"]
+    models = [ "sage"]
     num_redundant_layers = 0
 
     @staticmethod
@@ -20,6 +20,12 @@ class DEFAULT_SETTING:
             return DEFAULT_SETTING.snap_fanouts
 
 def get_data_dir(graph_name):
+    if os.environ['MACHINE_NAME'] == 'jupyter':
+        if "com" in graph_name:
+            return "/data/sandeep/groot_data/snap/"
+        if "ogbn" in graph_name:
+            return "/data/sandeep/groot_data/ogbn-processed"
+
     if os.environ['MACHINE_NAME'] == "p3.8xlarge" or os.environ['MACHINE_NAME'] == 'p3.16xlarge':
         if "com" in graph_name:
             return "/data/snap/"
@@ -280,7 +286,7 @@ if __name__ == "__main__":
         quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
     # all_experiments()
-    scalability_experiment()
-    #main_experiments()
+    # scalability_experiment()
+    main_experiments()
     # quiver.init_p2p(device_list=list(range(4)))
     # max_memory_measurement()

@@ -32,6 +32,11 @@ template <DGLDeviceType XPU, typename  IdType, typename IndexType>
 std::tuple<IdArray,IdArray,IdArray>
 compute_partition_continuous_indices(IdArray partition_map, int num_partitions,cudaStream_t stream);
 
+
+template <DGLDeviceType XPU, typename PIdType>
+std::tuple<IdArray,IdArray,IdArray>
+compute_partition_continuous_indices_strawman(IdArray partition_map, \
+                                              int num_partitions,cudaStream_t stream);
 } // namespace impl
 
 class ScatteredArrayObject : public runtime::Object {
@@ -121,7 +126,7 @@ public:
 };
 
 void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
-             int num_partitions, int rank, int world_size);
+             int num_partitions, int rank, int world_size, bool use_strawman = false );
 
   } // namespace groot
 } // namespace dgl

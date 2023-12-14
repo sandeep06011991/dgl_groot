@@ -1,3 +1,5 @@
+import torch.cuda
+
 from .._ffi.function import _init_api
 _init_api("dgl.groot", __name__)
 _init_api("dgl.ds", __name__)
@@ -107,5 +109,11 @@ def get_feat_label(key:int) -> Tensor:
 def extract_batch_feat_label(key: int, is_async: bool) -> None:
     return _CAPI_ExtractFeatLabel(key, is_async)
 
-def sample_batch_sync(extract_feat: bool) -> int:
-    return _CAPI_NextSync(extract_feat)
+def sample_batch_sync(extract_feat: bool, use_strawman : bool) -> int:
+    return _CAPI_NextSync(extract_feat, use_strawman)
+
+def test():
+    rank = 0
+    torch.cuda.set_device(rank)
+    partition_map = F.zerocopy_to_dgl_ndarray(torch.tensor([0,1,2,3,0,1,2,3], dtype = torch.int64).to(rank))
+    _CAPI_partitionContinuos(partition_map, 4)

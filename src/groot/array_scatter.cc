@@ -3,6 +3,7 @@
 #include "cuda/alltoall.h"
 #include "../groot/cuda/cuda_index_select.cuh"
 #include <nvtx3/nvtx3.hpp>
+
 namespace dgl {
 namespace groot {
 using namespace runtime;
@@ -16,6 +17,16 @@ std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices(IdArray
   std::tuple<IdArray ,IdArray , IdArray > ret;
   ATEN_ID_TYPE_SWITCH(partition_map->dtype, IdType, {
     ret = impl::compute_partition_continuous_indices<kDGLCUDA, IndexType, IdType>\
+        (partition_map, num_partitions, stream);
+  });
+  return ret;
+}
+
+std::tuple<IdArray,IdArray,IdArray> compute_partition_continuous_indices_strawman(IdArray partition_map,
+                                                                           int num_partitions, cudaStream_t stream) {
+  std::tuple<IdArray ,IdArray , IdArray > ret;
+  ATEN_ID_TYPE_SWITCH(partition_map->dtype, IdType, {
+    ret = impl::compute_partition_continuous_indices_strawman<kDGLCUDA,  IdType>\
         (partition_map, num_partitions, stream);
   });
   return ret;
@@ -120,7 +131,7 @@ NDArray ScatteredArrayObject::shuffle_backward(NDArray back_grad, int rank,int w
 
 
 void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
-             int num_partitions, int rank, int world_size) {
+             int num_partitions, int rank, int world_size, bool use_strawman) {
   assert(array->dtype == frontier->dtype);
   assert(frontier->shape[0] > 0);
   assert(frontier->shape[0] < array->expectedSize);
@@ -142,9 +153,17 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   cudaStream_t stream =  runtime::getCurrentCUDAStream();
   // Todo: Why not runtime stream
   nvtxRangePushA("create_send_msg");
-  auto [boundary_offsets, gather_idx_in_part_disc_cont, scatter_idx_in_part_disc_cont]\
-      = compute_partition_continuous_indices<IndexType>(array->partitionMap, num_partitions, stream);
-
+  std::tuple<IdArray,IdArray,IdArray> out;
+  if(use_strawman){
+          out =
+            compute_partition_continuous_indices_strawman(array->partitionMap,
+                                                      num_partitions, stream);
+  }else {
+        out = compute_partition_continuous_indices<IndexType>(
+                array->partitionMap, num_partitions, stream);
+  }
+  const auto& [boundary_offsets, gather_idx_in_part_disc_cont,
+                 scatter_idx_in_part_disc_cont] = out;
   array->partitionContinuousArray = IndexSelect(frontier, gather_idx_in_part_disc_cont , stream);
   array->gather_idx_in_part_disc_cont = gather_idx_in_part_disc_cont;
   array->scatter_idx_in_part_disc_cont = scatter_idx_in_part_disc_cont;
@@ -211,9 +230,22 @@ DGL_REGISTER_GLOBAL("groot._CAPI_getScatteredArrayObject")
       CUDAThreadEntry::ThreadLocal()->stream = stream;
       ScatteredArray scatter_array = ScatteredArray::Create(frontier->shape[0] * 2,  4,\
                                                             frontier->ctx, frontier->dtype, stream);
-      Scatter(scatter_array, frontier, partition_map, num_partitions, rank , world_size);
+      bool use_strawman = false;
+      Scatter(scatter_array, frontier, partition_map, num_partitions, rank , world_size, use_strawman);
       *rv = scatter_array;
     });
 
-} // namespace groot
+
+DGL_REGISTER_GLOBAL("groot._CAPI_partitionContinuos")
+    .set_body([](DGLArgs args, DGLRetValue *rv) {
+  NDArray partition_map = args[0];
+  int num_partitions = args[1];
+  cudaStream_t stream = runtime::getCurrentCUDAStream();
+  assert(partition_map->dtype.bits == 64);
+  compute_partition_continuous_indices_strawman(partition_map, \
+                                                num_partitions, stream);
+  std::cout << "done\n";
+  *rv = 1;
+    });
+  } // namespace groot
 } // namespace dgl

@@ -186,7 +186,8 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
             sampling_timer = CudaTimer()
             
             extract_feat_label_flag = False
-            key = sample_batch_sync(extract_feat_label_flag)
+            use_strawman = False
+            key = sample_batch_sync(extract_feat_label_flag, use_strawman)
             sampling_timer.end()
             
             feat_timer = CudaTimer()

@@ -4,6 +4,46 @@
 #include "../../runtime/cuda/cuda_common.h"
 #include "../../array/cuda/utils.h"
 #include "../array_scatter.h"
+#include <cub/cub.cuh>   // or equivalently <cub/device/device_radix_sort.cuh>
+
+/**
+ * @brief Search for the insertion positions for needle in the hay.
+ *
+ * The hay is a list of sorted elements and the result is the insertion position
+ * of each needle so that the insertion still gives sorted order.
+ *
+ * It essentially perform binary search to find upper bound for each needle
+ * elements.
+ *
+ * For example:
+ * hay = [0, 0, 1, 2, 2]
+ * needle = [0, 1, 2, 3]
+ * then,
+ * out = [2, 3, 5, 5]
+ */
+template <typename IdType, typename IndexType>
+__global__ void _SortedSearchKernelUpperBound(
+    const IdType* hay, int64_t hay_size, const IdType* needles,
+    int64_t num_needles, IndexType* pos) {
+  int tx = blockIdx.x * blockDim.x + threadIdx.x;
+  const int stride_x = gridDim.x * blockDim.x;
+  while (tx < num_needles) {
+    const IdType ele = needles[tx];
+    // binary search
+    IdType lo = 0, hi = hay_size;
+    while (lo < hi) {
+      IdType mid = (lo + hi) >> 1;
+      if (hay[mid] <= ele) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    pos[tx] = lo;
+    tx += stride_x;
+  }
+}
+
 using namespace dgl::runtime;
 namespace dgl{
     namespace groot{
@@ -61,7 +101,7 @@ namespace dgl{
         // Given a partition map of
         // partition_map = [1,2,3,4,1,2,3,4]
         // returns partition gather index and partition sizes
-        // gather_idx = [0,5,1,6,2,7,3,8]
+        // gather_idx = [0,4,1,5,2,6,3,7]
         // scatter_idx = [0,2,4,6,1,3,5,7]
         // gather_idx_sizes = [4,8]
         // out = gather(gather_idx, in)
@@ -126,7 +166,70 @@ namespace dgl{
         }
 
 
-        template
+        template <DGLDeviceType XPU, typename PIdType>
+        std::tuple<IdArray,IdArray,IdArray>
+        compute_partition_continuous_indices_strawman(IdArray partition_map, \
+                                             int num_partitions,cudaStream_t stream) {
+          typedef PIdType IndexType;
+          int num_items = partition_map->shape[0];
+          // Declare, allocate, and initialize device-accessible pointers for sorting data
+          // e.g., 7
+          PIdType  *d_key_buf = partition_map.Ptr<PIdType>();         // e.g., [8, 6, 7, 5, 3, 0, 9]
+          IdArray d_key_buf_array_partition = IdArray::Empty({num_items}, partition_map->dtype, partition_map->ctx);
+          PIdType  *d_key_alt_buf_partition = d_key_buf_array_partition.Ptr<PIdType>();     // e.g., [        ...        ]
+          auto index_data_type = DGLDataTypeTraits<IndexType>::dtype;
+          IdArray range = aten::Range(0, num_items, index_data_type.bits, partition_map->ctx);       // e.g., [0, 1, 2, 3, 4, 5, 6]
+          IndexType * d_value_buf = range.Ptr<IndexType>();
+          IdArray gather_idx_in_part_disc_cont = IdArray::Empty({num_items}, partition_map->dtype, partition_map->ctx);
+          IndexType  *d_value_alt_buf = gather_idx_in_part_disc_cont.Ptr<IndexType>(); // e.g., [        ...        ]
+//
+//          // Create a set of DoubleBuffers to wrap pairs of device pointers
+          cub::DoubleBuffer<PIdType> d_keys1(d_key_buf, d_key_alt_buf_partition);
+          cub::DoubleBuffer<IndexType> d_values1(d_value_buf, d_value_alt_buf);
+          void     *d_temp_storage = NULL;
+          size_t   temp_storage_bytes = 0;
+
+          cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys1, d_values1, num_items, 0, index_data_type.bits, stream);
+          auto device = runtime::DeviceAPI::Get(partition_map->ctx);
+          d_temp_storage = device->AllocWorkspace(partition_map->ctx,temp_storage_bytes);
+
+      //          // Run sorting operation
+          cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys1, d_values1, num_items,  0, index_data_type.bits, stream);
+          device->FreeWorkspace(partition_map->ctx, d_temp_storage);
+
+//
+          d_key_buf = d_value_alt_buf;
+          IdArray d_key_buf_array = IdArray::Empty({num_items}, partition_map->dtype, partition_map->ctx);
+          PIdType  *d_key_alt_buf = d_key_buf_array.Ptr<PIdType>();     // e.g., [        ...
+          IdArray scatter_idx_in_part_disc_cont = aten::Range(0, num_items, index_data_type.bits, partition_map->ctx);       // e.g., [0, 1, 2, 3, 4, 5, 6]
+          d_value_buf = range.Ptr<IndexType>();
+          d_value_alt_buf = scatter_idx_in_part_disc_cont.Ptr<IndexType>();
+//
+          cub::DoubleBuffer<PIdType> d_keys2(d_key_buf, d_key_alt_buf);
+          cub::DoubleBuffer<IndexType> d_values2(d_value_buf, d_value_alt_buf);
+//
+          cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys2, d_values2, num_items, 0, index_data_type.bits, stream);
+          d_temp_storage = device->AllocWorkspace(partition_map->ctx,temp_storage_bytes);
+
+          cub::DeviceRadixSort::SortPairs(d_temp_storage, temp_storage_bytes, d_keys2, d_values2, num_items, 0, index_data_type.bits, stream);
+          device->FreeWorkspace(partition_map->ctx, d_temp_storage);
+
+
+//        Sorting upper bound kernel compute boudary offsets;
+          IdArray needle = IdArray::FromVector(std::vector<IndexType >{0,1,2,3}, partition_map->ctx);
+          IdArray boundary_offsets = IdArray::FromVector(std::vector<int64_t>{0,0,0,0,0}, partition_map->ctx);
+
+          const int nt = cuda::FindNumThreads(4);
+          const int nb = (4 + nt - 1) / nt;
+          CUDA_KERNEL_CALL(
+              _SortedSearchKernelUpperBound, nb, nt, 0, stream,  d_key_buf_array_partition.Ptr<IndexType>(),
+                  num_items, needle.Ptr<IndexType>(), 4, boundary_offsets.Ptr<int64_t>() + 1);
+//          const IdType* hay, int64_t hay_size, const IdType* needles,
+//              int64_t num_needles, IdType* pos
+          return std::tuple(boundary_offsets, gather_idx_in_part_disc_cont, scatter_idx_in_part_disc_cont);
+        }
+
+            template
         std::tuple<IdArray,IdArray,IdArray>
         compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int32_t ,int64_t>(IdArray partition_map, \
                                              int num_partitions,cudaStream_t stream);
@@ -144,6 +247,16 @@ namespace dgl{
             std::tuple<IdArray,IdArray,IdArray>
             compute_partition_continuous_indices<DGLDeviceType::kDGLCUDA, int64_t ,int32_t>(IdArray partition_map, \
                                                                                             int num_partitions,cudaStream_t stream);
+        template
+            std::tuple<IdArray,IdArray,IdArray>
+            compute_partition_continuous_indices_strawman<DGLDeviceType::kDGLCUDA, int64_t >(IdArray partition_map, \
+                                                                                            int num_partitions,cudaStream_t stream);
+        template
+            std::tuple<IdArray,IdArray,IdArray>
+            compute_partition_continuous_indices_strawman<DGLDeviceType::kDGLCUDA, int32_t >(IdArray partition_map, \
+                                                                                            int num_partitions,cudaStream_t stream);
+
+
 
         }
     }

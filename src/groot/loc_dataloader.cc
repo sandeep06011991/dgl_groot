@@ -58,7 +58,8 @@ DGL_REGISTER_GLOBAL("groot._CAPI_ShuffleIDX")
 DGL_REGISTER_GLOBAL("groot._CAPI_NextSync")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
         const bool extract_feat_label = args[0];
-        const int64_t key = DataloaderObject::Global()->Sample(extract_feat_label);
+        const bool use_strawman = args[1];
+        const int64_t key = DataloaderObject::Global()->Sample(extract_feat_label, use_strawman);
       *rv = key;
     });
 

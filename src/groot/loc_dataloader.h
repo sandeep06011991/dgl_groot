@@ -174,9 +174,9 @@ namespace dgl::groot {
         // TODO sample multiple instance at once
         // Q: shall we sample mutiple instances or only the top two layers
         // more fine grained pipelining might be needed
-        int64_t Sample(bool extract_feat_label) {
+        int64_t Sample(bool extract_feat_label, bool use_strawman) {
             int64_t key = _next_key++;
-            GetBatch(key, extract_feat_label);
+            GetBatch(key, extract_feat_label, use_strawman);
             return key;
         }
 
@@ -197,11 +197,11 @@ namespace dgl::groot {
                                          start_idx * _id_type.bits / 8);
         }
 
-        void GetBatch(int64_t key, bool extract_feat_label) {
+        void GetBatch(int64_t key, bool extract_feat_label, bool use_strawman) {
             if (_num_redundant_layers == _fanouts.size())
                 GetBatchDP(key, extract_feat_label);
             else
-                GetBatchHybrid(key, extract_feat_label);
+                GetBatchHybrid(key, extract_feat_label, use_strawman);
         }
 
         void GetBatchDP(int64_t key, bool extract_feat_and_label) {
@@ -289,7 +289,7 @@ namespace dgl::groot {
                 runtime::DeviceAPI::Get(_ctx)->StreamSync(_ctx, sampling_stream);
             }
         }
-        void GetBatchHybrid(int64_t key, bool extract_feat_and_label) {
+        void GetBatchHybrid(int64_t key, bool extract_feat_and_label, bool use_strawman) {
             int blk_idx = key % _max_pool_size;
             int num_partitions = _world_size;
             auto blocksPtr = _blocks_pool.at(blk_idx);
@@ -314,7 +314,7 @@ namespace dgl::groot {
                                                                             _id_type, sampling_stream);
                     nvtxRangePushA("scatter");
                     Scatter(blocksPtr->_scattered_frontier, frontier, partition_index,
-                            num_partitions, _rank, _world_size);
+                            num_partitions, _rank, _world_size, use_strawman);
                     nvtxRangePop();
 
                     frontier = blocksPtr->_scattered_frontier->unique_array;
@@ -337,7 +337,7 @@ namespace dgl::groot {
                     blockPtr->_scattered_src = ScatteredArray::Create(blockPtr->num_src, num_partitions, _ctx, _id_type,
                                                                       sampling_stream);
                     Scatter(blockPtr->_scattered_src, unique_src, partition_index,
-                            num_partitions, _rank, _world_size);
+                            num_partitions, _rank, _world_size, use_strawman);
                     frontier = blockPtr->_scattered_src->unique_array;
                     if(store_frontiers and key <20 and (layer == (_fanouts.size() - 1))){
                       cudaDeviceSynchronize();
