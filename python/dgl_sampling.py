@@ -75,9 +75,9 @@ def sampling(config: Config, graph, train_idx, test_idx, valid_idx):
     write_to_csv(config.log_path, [config], [profiler])
     
 def get_configs(graph_name, batch_size, system, log_path, data_dir, replace):
-    # fanouts = [ [10, 10, 10], [15, 15, 15], [20, 20, 20]]
+    fanouts = [ [10, 10, 10], [15, 15, 15], [20, 20, 20]]
     # batch_sizes = [256, 1024, 4096, 8192]
-    fanouts = [ [20, 20, 20]]
+    # fanouts = [[20, 20, 20]]
     batch_sizes = [batch_size]
     configs = []
     for fanout in fanouts:
@@ -119,5 +119,3 @@ if __name__ == "__main__":
     data_dir = "/mnt/homes/juelinliu/dataset/OGBN/processed"
     configs = get_configs(graph_name, batch_size, "dgl", log_file_path, data_dir, replace)
     bench(configs=configs)
-    # configs = get_configs("ogbn-products", "dgl", "/mnt/homes/juelinliu/project/dgl_groot/python/exp.csv", "/mnt/homes/juelinliu/dataset/OGBN/processed")
-    # bench(configs=configs)

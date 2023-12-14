@@ -86,11 +86,16 @@ def bench(configs: list[Config], test_acc=False):
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, _label = load_graph(in_dir, is32=True, wsloop=True)
-    feat, label, num_label = load_feat_label(in_dir)
+    # feat, label, num_label = load_feat_label(in_dir)
+    feat = torch.zeros(1)
+    label = torch.zeros(1)
     _indptr = pin_memory_inplace(indptr)
     _indices = pin_memory_inplace(indices)
     _feat = pin_memory_inplace(feat)
     _label = pin_memory_inplace(label)
+    if "gpu" in config.system:
+        indptr = indptr.to(0)
+        indices = indices.to(0)
     
     for config in configs:
         # Default settings
@@ -127,7 +132,7 @@ def base_sampling(config: Config, indptr, indices, train_idx, test_idx, valid_id
                 num_edges += block.num_edges()
                 
             sampled_minibatch += 1
-            print(f"base {sampled_minibatch=} {key=}")
+            # print(f"base {sampled_minibatch=} {key=}")
     
     print(f"base {num_edges=}")
     torch.cuda.synchronize()
@@ -137,7 +142,7 @@ def base_sampling(config: Config, indptr, indices, train_idx, test_idx, valid_id
     write_to_csv(config.log_path, [config], [profiler])
     
 def get_configs(graph_name, batch_size, system, log_path, data_dir, pool_size, replace):
-    fanouts = [ [20, 20, 20]]
+    fanouts = [[10, 10, 10], [15, 15, 15], [20, 20, 20]]
     pool_sizes = [pool_size]
     configs = []
     for fanout in fanouts:
@@ -170,7 +175,5 @@ if __name__ == "__main__":
     batch_size=int(args.batch_size)
     replace=bool(args.replace)
     graph_name=str(args.graph_name)
-    configs = get_configs(graph_name, batch_size, "base", "/mnt/homes/juelinliu/project/dgl_groot/python/exp.csv", "/mnt/homes/juelinliu/dataset/OGBN/processed", pool_size, replace)
+    configs = get_configs(graph_name, batch_size, "base-gpu", "/mnt/homes/juelinliu/project/dgl_groot/python/exp.csv", "/mnt/homes/juelinliu/dataset/OGBN/processed", pool_size, replace)
     bench(configs=configs)
-    # configs = get_configs("ogbn-papers100M", "batch", "/mnt/homes/juelinliu/project/dgl_groot/python/log/batch.csv", "/mnt/homes/juelinliu/dataset/OGBN/processed")
-    # bench_groot_batch(configs=configs)

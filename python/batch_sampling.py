@@ -88,7 +88,10 @@ def bench(configs: list[Config], test_acc=False):
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, _label = load_graph(in_dir, is32=True, wsloop=True)
-    feat, label, num_label = load_feat_label(in_dir)
+    # feat, label, num_label = load_feat_label(in_dir)
+    feat = torch.zeros(1)
+    label = torch.zeros(1)
+    
     _indptr = pin_memory_inplace(indptr)
     _indices = pin_memory_inplace(indices)
     _feat = pin_memory_inplace(feat)
@@ -131,7 +134,7 @@ def train(config: Config, indptr, indices, train_idx, test_idx, valid_idx, feat,
                 for block in blocks:
                     num_edges += block.num_edges()
                 sampled_minibatch += 1
-            print(f"batched {sampled_minibatch=} {valid_key_start=} {valid_key_end}")
+            # print(f"batched {sampled_minibatch=} {valid_key_start=} {valid_key_end}")
     
     print(f"base {num_edges=}")
     duration = timer.duration()
@@ -159,6 +162,7 @@ def get_config(graph_name, batch_size, system, log_path, data_dir, pool_size, ba
     
 def get_configs(graph_name, batch_size, system, log_path, data_dir, pool_size, batch_layer, replace):
     fanouts = [[10, 10, 10], [15, 15, 15], [20, 20, 20]]
+    # fanouts = [[20, 20, 20]]
     configs = []
     for fanout in fanouts:
         config = Config(graph_name=graph_name, 
