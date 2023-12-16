@@ -128,7 +128,16 @@ def get_dataset(graph_name, in_dir):
     return dataset
 
 def get_metis_partition(in_dir, config, graph):
-    assert config.partition_type in ["edge_balanced", "node_balanced", "random"]
+    # assert config.partition_type in ["edge_balanced", "node_balanced", "random"]
+    # partition types are edge-bal and edge-xbal
+    # partition type are samp-bal and samp-xbal
+    if "pruned" in config.partition_type:
+        partition_type = config.partition_type.removeprefix("pruned_")
+        return torch.load(f'{in_dir}/pruned_{config.graph_name}_{partition_type}.pt').to(torch.int32)
+    else:
+        partition_type = config.partition_type.removeprefix("_")
+        return torch.load(f'{in_dir}/{config.graph_name}_{partition_type}.pt').to(torch.int32)
+    assert(False)
     if config.partition_type == "random":
         return torch.randint(0, 4, (graph.num_nodes(),), dtype = torch.int32)
     if config.partition_type == "edge_balanced":

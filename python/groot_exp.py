@@ -9,7 +9,7 @@ class DEFAULT_SETTING:
     hid_size =256
     ogbn_fanouts = [20,20,20]
     snap_fanouts = [20,20,20]
-    models = [ "sage"]
+    models = [ "gat"]
     num_redundant_layers = 0
 
     @staticmethod
@@ -39,6 +39,9 @@ def get_data_dir(graph_name):
 
 def get_default_config(graph_name, system, log_path, data_dir, num_redundant_layer = 0):
     configs = []
+    partitioning_graph = ""
+    balancing="edge"
+    training_nodes="bal"
     for model in DEFAULT_SETTING.models:
        config = Config(graph_name=graph_name,
                        world_size=4,
@@ -52,6 +55,7 @@ def get_default_config(graph_name, system, log_path, data_dir, num_redundant_lay
                        log_path=log_path,
                        data_dir=data_dir,)
        config.num_redundant_layer = num_redundant_layer
+       config.partition_type = f"{partitioning_graph}_w4_{balancing}_{training_nodes}"
        configs.append(config)
     return configs
 
@@ -210,20 +214,22 @@ def quiver_experiment(graph_name: str):
 
 
 def main_experiments():
-    # for graph_name in ["ogbn-papers100M", "com-orkut", "com-friendster", "com-orkut"]:
+
+    # for graph_name in ["ogbn-papers100M", "ogbn-products", "com-friendster", "com-orkut"]:
     for graph_name in ["ogbn-products"]:
         test_acc = "ogbn" in graph_name
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
-        # bench_quiver_batch(configs = configs, test_acc = test_acc)
-        # bench_dgl_batch(configs=configs, test_acc= test_acc)
+        bench_groot_batch(configs=configs, test_acc=test_acc)
+        bench_quiver_batch(configs = configs, test_acc = test_acc)
+        bench_dgl_batch(configs=configs, test_acc= test_acc)
         # for num_redundant_layers in [0,2]:
         #     configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
         #                                  data_dir=get_data_dir(graph_name), num_redundant_layers = num_redundant_layers)
         #bench_quiver_batch(configs = configs, test_acc = test_acc)
         #bench_dgl_batch(configs=configs, test_acc= test_acc)
 
-        bench_groot_batch(configs=configs, test_acc=test_acc)
+
     return
     # #return
 
@@ -278,6 +284,57 @@ def max_memory_measurement():
         bench_groot_batch(configs=configs, test_acc=False)
         #bench_quiver_batch(configs = configs, test_acc = False )
         print("Memory measurements", graph_name)
+
+def motivating_experiment():
+    model = "gat"
+    system = "dgl"
+    log_path = "log/table1.csv"
+    for graph_name in ['ogbn-products', 'ogbn-papers100M']:
+        configs = []
+        for batch_size in [256]:
+            data_dir = get_data_dir(graph_name)
+            config = Config(graph_name=graph_name,
+                        world_size=1,
+                        num_epoch=10,
+                        fanouts=DEFAULT_SETTING.fanouts(graph_name),
+                        batch_size=batch_size,
+                        system=system,
+                        model=model,
+                        cache_size = 0,
+                        hid_size=DEFAULT_SETTING.hid_size,
+                        log_path=log_path,
+                        data_dir=data_dir,)
+            configs.append(config)
+        bench_dgl_batch(configs)
+
+def evaluate_partitioning_strategy():
+    model = "sage"
+    system = "dgl"
+    log_path = "log/partitioning.csv"
+    batch_size = 256
+    #for graph_name in [ 'ogbn-papers100M', 'com-orkut', 'com-friendster']:
+    for graph_name in ['ogbn-products']:
+        configs = []
+        for partitioning_graph in ["pruned",""]:
+            for balancing in ["edge","samp"]:
+                for training_nodes in ["bal","xbal"]:
+                    data_dir = get_data_dir(graph_name)
+                    config = Config(graph_name=graph_name,
+                                    world_size=4,
+                                    num_epoch=5,
+                                    fanouts=DEFAULT_SETTING.fanouts(graph_name),
+                                    batch_size=batch_size,
+                                    system=system,
+                                    model=model,
+                                    cache_size = 0,
+                                    hid_size=DEFAULT_SETTING.hid_size,
+                                    log_path=log_path,
+                                    data_dir=data_dir,)
+                    config.partition_type = f"{partitioning_graph}_w4_{balancing}_{training_nodes}"
+                    configs.append(config)
+        bench_groot_batch(configs, test_acc = True, try_caching=False)
+
+
 if __name__ == "__main__":
     import torch
     import torch.multiprocessing as mp
@@ -285,6 +342,8 @@ if __name__ == "__main__":
     if os.environ['MACHINE_NAME'] == "p3.8xlarge":
         quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
+    # evaluate_partitioning_strategy()
+    # motivating_experiment()
     # all_experiments()
     # scalability_experiment()
     main_experiments()

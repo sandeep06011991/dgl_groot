@@ -48,7 +48,7 @@ def get_groot_cache_percentage(feat, config: Config):
 
 
 
-def bench_groot_batch(configs: list[Config], test_acc=False):
+def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
@@ -82,7 +82,9 @@ def bench_groot_batch(configs: list[Config], test_acc=False):
             dgl_cache_size = 0
             config.system = "groot-uva"
         cache_rates.extend([(dgl_cache_rate, dgl_cache_size)])
-        cache_rates.extend(get_groot_cache_percentage(feat, config))
+        print("try caching", try_caching)
+        if try_caching:
+            cache_rates.extend(get_groot_cache_percentage(feat, config))
         print("Calculated cache_rates", cache_rates)
         for id, (cache_rate, cache_size) in enumerate(cache_rates):
             config.cache_percentage = cache_rate
@@ -145,12 +147,18 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     max_pool_size = 1
     num_layers = len(config.fanouts)
     block_type = get_block_type("src_to_dst")
-    step = min([(int(idx.shape[0] / config.batch_size) + 1) for idx in train_idx_list])
+
+    training_node_sizes = ([idx.shape[0] for idx in train_idx_list])
+    avg_training_node = sum(training_node_sizes)/config.world_size
+    ratio = [int(config.batch_size * s/avg_training_node) for s in training_node_sizes]
+    local_batch_size = ratio[rank]
+    steps = [training_node_sizes[i] // ratio[i]  + 1 for i in range(config.world_size)]
+    step = min(steps)
     train_idx = train_idx_list[rank].to(rank)
     partition_map = partition_map.to(rank)
     dataloader = init_groot_dataloader(
         rank, config.world_size, block_type, rank, config.fanouts,
-        config.batch_size,  config.num_redundant_layer, max_pool_size,
+        local_batch_size,  config.num_redundant_layer, max_pool_size,
         indptr, indices, feat, label,
         train_idx, valid_idx, test_idx, partition_map
     )
