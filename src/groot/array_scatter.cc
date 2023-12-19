@@ -137,8 +137,7 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
   assert(frontier->shape[0] < array->expectedSize);
   assert(num_partitions == world_size);
 
-  auto table = std::make_shared<CudaHashTable>(frontier->dtype, frontier->ctx,
-                                               array->expectedSize * num_partitions);
+
 //  if(array->debug){
 //    array->table->Reset();
 //    array->table->FillWithDuplicates(frontier, frontier->shape[0]);
@@ -193,6 +192,8 @@ void Scatter(ScatteredArray array, NDArray frontier, NDArray _partition_map,
 //  array->table->FillWithDuplicates(array->shuffled_array,
 //                                   array->shuffled_array->shape[0]);
   nvtxRangePushA("lower_index");
+  auto table = std::make_shared<CudaHashTable>(frontier->dtype, frontier->ctx,
+                                                 array->shuffled_array->shape[0]  * 8);
   table->FillWithDuplicates(array->shuffled_array, array->shuffled_array->shape[0]);
   array->unique_array = table->CopyUnique();
   array->unique_tensor_dim = array->unique_array->shape[0];

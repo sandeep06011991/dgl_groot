@@ -121,7 +121,7 @@ public:
                                cudaStream_t stream) {
 //    std::cout << "Creating scattered object with expected size " << expected_size_on_single_gpu << "\n";
     return ScatteredArray(std::make_shared<ScatteredArrayObject>(
-            expected_size_on_single_gpu * num_partitions, num_partitions, ctx, dtype, stream));
+            expected_size_on_single_gpu * num_partitions * num_partitions, num_partitions, ctx, dtype, stream));
   }
 };
 

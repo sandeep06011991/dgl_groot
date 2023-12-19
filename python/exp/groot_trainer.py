@@ -67,6 +67,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
         train_idx_list = []
         for p in range(config.world_size):
             train_idx_list.append(train_idx[partition_map[train_idx] == p])
+            print(p, train_idx_list[-1].shape)
         cache_rates = []
         quiver_cache_rate = -1
         if  config.graph_name == "com-orkut":
@@ -149,10 +150,15 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
     block_type = get_block_type("src_to_dst")
 
     training_node_sizes = ([idx.shape[0] for idx in train_idx_list])
+    print(training_node_sizes)
     avg_training_node = sum(training_node_sizes)/config.world_size
-    ratio = [int(config.batch_size * s/avg_training_node) for s in training_node_sizes]
+
+    ratio = [int((config.batch_size * s)/avg_training_node) for s in training_node_sizes]
+
     local_batch_size = ratio[rank]
-    steps = [training_node_sizes[i] // ratio[i]  + 1 for i in range(config.world_size)]
+    steps = [training_node_sizes[i] // ratio[i]  for i in range(config.world_size)]
+    if rank == 0:
+        print("one epoch steps", steps)
     step = min(steps)
     train_idx = train_idx_list[rank].to(rank)
     partition_map = partition_map.to(rank)
@@ -284,7 +290,7 @@ def train_ddp(rank: int, config: Config, test_acc: bool,
                 y_hats.append(batch_pred)  
         acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=num_label)
         # dist.all_reduce(acc, op=dist.ReduceOp.SUM)
-        acc = round(acc.item() * 100 / config.world_size, 2)
+        acc = round(acc.item() * 100 , 2)
         profiler.test_acc = acc  
         if rank == 0:
             profiler.run_time = time.time() - start_time
