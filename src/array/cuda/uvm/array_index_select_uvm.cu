@@ -53,6 +53,13 @@ NDArray IndexSelectCPUFromGPU(NDArray array, IdArray index) {
       block.y *= 2;
     }
     const dim3 grid((len + block.y - 1) / block.y);
+    bool microprofile = false;
+    if (microprofile){
+      cudaEvent_t e[2];
+      cudaEventCreate(&e[0]);
+      cudaEventCreate(&e[1]);
+      cudaEventRecord(e[0]);
+    }
     if (num_feat * sizeof(DType) < 2 * CACHE_LINE_SIZE) {
       CUDA_KERNEL_CALL(
           IndexSelectMultiKernel, grid, block, 0, stream, array_data, num_feat,
@@ -61,6 +68,13 @@ NDArray IndexSelectCPUFromGPU(NDArray array, IdArray index) {
       CUDA_KERNEL_CALL(
           IndexSelectMultiKernelAligned, grid, block, 0, stream, array_data,
           num_feat, idx_data, len, arr_len, ret_data, perm_data);
+    }
+    if(microprofile) {
+      cudaEventRecord(e[1]);
+      cudaEventSynchronize(e[1]);
+      float ms;
+      cudaEventElapsedTime(&ms, e[0], e[1]);
+      std::cout << "gather dgl" << ms << "\n";
     }
   }
   return ret;
