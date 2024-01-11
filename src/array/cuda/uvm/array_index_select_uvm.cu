@@ -54,8 +54,9 @@ NDArray IndexSelectCPUFromGPU(NDArray array, IdArray index) {
     }
     const dim3 grid((len + block.y - 1) / block.y);
     bool microprofile = false;
+    cudaEvent_t e[2];
     if (microprofile){
-      cudaEvent_t e[2];
+
       cudaEventCreate(&e[0]);
       cudaEventCreate(&e[1]);
       cudaEventRecord(e[0]);
