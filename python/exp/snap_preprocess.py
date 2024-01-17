@@ -30,45 +30,34 @@ def preprocess(out_dir, graph_name, ogbn_out_dur):
     idtype_str = "64"
     assert(graph.idtype == torch.int64)
     indptr, indices, _ = graph.adj_tensors("csc")
+    global_degree = indptr[1:] - indptr[:-1]
     ws_self_loop = False
-    torch.save(indptr, OUT_DIR + f'/indptr_{idtype_str}_{ws_self_loop}.pt')
-    torch.save(indices, OUT_DIR + f'/indices_{idtype_str}_{ws_self_loop}.pt')
+    torch.save(indptr, OUT_DIR + f'/indptr_{idtype_str}.pt')
+    torch.save(indices, OUT_DIR + f'/indices_{idtype_str}.pt')
     # torch.save(edges, SAVE_PATH + '/edges')
     graph = graph.remove_self_loop()
     graph = graph.add_self_loop()
     ws_self_loop = True
     indptr, indices, _ = graph.adj_tensors("csc")
-    torch.save(indptr, OUT_DIR + f'/indptr_{idtype_str}_{ws_self_loop}.pt')
-    torch.save(indices, OUT_DIR + f'/indices_{idtype_str}_{ws_self_loop}.pt')
-    graph = graph.remove_self_loop()
+    ld = torch.where(indptr[1:] - indptr[:-1] == 1)[0]
+    assert(torch.all(indices[indptr[ld]] == ld))
+    torch.save(indptr, OUT_DIR + f'/indptr_{idtype_str}_wsloop.pt')
+    torch.save(indices, OUT_DIR + f'/indices_{idtype_str}_wsloop.pt')
 
     if graph_name == "com-orkut":
-        dataset = DglNodePropPredDataset('ogbn-products', root=ogbn_out_dur)
+        ref_graph = "ogbn-products"
     if graph_name == "com-friendster":
-        dataset = DglNodePropPredDataset('ogbn-papers100M', root = ogbn_out_dur)
-
-    split = dataset.get_idx_split()
-    ref_num_nodes = (dataset[0][0].num_nodes())
-    start = 0
-    offsets = {}
-    for k in split.keys():
-        offsets[k] = start, start + split[k].shape[0]/ref_num_nodes
-        start = start + split[k].shape[0]/ref_num_nodes
-    print(offsets)
-    random_idx = torch.rand(n_nodes)
-    ntype = torch.zeros(n_nodes)
-    count = 1
-    for k in offsets.keys():
-        selected_nodes = torch.where((random_idx >= offsets[k][0]) & (random_idx < offsets[k][1]))[0]
-        torch.save(selected_nodes,f"{OUT_DIR}/{k}_idx_{idtype_str}.pt")
-        ntype[selected_nodes] = count
-        count = count + 1
-        print(selected_nodes.shape)
-    torch.save(ntype, f'{OUT_DIR}/ntype.pt')
-    print(ntype.shape)
+        ref_graph = "ogbn-papers100M"
+    ref_train_nodes = torch.load(f'{ogbn_out_dur}/{ref_graph}/train_idx_64.pt')
+    high_deg_train_nodes = torch.where(global_degree > 7)[0]
+    train_nodes = high_deg_train_nodes[torch.randint(0, high_deg_train_nodes.shape[0],(ref_train_nodes.shape))]
+    torch.save(train_nodes, f"{OUT_DIR}/train_idx_{idtype_str}.pt")
     print(graph.num_nodes())
     num_nodes = indptr.shape[0] -1
-    feat = torch.rand(num_nodes, 128, dtype = torch.float32)
+    if graph_name == "com-orkut":
+        feat = torch.rand(num_nodes, 1280, dtype = torch.float32)
+    if graph_name == "com-friendster":
+        feat = torch.rand(num_nodes, 128, dtype = torch.float32)
     torch.save(feat, f"{OUT_DIR}/feat.pt")
     labels = torch.randint(0, 172, (num_nodes,), dtype = torch.int64)
     torch.save(labels, f"{OUT_DIR}/labels.pt")
@@ -78,4 +67,8 @@ def preprocess(out_dir, graph_name, ogbn_out_dur):
 
 
 if __name__ == "__main__":
-    preprocess()
+    out_dir = "/data/sandeep/groot_data/snap"
+    ogb_out  = "/data/sandeep/groot_data/ogbn-processed"
+    graph = "com-friendster"
+    preprocess(out_dir, graph, ogb_out)
+    print(graph, "is done")
