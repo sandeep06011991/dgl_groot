@@ -28,7 +28,7 @@ def get_data_dir(graph_name):
 
     if os.environ['MACHINE_NAME'] == "p3.8xlarge" or os.environ['MACHINE_NAME'] == 'p3.16xlarge':
         if "com" in graph_name:
-            return "/data/snap/"
+            return "/data/snap-again/"
         if "ogbn" in graph_name:
             return "/data/ogbn/processed/"
     else:
@@ -41,7 +41,7 @@ def get_default_config(graph_name, system, log_path, data_dir, num_redundant_lay
     configs = []
     partitioning_graph = ""
     balancing="edge"
-    training_nodes="xbal"
+    training_nodes="bal"
     for model in DEFAULT_SETTING.models:
        config = Config(graph_name=graph_name,
                        world_size=4,
@@ -55,7 +55,8 @@ def get_default_config(graph_name, system, log_path, data_dir, num_redundant_lay
                        log_path=log_path,
                        data_dir=data_dir,)
        config.num_redundant_layer = num_redundant_layer
-       config.partition_type = f"{partitioning_graph}_w4_{balancing}_{training_nodes}"
+       # config.partition_type = f"_vfreq_efreq_w4_cut_xbal"
+       config.partition_type = "_w4_edge_xbal"
        configs.append(config)
     return configs
 
@@ -117,7 +118,7 @@ def get_partition_type(graph_name, system, log_path, data_dir):
     return configs
 
 def get_depth_config(graph_name, system, log_path, data_dir):
-    fanouts = [[10,10,10],[10,10,10,10],[10,10,10,10,10]]
+    fanouts = [[10,10],[10,10,10],[10,10,10,10]]
     configs = []
     for fanout in fanouts:
         for model in DEFAULT_SETTING.models:
@@ -137,7 +138,7 @@ def get_depth_config(graph_name, system, log_path, data_dir):
     return configs
 
 def get_batchsize_config(graph_name, system, log_path, data_dir):
-    batch_sizes = [ 4096 * 4]
+    batch_sizes = [ 128, 256, 512]
     configs = []
     fanouts = [20,20,20]
     for batch_size in batch_sizes:
@@ -216,18 +217,21 @@ def quiver_experiment(graph_name: str):
 def main_experiments():
 
     #for graph_name in ["com-friendster" , "ogbn-papers100M", "ogbn-products",  "com-orkut"]:
-    for graph_name in ["com-friendster"]:
+    for graph_name in [ "com-friendster"]:
         test_acc = "ogbn" in graph_name
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
-        bench_groot_batch(configs=configs, test_acc=test_acc)
-        #bench_quiver_batch(configs = configs, test_acc = test_acc)
-        #bench_dgl_batch(configs=configs, test_acc= test_acc)
+        # bench_groot_batch(configs=configs, test_acc=test_acc)
+        bench_dgl_batch(configs=configs, test_acc= test_acc)
+
+        # bench_quiver_batch(configs = configs, test_acc = test_acc)
+        
         # for num_redundant_layers in [0,2]:
         #     configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
         #                                  data_dir=get_data_dir(graph_name), num_redundant_layers = num_redundant_layers)
         #bench_quiver_batch(configs = configs, test_acc = test_acc)
         #bench_dgl_batch(configs=configs, test_acc= test_acc)
+        #bench_groot_batch(configs=configs, test_acc= test_acc, try_caching = False)
 
 
     return
@@ -240,19 +244,19 @@ def scalability_experiment():
                                      data_dir=get_data_dir(graph_name))
         #bench_quiver_batch(configs = configs, test_acc = test_acc)
         # bench_dgl_batch(configs=configs, test_acc= test_acc)
-        # bench_quiver_batch(configs = configs, test_acc = test_acc)
-        bench_groot_batch(configs=configs, test_acc=test_acc)
+        bench_quiver_batch(configs = configs, test_acc = test_acc)
+        #bench_groot_batch(configs=configs, test_acc=test_acc)
     return
     # print("Default experiment done")
 def all_experiments():    
-    # for graph_name in ["ogbn-papers100M","ogbn-products"]:
-    #      configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir=get_data_dir(graph_name))
-    #      bench_dgl_batch(configs=configs, test_acc = False)
-    #      bench_groot_batch(configs=configs, test_acc= False)
-    #      bench_quiver_batch(configs = configs, test_acc = False )
+    for graph_name in ["ogbn-papers100M","com-orkut"]:
+         configs = get_batchsize_config(graph_name= graph_name, system="batch_size", log_path="./log/batch_size.csv", data_dir=get_data_dir(graph_name))
+         # bench_dgl_batch(configs=configs, test_acc = False)
+         # bench_groot_batch(configs=configs, test_acc= False)
+         bench_quiver_batch(configs = configs, test_acc = False )
     #return
     # print("Batch experiment done")
-    for graph_name in ["ogbn-products", "ogbn-papers100M"]:
+    for graph_name in ["com-orkut", "ogbn-papers100M"]:
          configs = get_hidden_config(graph_name=graph_name, system="hidden_size", log_path="./log/hidden_size.csv",
                                      data_dir=get_data_dir(graph_name))
          #bench_dgl_batch(configs=configs, test_acc=True )
@@ -260,11 +264,11 @@ def all_experiments():
          bench_quiver_batch(configs = configs, test_acc = False )
     print("Hidden Experiment Done")
     #return
-    for graph_name in ["ogbn-products","ogbn-papers100M", "com-orkut"]:
+    for graph_name in ["ogbn-papers100M", "com-orkut"]:
         configs = get_depth_config(graph_name=graph_name, system="depth", log_path="./log/depth.csv",
                                    data_dir=get_data_dir(graph_name))
-        bench_dgl_batch(configs=configs, test_acc=True )
-        bench_groot_batch(configs=configs, test_acc=True)
+        # bench_dgl_batch(configs=configs, test_acc=True )
+        # bench_groot_batch(configs=configs, test_acc=True)
         bench_quiver_batch(configs = configs, test_acc = False )
     print("Hidden Depth Done")
 
@@ -341,12 +345,12 @@ if __name__ == "__main__":
     import torch.multiprocessing as mp
     mp.set_start_method('spawn')
     if os.environ['MACHINE_NAME'] == "p3.8xlarge":
-        quiver.init_p2p(device_list=list(range(4)))
+         quiver.init_p2p(device_list=list(range(4)))
     #best_configuration()
-    evaluate_partitioning_strategy()
+    #evaluate_partitioning_strategy()
     # motivating_experiment()
-    # all_experiments()
-    # scalability_experiment()
-    # main_experiments()
+    #all_experiments()
+    main_experiments()
+    #scalability_experiment()
     # quiver.init_p2p(device_list=list(range(4)))
     # max_memory_measurement()

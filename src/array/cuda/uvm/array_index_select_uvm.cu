@@ -75,7 +75,8 @@ NDArray IndexSelectCPUFromGPU(NDArray array, IdArray index) {
       cudaEventSynchronize(e[1]);
       float ms;
       cudaEventElapsedTime(&ms, e[0], e[1]);
-      std::cout << "gather dgl" << ms << "\n";
+      float bandwidth = (index->shape[0] * array->shape[1] * array->dtype.bits) / ((ms/1000) * 1024 * 1024 * 1024);
+      std::cout << "gather dgl" << index->ctx.device_id << ":" <<  ms << "ms " <<bandwidth <<"GBps\n";
     }
   }
   return ret;

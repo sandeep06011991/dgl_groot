@@ -56,7 +56,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
 
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
     indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
-    feat, label, num_label = load_feat_label(in_dir)
+    feat, label, num_label = load_feat_label(in_dir,  config.graph_name, graph.num_nodes())
 
     for config in configs:
         # Default settings
@@ -73,7 +73,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
         if  config.graph_name == "com-orkut":
             dgl_cache_rate = 0
             dgl_cache_size = 0
-            config.system = "groot-gpu"
+            config.system = "groot-uva"
         if (config.graph_name == "ogbn-products") :
             dgl_cache_rate = 1
             dgl_cache_size = 1

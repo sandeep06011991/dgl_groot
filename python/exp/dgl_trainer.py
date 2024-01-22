@@ -27,10 +27,11 @@ def bench_dgl_batch(configs: list[Config], test_acc=False):
     t1 = time.time()
     in_dir = os.path.join(config.data_dir, config.graph_name)
     graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
+    print("create graph formats")
     graph.create_formats_()
     graph.pin_memory_()
     train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
-    feat, label, num_label = load_feat_label(in_dir)
+    feat, label, num_label = load_feat_label(in_dir, config.graph_name, graph.num_nodes())
     print("Data loading total time", time.time() - t1)
     for config in configs:
         if config.graph_name  == "com-orkut":

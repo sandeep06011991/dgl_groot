@@ -28,6 +28,7 @@ def ddp_exit():
 
 def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, test_acc, in_dir, cache_size):
     print(config)
+    
     if config.machine_name == "p3.8xlarge":
         assert(feat != None)
         config.cache_size = cache_size
@@ -68,7 +69,7 @@ def subprocess(rank, config, feat, label, num_label, cache_policy, csr_topo, tes
     if "gpu" in config.system:
         print("Using gpu sampler")
         quiver_sampler = quiver.pyg.GraphSageSampler(csr_topo=csr_topo, sizes=config.fanouts, mode="GPU")
-    print(f"feature cache size is {config.cache_size}")
+    print(f"start ddp feature cache size is {config.cache_size}")
     spawn(train_ddp, args=(config, test_acc, quiver_sampler, quiver_feat, \
                            feat_width, label, num_label, train_idx, \
                            valid_idx, test_idx), nprocs=config.world_size)
@@ -113,14 +114,14 @@ def bench_quiver_batch(configs: list[Config], test_acc=False):
     print(graph)
 
     row, col = graph.adj_tensors("coo")
-    
+    num_nodes = graph.num_nodes()
     del graph
     gc.collect()
     csr_topo = quiver.CSRTopo(edge_index=(col, row))
     del row, col
     print("Quiver Topo  ")
     for config in configs:
-        feat, label, num_label = load_feat_label(in_dir)
+        feat, label, num_label = load_feat_label(in_dir, config.graph_name, num_nodes)
         print(feat.shape)
         cache_sizes = get_quiver_cache_percentage(feat, cache_policy)
         if config.machine_name != "p3.8xlarge":

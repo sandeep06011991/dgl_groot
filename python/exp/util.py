@@ -92,8 +92,11 @@ def load_graph(in_dir, is32=False, wsloop=False) -> (torch.Tensor, torch.Tensor,
         # with self loop
         indptr = torch.load(os.path.join(in_dir, f"indptr_{idtype_str}_wsloop.pt"))
         indices = torch.load(os.path.join(in_dir, f"indices_{idtype_str}_wsloop.pt"))
+        d =indptr[1:]-indptr[:-1]
+        assert(torch.all(d !=0))
         # edges = torch.load(os.path.join(in_dir, f"edges_{idtype_str}_wsloop.pt"))
         edges = torch.empty(0, dtype=indices.dtype)
+    print("max indices",torch.max(indices))
     if is32:
         return indptr.type(torch.int32), indices.type(torch.int32), edges.type(torch.int32)
     else:
@@ -109,10 +112,22 @@ def load_idx_split(in_dir, is32=False) -> (torch.Tensor, torch.Tensor, torch.Ten
     else:
         return train_idx, valid_idx, test_idx
 
-def load_feat_label(in_dir) -> (torch.Tensor, torch.Tensor, int):
-    feat = torch.load(os.path.join(in_dir, f"feat.pt"))
-    label = torch.load(os.path.join(in_dir, f"label.pt"))
-    num_labels = torch.unique(label).shape[0]
+def load_feat_label(in_dir, graph_name, num_nodes) -> (torch.Tensor, torch.Tensor, int):
+    if  "com"  in graph_name:
+        if graph_name == "com-orkut":
+            feat = torch.rand(num_nodes, 1280)
+            print("creating feature sizes", feat.shape)
+            label = torch.randint(0,10, (num_nodes,))
+            num_labels = 10
+        if graph_name  == "com-friendster":
+            print("Expeceted num of ndoes", num_nodes)
+            feat = torch.rand(num_nodes, 128)
+            label = torch.randint(0,10,(num_nodes,))
+            num_labels = 10
+    else:
+        feat = torch.load(os.path.join(in_dir, f"feat.pt"))
+        label = torch.load(os.path.join(in_dir, f"label.pt"))
+        num_labels = torch.unique(label).shape[0]
     return feat, label, num_labels
 
 def load_dgl_graph(in_dir, is32=False, wsloop=False) -> dgl.DGLGraph:

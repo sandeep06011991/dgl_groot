@@ -44,6 +44,9 @@ __global__ void _CSRRowWiseSampleDegreeKernel(const int64_t num_picks,
     out_deg[out_row] = min(static_cast<IdType>(num_picks),
                            in_ptr[in_row + 1] - in_ptr[in_row]);
 
+    if(out_deg[out_row] == 0){
+      printf("zero degree found not acceptable %ld\n",out_row);
+    }
     if (out_row == num_rows - 1) {
       // make the prefixsum work
       out_deg[num_rows] = 0;

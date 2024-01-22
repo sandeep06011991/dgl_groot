@@ -119,10 +119,12 @@ def get_distributed_model( model_name , feat_size, num_layers,\
     if model_name == "gat":
         # GAT has atleast 2 layers
         assert(num_layers > 1)
-        layers.append(GATConv(feat_size, n_hidden//heads, heads))
+        allow_zero_in_degree = False
+        print("allow zero in degree", allow_zero_in_degree)
+        layers.append(GATConv(feat_size, n_hidden//heads, heads, allow_zero_in_degree=allow_zero_in_degree))
         for i in range(num_layers-2):
-            layers.append(GATConv(n_hidden, n_hidden//heads, heads))
-        layers.append(GATConv(n_hidden, n_classes, 1))
+            layers.append(GATConv(n_hidden, n_hidden//heads, heads, allow_zero_in_degree=allow_zero_in_degree,))
+        layers.append(GATConv(n_hidden, n_classes, 1, allow_zero_in_degree=allow_zero_in_degree))
     if model_name == "test":
         assert (num_layers > 1)
         for i in range(num_layers):
