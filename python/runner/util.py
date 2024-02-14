@@ -245,7 +245,7 @@ def test_model_accuracy(config: RunConfig, model:torch.nn.Module, dataloader: dg
     print(f"test accuracy={round(acc.item() * 100, 2)}%")
     return acc
 
-def get_cache_ids_by_sampling(config: RunConfig, 
+def get_cache_ids_by_sampling(in_dir, config: RunConfig,
                               graph: dgl.DGLGraph, 
                               seeds: list[torch.Tensor],
                               partition_map: torch.Tensor):
@@ -258,61 +258,11 @@ def get_cache_ids_by_sampling(config: RunConfig,
     num_cached = int(config.cache_percentage * num_nodes)
     sampler = dgl.dataloading.NeighborSampler(config.fanouts)
     cached_ids = []
+    input_node_weight = torch.load(f'{in_dir}/input_node_weight.pt')
     for id, local_seeds in enumerate(seeds):
-        dataloader = dgl.dataloading.DataLoader(graph = graph,
-                                            indices = local_seeds,
-                                            graph_sampler = sampler,
-                                            use_uva=use_uva,
-                                            batch_size=config.batch_size)
-        sample_freq = torch.zeros(num_nodes, dtype=torch.int32, device=device )
         nds = torch.where(partition_map == id)[0]
-        sample_freq [nds] = len(config.fanouts)
-        for batch_input, batch_seeds, batch_blocks in dataloader:
-            sample_freq[batch_input] += 1
-
+        sample_freq  =  input_node_weight[nds]
         freq, node_id = sample_freq.sort(descending = True)
         cached_id = node_id[:num_cached]
         cached_ids.append(cached_id)
     return cached_ids
-
-def get_metis_partition(config: RunConfig):
-    path = f"/data/ogbn/{config.graph_name}".replace("-", "_")
-    if config.world_size == 4:
-        assert (os.path.exists(f"{path}/partition_map"))
-        p_map = torch.load(f"{path}/partition_map")
-        assert(torch.all(p_map < 4))
-    assert config.world_size in [2,8]
-    assert (os.path.exists(f"{path}/partition_map_{config.world_size}"))
-    p_map = torch.load(f"{path}/partition_map_{config.world_size}")
-    assert(torch.all(p_map < config.world_size))
-    return p_map
-
-def metis_partition(config:RunConfig):
-    print(config)
-    num_partitions = 4
-    path = f"/data/ogbn/{config.graph_name}".replace("-", "_")
-    dataset = DglNodePropPredDataset(config.graph_name, root="/data/ogbn")
-    print("read success full")
-    torch_type = torch.int64
-    graph: dgl.DGLGraph = dataset[0][0].astype(torch_type)
-    feat = graph.ndata.pop('feat')
-    del feat
-    import gc
-    gc.collect()
-    print("feature deleted")
-    dataset_idx_split = dataset.get_idx_split()
-    ntype = torch.zeros(graph.num_nodes(), dtype=torch_type)
-    training_nodes = dataset_idx_split.pop("train").type(torch_type)
-    ntype[training_nodes] = 1
-    partitions = dgl.metis_partition(graph, num_partitions, balance_ntypes=ntype)
-    p_map = torch.zeros(graph.num_nodes(), dtype=torch_type)
-    print(partitions)
-    for p_id in partitions.keys():
-        nodes = partitions[p_id].ndata['_ID']
-        p_map[nodes] = p_id
-        print(f"In partiiton {p_id}: nodes{nodes.shape}")
-    p_map = p_map.to(torch.int32)
-    print(f"Saving to {path}/partition_map")
-    torch.save(p_map, f"{path}/partition_map")
-
-    return p_map

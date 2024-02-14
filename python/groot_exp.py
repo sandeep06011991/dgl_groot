@@ -9,18 +9,22 @@ class DEFAULT_SETTING:
     hid_size =256
     ogbn_fanouts = [20,20,20]
     snap_fanouts = [20,20,20]
-    models = [ "gat"]
+    models = [ "sage"]
+    new_fanouts = [15,15,15]
     num_redundant_layers = 0
 
     @staticmethod
     def fanouts(graph_name):
-        if "ogbn" in graph_name:
-            return DEFAULT_SETTING.ogbn_fanouts
-        if "com" in graph_name:
-            return DEFAULT_SETTING.snap_fanouts
+        return DEFAULT_SETTING.new_fanouts
+        # if "ogbn" in graph_name:
+        #     return DEFAULT_SETTING.ogbn_fanouts
+        # if "com" in graph_name:
+        #     return DEFAULT_SETTING.snap_fanouts
 
 def get_data_dir(graph_name):
     if os.environ['MACHINE_NAME'] == 'jupyter':
+        return "/data/juelin/dataset/gsplit"
+
         if "com" in graph_name:
             return "/data/sandeep/groot_data/snap/"
         if "ogbn" in graph_name:
@@ -45,7 +49,7 @@ def get_default_config(graph_name, system, log_path, data_dir, num_redundant_lay
     for model in DEFAULT_SETTING.models:
        config = Config(graph_name=graph_name,
                        world_size=4,
-                       num_epoch=5,
+                       num_epoch=1,
                        fanouts=DEFAULT_SETTING.fanouts(graph_name),
                        batch_size=DEFAULT_SETTING.batch_size,
                        system=system,
@@ -54,9 +58,9 @@ def get_default_config(graph_name, system, log_path, data_dir, num_redundant_lay
                        hid_size=DEFAULT_SETTING.hid_size,
                        log_path=log_path,
                        data_dir=data_dir,)
-       config.num_redundant_layer = num_redundant_layer
+       config.num_redundant_layer = 0
        # config.partition_type = f"_vfreq_efreq_w4_cut_xbal"
-       config.partition_type = "_w4_edge_xbal"
+       config.partition_type = "ndst_efreq_xbal"
        configs.append(config)
     return configs
 
@@ -217,12 +221,12 @@ def quiver_experiment(graph_name: str):
 def main_experiments():
 
     #for graph_name in ["com-friendster" , "ogbn-papers100M", "ogbn-products",  "com-orkut"]:
-    for graph_name in [ "com-friendster"]:
-        test_acc = "ogbn" in graph_name
+    for graph_name in [ "papers100M"]:
+        test_acc =  graph_name in ["papers100M", "products"]
         configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \
                                      data_dir=get_data_dir(graph_name))
-        # bench_groot_batch(configs=configs, test_acc=test_acc)
-        bench_dgl_batch(configs=configs, test_acc= test_acc)
+        bench_groot_batch(configs=configs, test_acc=test_acc,  try_caching= False)
+        # bench_dgl_batch(configs=configs, test_acc= test_acc)
 
         # bench_quiver_batch(configs = configs, test_acc = test_acc)
         

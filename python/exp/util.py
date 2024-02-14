@@ -8,6 +8,7 @@ def _build_dgl_graph(indptr, indices, edges) -> dgl.DGLGraph:
     return graph
 
 def preprocess(graph_name, in_dir, out_dir) -> None:
+    raise Exception("Processing code done seperately by jeulin")
     out_dir = os.path.join(out_dir, graph_name)
     try:
         os.mkdir(out_dir)
@@ -64,6 +65,7 @@ def preprocess(graph_name, in_dir, out_dir) -> None:
     add_self_loop(out_dir, out_dir)
 
 def add_self_loop(in_dir, out_dir=None):
+    raise Exception("To deprecate")
     id_type = torch.int64
     idtype_str = "64"
     graph = load_dgl_graph(in_dir)
@@ -79,49 +81,43 @@ def add_self_loop(in_dir, out_dir=None):
     torch.save(indices, os.path.join(out_dir, f"indices_{idtype_str}_wsloop.pt"))
     torch.save(edges, os.path.join(out_dir, f"edges_{idtype_str}_wsloop.pt"))
     
-def load_graph(in_dir, is32=False, wsloop=False) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-    idtype_str = "64"
-    indptr = None
-    indices = None
-    if not wsloop: 
-        indptr = torch.load(os.path.join(in_dir, f"indptr_{idtype_str}.pt"))
-        indices = torch.load(os.path.join(in_dir, f"indices_{idtype_str}.pt"))
+def load_graph(in_dir, wsloop = True) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    if "papers100M" in in_dir or "products" in in_dir:
+        indptr = torch.load(os.path.join(in_dir, f"indptr_xsym.pt"))
+        indices = torch.load(os.path.join(in_dir, f"indices_xsym.pt"))
         # edges = torch.load(os.path.join(in_dir, f"edges_{idtype_str}.pt"))
         edges = torch.empty(0, dtype=indices.dtype)
+        if wsloop:
+            graph = dgl.graph(("csc", (indptr, indices, edges)))
+            graph = graph.remove_self_loop()
+            graph = graph.add_self_loop()
+            indptr, indices, edges = graph.adj_tensors("csc")
     else:
         # with self loop
-        indptr = torch.load(os.path.join(in_dir, f"indptr_{idtype_str}_wsloop.pt"))
-        indices = torch.load(os.path.join(in_dir, f"indices_{idtype_str}_wsloop.pt"))
+        indptr = torch.load(os.path.join(in_dir, f"indptr_sym.pt"))
+        indices = torch.load(os.path.join(in_dir, f"indices_sym.pt"))
         d =indptr[1:]-indptr[:-1]
         assert(torch.all(d !=0))
         # edges = torch.load(os.path.join(in_dir, f"edges_{idtype_str}_wsloop.pt"))
         edges = torch.empty(0, dtype=indices.dtype)
-    print("max indices",torch.max(indices))
-    if is32:
-        return indptr.type(torch.int32), indices.type(torch.int32), edges.type(torch.int32)
-    else:
-        return indptr, indices, edges
+    return indptr, indices, edges
 
-def load_idx_split(in_dir, is32=False) -> (torch.Tensor, torch.Tensor, torch.Tensor):
-    idtype_str = "64"
-    train_idx = torch.load(os.path.join(in_dir, f"train_idx_{idtype_str}.pt"))
-    valid_idx = torch.load(os.path.join(in_dir, f"valid_idx_{idtype_str}.pt"))
-    test_idx = torch.load(os.path.join(in_dir, f"test_idx_{idtype_str}.pt"))
-    if is32:
-        return train_idx.type(torch.int32), valid_idx.type(torch.int32), test_idx.type(torch.int32)
-    else:
-        return train_idx, valid_idx, test_idx
+def load_idx_split(in_dir) -> (torch.Tensor, torch.Tensor, torch.Tensor):
+    train_idx = torch.load(os.path.join(in_dir, f"train_idx.pt"))
+    valid_idx = torch.load(os.path.join(in_dir, f"valid_idx.pt"))
+    test_idx = torch.load(os.path.join(in_dir, f"test_idx.pt"))
+    return train_idx, valid_idx, test_idx
 
 def load_feat_label(in_dir, graph_name, num_nodes) -> (torch.Tensor, torch.Tensor, int):
     if  "com"  in graph_name:
         if graph_name == "com-orkut":
-            feat = torch.rand(num_nodes, 1280)
+            feat = torch.empty(num_nodes, 1280, dtype = torch.float32)
             print("creating feature sizes", feat.shape)
             label = torch.randint(0,10, (num_nodes,))
             num_labels = 10
         if graph_name  == "com-friendster":
             print("Expeceted num of ndoes", num_nodes)
-            feat = torch.rand(num_nodes, 128)
+            feat = torch.rand(num_nodes, 128, dtype = torch.float32)
             label = torch.randint(0,10,(num_nodes,))
             num_labels = 10
     else:
@@ -130,40 +126,24 @@ def load_feat_label(in_dir, graph_name, num_nodes) -> (torch.Tensor, torch.Tenso
         num_labels = torch.unique(label).shape[0]
     return feat, label, num_labels
 
-def load_dgl_graph(in_dir, is32=False, wsloop=False) -> dgl.DGLGraph:
-    indptr, indices, edges = load_graph(in_dir, is32, wsloop)
+def load_dgl_graph(in_dir, wsloop=False) -> dgl.DGLGraph:
+    indptr, indices, edges = load_graph(in_dir,  wsloop)
     graph = _build_dgl_graph(indptr, indices, edges)
-    if is32:
-        return graph.int()
-    else:
-        return graph
+    return graph
     
 def get_dataset(graph_name, in_dir):
     dataset = DglNodePropPredDataset(graph_name, in_dir)
     return dataset
 
-def get_metis_partition(in_dir, config, graph):
+def get_metis_partition(in_dir: str, config, graph):
     # assert config.partition_type in ["edge_balanced", "node_balanced", "random"]
     # partition types are edge-bal and edge-xbal
     # partition type are samp-bal and samp-xbal
-    if "pruned" in config.partition_type:
-        partition_type = config.partition_type.removeprefix("pruned_")
-        return torch.load(f'{in_dir}/pruned_{config.graph_name}_{partition_type}.pt').to(torch.int32)
+    if config.partition_type != "random":
+        return torch.load(\
+            f'{in_dir}/partition_ids/{config.graph_name}/{config.graph_name}_w{config.world_size}_{config.partition_type}.pt').to(torch.int32)
     else:
-        partition_type = config.partition_type.removeprefix("_")
-        return torch.load(f'{in_dir}/{config.graph_name}_{partition_type}.pt').to(torch.int32)
-    assert(False)
-    if config.partition_type == "random":
         return torch.randint(0, 4, (graph.num_nodes(),), dtype = torch.int32)
-    if config.partition_type == "edge_balanced":
-        edge_balanced = True
-        if config.world_size == 4:
-            return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)
-        if config.world_size in [2,8]:
-            return torch.load(f'{in_dir}/partition_map_{edge_balanced}_{config.world_size}').to(torch.int32)
-    if config.partition_type == "node_balanced":
-        edge_balanced = False
-        return torch.load(f'{in_dir}/partition_map_{edge_balanced}').to(torch.int32)
 
 def get_dgl_sampler(graph: dgl.DGLGraph, train_idx: torch.Tensor, graph_samler: dgl.dataloading.Sampler, system:str = "cpu", batch_size:int=1024, use_dpp=False) -> dgl.dataloading.dataloader.DataLoader:
     device = torch.cuda.current_device()
@@ -463,6 +443,7 @@ def profile_edge_skew(edges_computed, profiler, rank, dist):
 #     torch.cuda.empty_cache()
 
 def metis(in_dir, graph_name):
+    raise Exception("deprecated")
     idtype_str = "64"
     SAVE_PATH = os.path.join(in_dir, graph_name)
     ws_self_loop = False

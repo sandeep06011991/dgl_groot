@@ -52,33 +52,32 @@ def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
     for config in configs:
         assert(config.system == configs[0].system and config.graph_name == configs[0].graph_name)
     in_dir = os.path.join(configs[0].data_dir, configs[0].graph_name)
-    graph = load_dgl_graph(in_dir, is32=True, wsloop=True)
+    graph = load_dgl_graph(in_dir, wsloop=True)
 
-    train_idx, test_idx, valid_idx = load_idx_split(in_dir, is32=True)
-    indptr, indices, edges = load_graph(in_dir, is32=True, wsloop=True)
+    train_idx, test_idx, valid_idx = load_idx_split(in_dir)
+    indptr, indices, edges = load_graph(in_dir, wsloop=True)
     feat, label, num_label = load_feat_label(in_dir,  config.graph_name, graph.num_nodes())
-
     for config in configs:
         # Default settings
         if config.partition_type == "random":
             partition_map = torch.randint(0, configs[0].world_size, (graph.num_nodes(),))
         else:
-            partition_map = get_metis_partition(in_dir, config, graph)
+            partition_map = get_metis_partition(configs[0].data_dir, config, graph)
         train_idx_list = []
         for p in range(config.world_size):
             train_idx_list.append(train_idx[partition_map[train_idx] == p])
             print(p, train_idx_list[-1].shape)
         cache_rates = []
         quiver_cache_rate = -1
-        if  config.graph_name == "com-orkut":
+        if  config.graph_name == "orkut":
             dgl_cache_rate = 0
             dgl_cache_size = 0
             config.system = "groot-uva"
-        if (config.graph_name == "ogbn-products") :
+        if (config.graph_name == "products") :
             dgl_cache_rate = 1
             dgl_cache_size = 1
             config.system = "groot-gpu"
-        if config.graph_name == "ogbn-papers100M" or config.graph_name == "com-friendster":
+        if config.graph_name == "papers100M" or config.graph_name == "friendster":
             dgl_cache_rate = 0
             dgl_cache_size = 0
             config.system = "groot-uva"
@@ -91,7 +90,7 @@ def bench_groot_batch(configs: list[Config], test_acc=False, try_caching= True):
             config.cache_percentage = cache_rate
             config.cache_rate = cache_rate
             config.cache_size = cache_size
-            cached_ids = get_cache_ids_by_sampling(config, graph, train_idx_list, partition_map)
+            cached_ids = get_cache_ids_by_sampling(in_dir, config, graph, train_idx_list, partition_map)
             try:
                 spawn(train_ddp, args=(config, test_acc, graph, feat, label, \
                                        num_label, train_idx_list, valid_idx, test_idx, \
