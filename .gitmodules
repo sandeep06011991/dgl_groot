@@ -10,12 +10,6 @@
 [submodule "third_party/googletest"]
 	path = third_party/googletest
 	url = https://github.com/google/googletest.git
-[submodule "third_party/METIS"]
-	path = third_party/METIS
-	url = https://github.com/KarypisLab/METIS.git
-[submodule "third_party/GKlib"]
-	path = third_party/GKlib
-	url = https://github.com/KarypisLab/GKlib.git
 [submodule "third_party/nccl"]
 	path = third_party/nccl
 	url = https://github.com/nvidia/nccl
@@ -41,3 +35,9 @@
 	path = third_party/torch-quiver
 	url = https://github.com/sandeep06011991/torch-quiver.git
 	branch = sandeep-v0.1.1
+[submodule "third_party/METIS"]
+	path = third_party/METIS
+	url = https://github.com/KarypisLab/METIS
+[submodule "third_party/GKlib"]
+	path = third_party/GKlib
+	url = https://github.com/KarypisLab/GKlib
