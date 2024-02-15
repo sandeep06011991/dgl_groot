@@ -10,8 +10,8 @@
 #include <nccl.h>
 #include <vector>
 
-#include "./comm/comm_info.h"
-#include "coordinator.h"
+//#include "./comm/comm_info.h"
+//#include "coordinator.h"
 
 using namespace dgl::runtime;
 using namespace dgl::aten;
@@ -47,9 +47,9 @@ struct DSContext {
   int rank;
   int thread_num;
   std::vector<ncclComm_t> nccl_comm;
-  std::vector<std::unique_ptr<CommInfo>> comm_info;
-  std::unique_ptr<Coordinator> coordinator;
-  std::unique_ptr<Coordinator> comm_coordinator;
+//  std::vector<std::unique_ptr<CommInfo>> comm_info;
+//  std::unique_ptr<Coordinator> coordinator;
+//  std::unique_ptr<Coordinator> comm_coordinator;
 
   // Feature related arrays
   bool feat_loaded = false;

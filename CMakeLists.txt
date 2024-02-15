@@ -229,9 +229,9 @@ file(GLOB DGL_SRC
   src/geometry/cpu/*.cc
   src/partition/*.cc
         src/groot/*.cc
-        src/groot/comm/*.cc
-        src/groot/conn/*.cc
-        src/groot/base/*.cc
+#        src/groot/comm/*.cc
+#        src/groot/conn/*.cc
+#        src/groot/base/*.cc
 )
 
 file(GLOB_RECURSE DGL_SRC_1
@@ -262,7 +262,7 @@ if(USE_CUDA)
     cuda_include_directories(BEFORE ${NCCL_INCLUDE_DIR})
   endif()
   list(APPEND DGL_LINKER_LIBS ${NCCL_LIBRARY})
-  list(APPEND DGL_LINKER_LIBS $ENV{CUDA_HOME}/targets/x86_64-linux/lib/stubs/libnvidia-ml.so)
+  #list(APPEND DGL_LINKER_LIBS $ENV{CUDA_HOME}/targets/x86_64-linux/lib/stubs/libnvidia-ml.so)
   cuda_add_library(dgl SHARED ${DGL_SRC}
           src/groot/cuda/cuda_hashtable.cu
           src/groot/cuda/cuda_index_select.cu
@@ -276,24 +276,24 @@ if(USE_CUDA)
 else(USE_CUDA)
 endif(USE_CUDA)
 
-find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)
-find_library(ZMQ_LIBRARY NAMES zmq)
+#find_path(ZMQ_INCLUDE_DIR NAMES zmq.hpp)
+#find_library(ZMQ_LIBRARY NAMES zmq)
 
-if(ZMQ_INCLUDE_DIR AND ZMQ_LIBRARY)
-  message(STATUS "Found ZeroMQ:")
-  message(STATUS "  (Headers) ${ZMQ_INCLUDE_DIR}")
-  message(STATUS "  (Library) ${ZMQ_LIBRARY}")
-else()
-  message(FATAL_ERROR "ZeorMQ not found")
-endif()
-target_include_directories(dgl PRIVATE ${ZMQ_INCLUDE_DIR})
-list(APPEND DGL_LINKER_LIBS ${ZMQ_LIBRARY})
+#if(ZMQ_INCLUDE_DIR AND ZMQ_LIBRARY)
+#  message(STATUS "Found ZeroMQ:")
+#  message(STATUS "  (Headers) ${ZMQ_INCLUDE_DIR}")
+#  message(STATUS "  (Library) ${ZMQ_LIBRARY}")
+#else()
+#  message(FATAL_ERROR "ZeorMQ not found")
+#endif()
+#target_include_directories(dgl PRIVATE ${ZMQ_INCLUDE_DIR})
+#list(APPEND DGL_LINKER_LIBS ${ZMQ_LIBRARY})
 # include directories
 target_include_directories(dgl PRIVATE "include")
 target_include_directories(dgl PRIVATE "third_party/dlpack/include")
 target_include_directories(dgl PRIVATE "third_party/dmlc-core/include")
 target_include_directories(dgl PRIVATE "third_party/parallel-hashmap/")
-target_include_directories(dgl PRIVATE "third_party/METIS/include/")
+#target_include_directories(dgl PRIVATE "third_party/METIS/include/")
 target_include_directories(dgl PRIVATE "tensoradapter/include")
 target_include_directories(dgl PRIVATE "third_party/nanoflann/include")
 target_include_directories(dgl PRIVATE "third_party/libxsmm/include")
@@ -310,13 +310,13 @@ set(GOOGLE_TEST 0) # Turn off dmlc-core test
 
 # Compile METIS
 if(NOT MSVC)
-  set(GKLIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/GKlib")
-  include(${GKLIB_PATH}/GKlibSystem.cmake)
-  include_directories(${GKLIB_PATH})
-  include_directories("third_party/METIS/include/")
-  add_subdirectory("third_party/METIS/libmetis/")
-  add_subdirectory("third_party/GKlib/")
-  list(APPEND DGL_LINKER_LIBS metis GKlib)
+  #set(GKLIB_PATH "${CMAKE_CURRENT_SOURCE_DIR}/third_party/GKlib")
+  #include(${GKLIB_PATH}/GKlibSystem.cmake)
+  #include_directories(${GKLIB_PATH})
+  #include_directories("third_party/METIS/include/")
+  #add_subdirectory("third_party/METIS/libmetis/")
+  #add_subdirectory("third_party/GKlib/")
+  #list(APPEND DGL_LINKER_LIBS metis GKlib)
 endif(NOT MSVC)
 
 # Compile LIBXSMM
@@ -365,6 +365,10 @@ if(NOT MSVC)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wl,--exclude-libs,ALL")
   endif()
 endif(NOT MSVC)
+ 
+target_include_directories(dgl PRIVATE ${CMAKE_SOURCE_DIR}/metis_build/include)
+target_link_directories(dgl PRIVATE ${CMAKE_SOURCE_DIR}/metis_build/lib)
+list(APPEND DGL_LINKER_LIBS metis GKlib)
 
 # Compile gpu_cache
 if(USE_CUDA)

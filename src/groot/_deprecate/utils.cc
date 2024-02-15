@@ -10,7 +10,6 @@
 #include <sys/types.h>
 #include <unistd.h>
 
-#include "./conn/shm.h"
 #include "./context.h"
 #include "dgl/runtime/c_runtime_api.h"
 #include "dgl/runtime/dlpack_convert.h"

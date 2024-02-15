@@ -9,7 +9,6 @@
 #include <thread>
 
 #include "../runtime/cuda/cuda_common.h"
-#include "./conn/nvmlwrap.h"
 #include "./utils.h"
 #include "context.h"
 // Scheduler and Kernel are specific to DS
@@ -34,19 +33,19 @@ ncclUniqueId StringToNCCLId(const std::string &str) {
   return ret;
 }
 
-void SetupGpuCommunicationEnv(CommInfo *comm_info) {
-  auto *ds_context = DSContext::Global();
-  int rank = ds_context->rank;
-  int world_size = ds_context->world_size;
-  auto *coor = ds_context->coordinator.get();
-  int n_block = GetEnvParam("N_BLOCK", 16);
-  std::vector<std::shared_ptr<Connection>> conns;
-  for (int r = 0; r < world_size; ++r) {
-    conns.push_back(Connection::GetConnection(coor->GetPeerInfos()[rank],
-                                              coor->GetPeerInfos()[r]));
-  }
-  BuildCommInfo(n_block, conns, coor, comm_info);
-}
+//void SetupGpuCommunicationEnv(CommInfo *comm_info) {
+//  auto *ds_context = DSContext::Global();
+//  int rank = ds_context->rank;
+//  int world_size = ds_context->world_size;
+//  auto *coor = ds_context->coordinator.get();
+//  int n_block = GetEnvParam("N_BLOCK", 16);
+//  std::vector<std::shared_ptr<Connection>> conns;
+//  for (int r = 0; r < world_size; ++r) {
+//    conns.push_back(Connection::GetConnection(coor->GetPeerInfos()[rank],
+//                                              coor->GetPeerInfos()[r]));
+//  }
+//  BuildCommInfo(n_block, conns, coor, comm_info);
+//}
 
 void InitNcclComm(ncclComm_t *nccl_comm, DSContext *ds_context, int world_size,
                   int rank) {
@@ -55,7 +54,7 @@ void InitNcclComm(ncclComm_t *nccl_comm, DSContext *ds_context, int world_size,
     ncclGetUniqueId(&nccl_id);
   }
   std::string nccl_id_str = NCCLIdToString(nccl_id);
-  ds_context->coordinator->Broadcast(nccl_id_str);
+  //ds_context->coordinator->Broadcast(nccl_id_str);
   nccl_id = StringToNCCLId(nccl_id_str);
   ncclCommInitRank(nccl_comm, world_size, nccl_id, rank);
 }
@@ -63,44 +62,31 @@ void InitNcclComm(ncclComm_t *nccl_comm, DSContext *ds_context, int world_size,
 void Initialize(int rank, int world_size, int thread_num,
                 bool enable_kernel_control, bool enable_comm_control,
                 bool enable_profiler) {
-  LOG(INFO) << "Rank [" << rank << "] initializing DS context";
-  auto *ds_context = DSContext::Global();
-  ds_context->initialized = true;
-  ds_context->rank = rank;
-  ds_context->world_size = world_size;
-  int master_port = GetEnvParam("MASTER_PORT", 12633);
-  int comm_port = GetEnvParam("COMM_PORT", 12644);
-  ds_context->coordinator = std::unique_ptr<Coordinator>(
-      new Coordinator(rank, world_size, master_port));
-  ds_context->comm_coordinator = std::unique_ptr<Coordinator>(
-      new Coordinator(rank, world_size, comm_port));
-  cudaSetDevice(rank);
+    LOG(INFO) << "Rank [" << rank << "] initializing DS context";
+    auto *ds_context = DSContext::Global();
+    ds_context->initialized = true;
+    ds_context->rank = rank;
+    ds_context->world_size = world_size;
+    int master_port = GetEnvParam("MASTER_PORT", 12633);
+    int comm_port = GetEnvParam("COMM_PORT", 12644);
+//  ds_context->coordinator = std::unique_ptr<Coordinator>(
+//      new Coordinator(rank, world_size, master_port));
+//  ds_context->comm_coordinator = std::unique_ptr<Coordinator>(
+//      new Coordinator(rank, world_size, comm_port));
+    cudaSetDevice(rank);
 
-  ds_context->thread_num = thread_num;
+    ds_context->thread_num = thread_num;
 
-  ds_context->enable_kernel_control = enable_kernel_control;
-  LOG(INFO) << "Enable kernel control? " << enable_kernel_control;
+    ds_context->enable_kernel_control = enable_kernel_control;
+    LOG(INFO) << "Enable kernel control? " << enable_kernel_control;
 
-  ds_context->enable_comm_control = enable_comm_control;
+    ds_context->enable_comm_control = enable_comm_control;
 
-  int use_nccl = GetEnvParam("USE_NCCL", 0);
-  use_nccl = true;
-  if (!use_nccl) {
-    LOG(INFO) << "Not Using NCCL\n";
-    // Build our communication environment
-    ds_context->comm_info.resize(thread_num);
-    wrapNvmlInit();
-    for (int i = 0; i < thread_num; i++) {
-      ds_context->comm_info[i] = std::unique_ptr<CommInfo>(new CommInfo());
-      SetupGpuCommunicationEnv(ds_context->comm_info[i].get());
-    }
-  } else {
-    // Build NCCL environment
+    int use_nccl = GetEnvParam("USE_NCCL", 0);
     ds_context->nccl_comm.resize(thread_num);
     for (int i = 0; i < thread_num; i++) {
-      InitNcclComm(&(ds_context->nccl_comm[i]), ds_context, world_size, rank);
-    }
-  }
+        InitNcclComm(&(ds_context->nccl_comm[i]), ds_context, world_size, rank);
+      }
 
   // init scheduler
   //  std::thread scheduler(&Scheduler::Schedule, Scheduler::Global());
@@ -161,6 +147,7 @@ DGL_REGISTER_GLOBAL("ds._CAPI_DGLDSSetStream")
       }
     });
 
+/*
 DGL_REGISTER_GLOBAL("ds._CAPI_DGLDSSetQueueSize")
     .set_body([](DGLArgs args, DGLRetValue *rv) {
       int queue_size = args[0];
@@ -187,6 +174,6 @@ DGL_REGISTER_GLOBAL("ds._CAPI_DGLDSProfilerReport")
       // CHECK(DSContext::Global()->enable_profiler);
       // DSContext::Global()->profiler->Report(num_epochs);
     });
-
+*/
 } // namespace ds
 } // namespace dgl

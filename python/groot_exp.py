@@ -2,8 +2,8 @@ import argparse
 from exp.util import *
 from exp.groot_trainer import  bench_groot_batch
 from exp.dgl_trainer import bench_dgl_batch
-from exp.quiver_trainer import bench_quiver_batch
-import quiver
+#from exp.quiver_trainer import bench_quiver_batch
+#import quiver
 class DEFAULT_SETTING:
     batch_size = 256
     hid_size =256
@@ -16,12 +16,10 @@ class DEFAULT_SETTING:
     @staticmethod
     def fanouts(graph_name):
         return DEFAULT_SETTING.new_fanouts
-        # if "ogbn" in graph_name:
-        #     return DEFAULT_SETTING.ogbn_fanouts
-        # if "com" in graph_name:
-        #     return DEFAULT_SETTING.snap_fanouts
 
 def get_data_dir(graph_name):
+    if os.environ['MACHINE_NAME'] == 'unity':
+        return "/work/pi_mserafini_umass_edu/dataset/gsplit/"
     if os.environ['MACHINE_NAME'] == 'jupyter':
         return "/data/juelin/dataset/gsplit"
 
@@ -227,8 +225,6 @@ def main_experiments():
                                      data_dir=get_data_dir(graph_name))
         bench_groot_batch(configs=configs, test_acc=test_acc,  try_caching= False)
         # bench_dgl_batch(configs=configs, test_acc= test_acc)
-
-        # bench_quiver_batch(configs = configs, test_acc = test_acc)
         
         # for num_redundant_layers in [0,2]:
         #     configs = get_default_config(graph_name, system="default", log_path = "./log/default.csv", \

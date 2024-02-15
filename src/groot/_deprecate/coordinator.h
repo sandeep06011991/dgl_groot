@@ -7,7 +7,7 @@
 #include <thread>
 #include <vector>
 
-#include "zmq.hpp"
+//#include "zmq.hpp"
 
 #include "./base/bin_stream.h"
 

@@ -1,3 +1,6 @@
+*.uuid
+metis_build/
+packages/
 # IDE
 .vscode/
 .idea
