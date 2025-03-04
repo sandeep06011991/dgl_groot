@@ -2,11 +2,12 @@
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "${SCRIPT_DIR}/env.sh"
-graph=papers100M
+graph=friendster
 echo "Start Ablation Experiment on $graph"
 
-export PYTHONPATH=/spara/third_party/dist_cache/torch_quiver/srcs/python
-
+PYTHONPATH="${SCRIPT_DIR}/../../python:${SCRIPT_DIR}/../../third_party/torch-quiver/srcs/python"
+echo $PYTHONPATH
+export PYTHONPATH=$PYTHONPATH 
 for model in sage gat; do
   for system in split dgl quiver; do
     batch_size=(1024)
