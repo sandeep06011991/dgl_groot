@@ -3,6 +3,7 @@ CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 
 export CUDA_HOME="${CUDA_HOME:=/usr/local/cuda}"
 
+export CUDA_HOME=/work/pi_huiguan_umass_edu/sandeep/conda_environment/dgl_groot/
 echo "CUDA_HOME=$CUDA_HOME"
 
 bash init.sh
