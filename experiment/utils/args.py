@@ -6,7 +6,7 @@ def get_args():
     parser.add_argument('--batch_size', default=1024, type=int, help='Global batch size (default: 1024)')
     parser.add_argument('--num_epoch', default=2, type=int, help='Number of epochs to be sampled (default 2)')
     parser.add_argument('--fanouts', default="15,15,15", type=str, help='Input fanouts (15,15,15)')
-    parser.add_argument('--graph_name', default="products", type=str, help="Input graph name", choices=["products", "papers100M", "orkut", "friendster"])
+    parser.add_argument('--graph_name', default="products", type=str, help="Input graph name", choices=["products", "papers100M", "orkut", "friendster","arxiv"])
     parser.add_argument('--system', default="split", type=str, help="System", choices=["dgl", "split","quiver","p3"])
     parser.add_argument('--model', default="sage", type=str, help="Model type", choices=["sage", "gat"])
     parser.add_argument('--hid_size', default=256, type=int, help="Model hidden dimension")

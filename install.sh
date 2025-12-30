@@ -4,7 +4,7 @@ conda install -c "nvidia/label/cuda-11.8.0" cuda-toolkit
                                                                                                                                   
 conda install -c conda-forge gxx==11.3                                                                          
 # install pytorch v2.0
-c
+
 
 # install pyg
 pip install torch_geometric
