@@ -10,12 +10,14 @@ def load_metis_graph(config:Config, node_mode: str, edge_mode: str):
     print("Start graph topology loading", flush=True)
     timer = Timer()
     in_dir = os.path.join(config.data_dir, config.graph_name)
+    # weight_dir = os.path.join(config.data_dir, "weight","15-15-15",config.graph_name)
     wsloop = False
     is32 = False
     is_sym = config.graph_name in ["orkut", "friendster"]
     
     load_edge_weight = True if edge_mode == "freq" else False
     indptr, indices, edge_weight = load_graph(in_dir, is32=is32, wsloop=wsloop, is_sym=is_sym, load_edge_weight=load_edge_weight)
+    
     v_num = indptr.shape[0] - 1
     e_num = indices.shape[0]
     print(f"load graph topology in {timer.duration()} secs", flush=True)
@@ -44,6 +46,8 @@ def load_metis_graph(config:Config, node_mode: str, edge_mode: str):
             edge_weight = edge_weight[flag].type(torch.int64).clone()
         indptr = CompactCSR(indptr, flag)
         print(f"remove self edges in {timer.duration()} secs", flush=True)
+        indices = indices.to(torch.int)
+        edge_weight =edge_weight.to(torch.int)
         indptr, indices, edge_weight = MakeSym(indptr, indices, edge_weight)
         print(f"convert graph org_enum={e_num} to sym_enum={indices.shape[0]} in {timer.duration()} secs", flush=True)
         
@@ -58,7 +62,7 @@ def load_metis_graph(config:Config, node_mode: str, edge_mode: str):
     elif node_mode == "degree":
         node_weight = degree
     elif node_mode in ["src", "dst", "input"]:
-        node_weight = load_numpy(f"{in_dir}/{node_mode}_node_weight.npy").type(torch.int64)
+        node_weight = load_numpy(f"{weight_dir}/node_weight.npy").type(torch.int64)
         node_weight = node_weight * avg_deg + 1
     return node_weight, indptr, indices, edge_weight
 
@@ -124,7 +128,7 @@ def partition(config: Config, node_mode:str, edge_mode:str, bal: str):
     
 def get_args():
     parser = argparse.ArgumentParser(description='local run script')
-    parser.add_argument('--graph_name', default="products", type=str, help="Input graph name", choices=["products", "papers100M", "orkut", "friendster"])
+    parser.add_argument('--graph_name', default="products", type=str, help="Input graph name", choices=["products", "papers100M", "orkut", "friendster","arxiv"])
     parser.add_argument('--data_dir', required=True, type=str, help="Input graph directory")
     parser.add_argument('--num_partition', default=4, type=int, help='Number of partitions')
     parser.add_argument('--node_weight', default="uniform", type=str, help="Node weight configuraion", choices=["uniform", "degree", "src", "dst", "input"] )

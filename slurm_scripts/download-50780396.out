@@ -1,0 +1,12 @@
+Running on filename orkut
+Dataset directory: /scratch4/workspace/spolisetty_umass_edu-groot/dataset
+Data directory: /scratch4/workspace/spolisetty_umass_edu-groot/graph
+Python directory: /work/pi_huiguan_umass_edu/sandeep/code/dgl_groot/experiment
+/scratch4/workspace/spolisetty_umass_edu-groot/graph /work/pi_huiguan_umass_edu/sandeep/code/dgl_groot
+orkut
+/work/pi_huiguan_umass_edu/sandeep/code/dgl_groot
+orkut Downloaded
+args=Namespace(data_dir='/scratch4/workspace/spolisetty_umass_edu-groot/graph', graph_name='orkut')
+finished processing  orkut
+orkut Processing done
+Unity job finished.

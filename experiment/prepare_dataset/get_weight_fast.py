@@ -56,7 +56,14 @@ def _freq_single(config: Config, graph: dgl.DGLGraph, train_idx: torch.Tensor):
     edge_weight = CntGetEdgeFreq()
     print(f"{node_weight=}")
     print(f"{edge_weight=}")
-    
+    out_dir = os.path.join(config.data_dir, config.graph_name)
+    # out_dir = os.path.join(config.data_dir, "../weight", "-".join(str(fanout) for fanout in config.fanouts), config.graph_name)
+    print("saving to", out_dir)
+    os.makedirs(name=out_dir, exist_ok=True)
+    save_numpy(node_weight, f"{out_dir}/node_weight.npy")
+    save_numpy(edge_weight, f"{out_dir}/edge_weight.npy")
+    print("All saving done !")
+
 def _freq(rank: int, config: Config, graph: dgl.DGLGraph, train_idx: torch.Tensor):
     ddp_setup(rank, config.world_size, "nccl")
     device = torch.cuda.current_device()
@@ -89,15 +96,15 @@ def _freq(rank: int, config: Config, graph: dgl.DGLGraph, train_idx: torch.Tenso
     dist.all_reduce(edge_weight)
     
     if rank == 0:
-        out_dir = os.path.join(config.data_dir, "../weight", "-".join(str(fanout) for fanout in config.fanouts), config.graph_name)
+        out_dir = os.path.join(config.data_dir, config.graph_name)
+        # out_dir = os.path.join(config.data_dir, "../weight", "-".join(str(fanout) for fanout in config.fanouts), config.graph_name)
         print("saving to", out_dir)
         os.makedirs(name=out_dir, exist_ok=True)
-        save_numpy(node_weight, f"{out_dir}/node_weight_epoch{config.num_epoch}.npy")
-        save_numpy(edge_weight, f"{out_dir}/edge_weight_epoch{config.num_epoch}.npy")
+        save_numpy(node_weight, f"{out_dir}/node_weight.npy")
+        save_numpy(edge_weight, f"{out_dir}/edge_weight_epoch.npy")
     ddp_exit()
 
 if __name__ == "__main__":
-    
     args = get_args()
     graph_name = str(args.graph_name)
     data_dir = args.data_dir
@@ -124,4 +131,8 @@ if __name__ == "__main__":
                        hid_size=256,
                        log_path=log_path,
                        data_dir=data_dir)
+    print("Go to freq")
     freq(cfg)
+    print("Return from freq")
+    import os 
+    os._exit(1)

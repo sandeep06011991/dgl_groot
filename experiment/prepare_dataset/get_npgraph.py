@@ -27,7 +27,7 @@ def prep_snap_graph(in_dir, out_dir, filename, to_sym):
     generate_idx_split(v_num, 0.1, out_dir)
         
 def prep_ogbn_graph(in_dir, out_dir, graph_name):
-    assert(graph_name in ["ogbn-products", "ogbn-papers100M"])
+    assert(graph_name in ["ogbn-products", "ogbn-papers100M","ogbn-arxiv"])
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
     dataset = DglNodePropPredDataset(graph_name, in_dir)
@@ -93,7 +93,7 @@ if __name__ ==  "__main__":
         filedir = os.path.join(data_dir, graph_name)
         prep_snap_graph(in_dir=filedir, out_dir=filedir, filename=f"{graph_name}.txt", to_sym=True)
 
-    if graph_name in ["products", "papers100M"]:
+    if graph_name in ["products", "papers100M","arxiv"]:
         out_dir = os.path.join(data_dir, graph_name)
         prep_ogbn_graph(in_dir=data_dir, out_dir=out_dir, graph_name=f"ogbn-{graph_name}")
     print("finished processing ", graph_name)
