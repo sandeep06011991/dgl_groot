@@ -4,7 +4,7 @@
 
 WORK_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
 source "${WORK_DIR}/../script/env.sh"
-
+# bash "${WORK_DIR}/../../build.sh"
 # Download Dataset
 mkdir -p $data_dir
 pushd $data_dir
@@ -64,15 +64,19 @@ fi
 popd
 
 num_epoch=5
-world_size=1
+world_size=${SLURM_GPUS_PER_NODE}
+if [ -z "$VAR" ]; then 
+    world_size=1
+fi
 
 echo ${graph_name} "Downloaded"
 
-# python3 ${python_dir}/prepare_dataset/get_npgraph.py --data_dir=$data_dir --graph_name=$graph_name
+echo python3 ${python_dir}/prepare_dataset/get_npgraph.py --data_dir=$data_dir --graph_name=$graph_name
 
 echo ${graph_name} "Processing done"
+echo "Calculate weights with ${world_size} for ${graph_name}"
 
-python3 ${python_dir}/prepare_dataset/get_weight_fast.py --data_dir=$data_dir --graph_name=$graph_name --fanouts=15,15,15  --num_epoch=${num_epoch} --world_size=${world_size}
+echo python3 ${python_dir}/prepare_dataset/get_weight_fast.py --data_dir=$data_dir --graph_name=$graph_name --fanouts=15,15,15  --num_epoch=${num_epoch} --world_size=${world_size}
 
 echo ${graph_name} "Partitioning done"
 
@@ -80,5 +84,5 @@ node_weight="dst"
 edge_weight="freq"
 bal="xbal"
 
-PYTHONFAULTHANDLER=1  python3 ${python_dir}/prepare_dataset/get_partition.py --graph_name=$graph_name --data_dir=$data_dir --node_weight=$node_weight --edge_weight=$edge_weight --bal=$bal
+python3 ${python_dir}/prepare_dataset/get_partition.py --graph_name=$graph_name --data_dir=$data_dir --node_weight=$node_weight --edge_weight=$edge_weight --bal=$bal
 

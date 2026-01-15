@@ -13,8 +13,7 @@ popd
 
 # build METIS
 pushd ${SCRIPT_DIR}/third_party/metis
-make config prefix=${SCRIPT_DIR}/third_party/build i64=1 gklib_path=${SCRIPT_DIR}/third_party/build #gdb=1 debug=1
-make -j
+make config prefix=${SCRIPT_DIR}/third_party/build i64=1 gklib_path=${SCRIPT_DIR}/third_party/build #gdb=1 make -j
 make install
 popd
 

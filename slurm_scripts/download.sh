@@ -1,14 +1,14 @@
-#!/bin/bash
-#SBATCH --job-name=download    # Job name
-#SBATCH --output=download-%j.out # Standard output and error log
-#SBATCH --error=download-%j.err  # Standard error log
-#SBATCH --time=05:00:00             # Maximum runtime (HH:MM:SS)
+#!/bin/bash    
+#SBATCH --job-name=download
+#SBATCH --output=download-%x-%j.out # Standard output and error log
+#SBATCH --error=download-%x-%j.err  # Standard error log
+#SBATCH --time=24:00:00             # Maximum runtime (HH:MM:SS)
 #SBATCH --nodes=1                   # Number of nodes
 #SBATCH --ntasks=1                  # Number of tasks
 #SBATCH --cpus-per-task=10          # Number of CPU cores per task
 #SBATCH --mem=200G                    # Memory per node (e.g., 4GB)
-#SBATCH --partition=cpu     # Specify the partition/queue (e.g., interactive, general)
-
+#SBATCH --partition=cpu   # Specify the partition/queue (e.g., interactive, general)
+echo "Comment SBATCH --gpus-per-node=4"
 # Load necessary modules (if any)
 # module load <module_name>/<version>
 

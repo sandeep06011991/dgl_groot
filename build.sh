@@ -17,6 +17,8 @@ cmake --build build -j
 
 cd python && pip install . && cd ../
 
+exit 1
+
 export LD_LIBRARY_PATH=${CUR_DIR}/third_party/build/lib:${LD_LIBRARY_PATH}
 export CPATH=${CUR_DIR}/third_party/build/include:${CPATH}
 

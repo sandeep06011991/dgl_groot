@@ -62,7 +62,7 @@ def load_metis_graph(config:Config, node_mode: str, edge_mode: str):
     elif node_mode == "degree":
         node_weight = degree
     elif node_mode in ["src", "dst", "input"]:
-        node_weight = load_numpy(f"{weight_dir}/node_weight.npy").type(torch.int64)
+        node_weight = load_numpy(os.path.join(in_dir, "node_weight.npy")).type(torch.int64)
         node_weight = node_weight * avg_deg + 1
     return node_weight, indptr, indices, edge_weight
 
@@ -73,6 +73,8 @@ def partition(config: Config, node_mode:str, edge_mode:str, bal: str):
     
     timer = Timer()
     node_weight, indptr, indices, edge_weight = load_metis_graph(config, node_mode, edge_mode)
+    indices =indices.to(torch.int64)
+    edge_weight = edge_weight.to(torch.int64)
     graph = dgl.graph(("csr", (indptr, indices, edge_weight)))
 
     print(f"load graph in {timer.duration()} secs", flush=True)

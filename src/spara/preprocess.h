@@ -173,8 +173,8 @@ static std::tuple<IdArray, IdArray, IdArray> MakeSym(
   memset(retdata.Ptr<void>(), 0, sizeof(int32_t ) * cur_e_num);
   memset(indices.Ptr<void>(), 0, sizeof(int32_t ) * cur_e_num);
   std::vector<std::atomic<int64_t>> degree(v_num + 1);
-  int64_t *indices_ptr = indices.Ptr<int64_t>();
-  int64_t *retdata_ptr = retdata.Ptr<int64_t>();
+  int32_t *indices_ptr = indices.Ptr<int32_t>();
+  int32_t *retdata_ptr = retdata.Ptr<int32_t>();
   LOG(INFO) << "MakeSym compute degree";
 
   tbb::parallel_for(
