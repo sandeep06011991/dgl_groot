@@ -7,7 +7,7 @@ from .timer import Timer
 import numpy as np
 
 def load_numpy(path):
-    return torch.from_numpy(np.load(path))
+    return torch.from_numpy(np.asarray(np.load(path)))
 
 def save_numpy(out:torch.Tensor, outpath: str):
     assert(outpath.endswith(".npy"))

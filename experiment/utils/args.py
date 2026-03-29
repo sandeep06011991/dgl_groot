@@ -2,7 +2,7 @@ import argparse
 
 def get_args():
     parser = argparse.ArgumentParser(description='local run script')
-    parser.add_argument('--data_dir', required=True, type=str, help="Input graph directory")
+    parser.add_argument('--data_dir', default = '/scratch4/workspace/spolisetty_umass_edu-groot/graph', type=str, help="Input graph directory")
     parser.add_argument('--batch_size', default=1024, type=int, help='Global batch size (default: 1024)')
     parser.add_argument('--num_epoch', default=2, type=int, help='Number of epochs to be sampled (default 2)')
     parser.add_argument('--fanouts', default="15,15,15", type=str, help='Input fanouts (15,15,15)')
@@ -18,6 +18,8 @@ def get_args():
     parser.add_argument('--edge_weight', default="freq", type=str, help="Edge weight configuraion", choices=["uniform", "freq", "random"])
     parser.add_argument('--bal', default="xbal", type=str, help='Balance target idx on each partition or not', choices=["bal", "xbal"])
     parser.add_argument('--log_file',default='exp.csv',type=str,help='output log file')
+    parser.add_argument('--nvlink', action='store_true', help='Set if GPUs are connected via NVLink (affects bandwidth estimate in simulator)')
+    parser.add_argument('--num_classes', default=-1, type=int, help='Number of output classes (-1 = auto-detect from label.npy)')
     return parser.parse_args()
 
 def get_partition_type(node_weight, edge_weight, bal):

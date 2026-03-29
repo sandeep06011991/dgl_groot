@@ -1,0 +1,5 @@
+timestamp,machine_name,graph_name,feat_width,world_size,num_partition,num_epoch,fanouts,num_redundant_layers,batch_size,system,model,hid_size,cache_size,partition_type,Split from layer,num_nvlinks,computation_cost (s),communication_cost (s)
+2026-03-27 09:22:42.864202,jupiter_pcie,products,100,4,4,2,"[15, 15, 15]",0,1024,split,sage,256,0GB,ndst_efreq_xbal,0,0,1.85,0.82
+2026-03-27 09:22:52.587093,jupiter_pcie,products,100,4,4,2,"[15, 15, 15]",0,1024,split,sage,256,0GB,ndst_efreq_xbal,1,0,1.99,0.83
+2026-03-27 09:23:04.194356,jupiter_pcie,products,100,4,4,2,"[15, 15, 15]",0,1024,split,sage,256,0GB,ndst_efreq_xbal,2,0,2.58,0.85
+2026-03-27 09:23:15.201396,jupiter_pcie,products,100,4,4,2,"[15, 15, 15]",0,1024,split,sage,256,0GB,ndst_efreq_xbal,3,0,2.66,0.0
