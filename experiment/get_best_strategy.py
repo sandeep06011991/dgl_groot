@@ -1,5 +1,6 @@
 """
-Determine the optimal num_split_layers (k) for Hybrid Split+DDP training.
+# Run a simulation to investigate the proposed hybrid pipeline and data parallelisms. 
+# Configuration provides the max configuration. 
 
 Usage:
     cd experiment
@@ -14,10 +15,7 @@ Usage:
         --edge_weight=freq \
         --bal=xbal
 
-Requires simulation data at:
-    <data_dir>/workload/<graph_name>/<graph_name>_w<world_size>_<partition_type>.pt
-
-If not present, run simulate_main.py first with the same graph/partition config.
+Done post partitioning. 
 """
 
 import os
@@ -32,7 +30,7 @@ from nodepred import Sage,Gat
 
 
 
-def get_best_strategy(cfg: Config, device: str = "cuda:0") -> int:
+def run_simulation_hybrid_dp_split(cfg: Config,  device: str = "cuda:0") -> int:
     """
     Predict the optimal num_split_layers (k) for Hybrid Split+DDP.
 
@@ -58,17 +56,25 @@ def get_best_strategy(cfg: Config, device: str = "cuda:0") -> int:
         model = Gat(cfg.in_feat, cfg.hid_size, len(cfg.fanouts), cfg.num_classes).to(device)
     model_layers = list(model.layers)
     device = 0
-    for k in range(len(cfg.fanouts) + 1):
+    for k in range(2,len(cfg.fanouts) + 1):
         num_nvlinks = 0
         simulate_optimal_k( graph.to(device), train_idx.to(device), partition_map.to(device), device, k,
                 batch_size, fanouts, model_layers, num_devices, num_nvlinks, input_feat_size, cfg)
+        print("Layer was ok.", k)
     return 
 
+def run_simulation_hybrid_pipeline_parallelism(cfg:Config, device: str) -> int:
+    """
+    Predicts the optimal hidden size for pipeline parallleims to have an effect.
+    """
+    # Iterate through hidden size variations. 
+    pass 
 
 if __name__ == "__main__":
     args = get_args()
-
     fanouts     = [int(f) for f in args.fanouts.split(",")]
+    
+    programming_model = args.cost_estimation_mode 
 
     cfg = Config(
         graph_name     = args.graph_name,
@@ -89,8 +95,11 @@ if __name__ == "__main__":
     cfg.in_feat = get_feat_dim(cfg)
     cfg.num_classes = 172
     assert(cfg.in_feat > 0)
+    programming_model = "hybriddata"
 
-
-    get_best_strategy(cfg)
-    
+    if programming_model == "hybriddata":
+        run_simulation_hybrid_dp_split(cfg)
+    else:
+        print("temporary code")
+        assert(False)
 

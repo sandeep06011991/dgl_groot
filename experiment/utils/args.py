@@ -20,6 +20,7 @@ def get_args():
     parser.add_argument('--log_file',default='exp.csv',type=str,help='output log file')
     parser.add_argument('--nvlink', action='store_true', help='Set if GPUs are connected via NVLink (affects bandwidth estimate in simulator)')
     parser.add_argument('--num_classes', default=-1, type=int, help='Number of output classes (-1 = auto-detect from label.npy)')
+    parser.add_argument('--cost-estimation-mode', default = None,  choices = ["pipeline", "hybriddata"])
     return parser.parse_args()
 
 def get_partition_type(node_weight, edge_weight, bal):

@@ -29,3 +29,34 @@ def measure_compute_cost_layer(subgraph, model_layer, seeds):
     end.record()
     torch.cuda.synchronize()
     return start.elapsed_time(end)/1000
+
+
+def get_communication_cost(comm_matrix,  feat_size, n_gpus, num_nvlink):
+    # case_1. pci_e
+    if num_nvlink == 0: 
+        total_pcie = 0
+        for src in range(n_gpus):
+            for dest in range(n_gpus):
+                # total_bytes * two way 
+                if src != dest:
+                    total_pcie += (comm_matrix[src][dest] * feat_size * 4 ) / PCIE_BW
+
+        return total_pcie + BARRIER_COST
+    if num_nvlink == 2:
+        total_nvlink = 0
+        total_pcie = 0
+        for src in range(n_gpus):
+            for dest in range(n_gpus):
+                if src!= dest and src%num_nvlink == dest%num_nvlink:
+                    total_nvlink = max(total_nvlink, comm_matrix[src][dest] * feat_size * 4  / NVLINK_BW)
+                if src!= dest and src%num_nvlink != dest%num_nvlink:
+                    total_pcie = total_pcie + comm_matrix[src][dest] * feat_size * 4 * 2 / PCIE_BW    
+        return total_nvlink + total_pcie + BARRIER_COST 
+    
+    if num_nvlink == 4:
+        total_nvlink = 0
+        for src in range(n_gpus):
+            for dest in range(n_gpus):
+                if src!= dest:
+                    total_nvlink = max(total_nvlink, comm_matrix[src][dest] * feat_size * 4 * 2 / NVLINK_BW)
+        return total_nvlink + BARRIER_COST 
