@@ -5,11 +5,18 @@ source "${SCRIPT_DIR}/env.sh"
 
 echo "Start optimal k Experiment on $graph"
 
+# Default parameters
+fanout="10,10,10"
+batch_size=1024
+graphs=("arxiv" "arxiv")
+graphs=("products")
 
-for model in sage gat; do
-  for graph in arxiv product papers friendster; do
-    python3 ${python_dir}/get_best_strategy.py --system=${system} --model=${model} --fanout="15,15,15" \
-    --graph=${graph} --world_size=${world_size} --data_dir=${data_dir}  
-     --batch_size=${batch_size} --log_file=${python_dir}/logs/batch_size.csv
+mode="hybriddp"
+for model in gat; do
+  for graph in $graphs; do
+    python3 ${python_dir}/get_best_strategy.py  --model=${model}  \
+    --graph=${graph}  --data_dir=${data_dir}  \
+    --batch_size=${batch_size} --log_file=${python_dir}/logs/${mode}.csv \
+    --fanout=${fanout}
   done
 done

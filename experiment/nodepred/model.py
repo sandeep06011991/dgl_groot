@@ -15,14 +15,14 @@ class Gat(nn.Module):
         hid_feats = int(hid_feats/num_heads)
         for layer_idx in range(num_layers):
             if layer_idx == 0:
-                self.layers.append(GATConv(in_feats=in_feats, out_feats=hid_feats, num_heads=num_heads))
+                self.layers.append(GATConv(in_feats=in_feats, out_feats=hid_feats, num_heads=num_heads, allow_zero_in_degree = True))
             elif layer_idx >= 1 and layer_idx < num_layers - 1:            
                 self.layers.append(GATConv(
-                    in_feats=hid_feats * num_heads, out_feats=hid_feats, num_heads=num_heads))
+                    in_feats=hid_feats * num_heads, out_feats=hid_feats, num_heads=num_heads, allow_zero_in_degree = True))
             else:
                 # last layer
                 self.layers.append(GATConv(
-                    in_feats=hid_feats * num_heads, out_feats=out_feats, num_heads=1))
+                    in_feats=hid_feats * num_heads, out_feats=out_feats, num_heads=1,allow_zero_in_degree = True))
 
     def forward(self, blocks, feat):
         hid_feats = feat
