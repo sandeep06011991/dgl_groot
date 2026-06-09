@@ -65,20 +65,21 @@ popd
 
 num_epoch=5
 world_size=${SLURM_GPUS_PER_NODE}
-if [ -z "$VAR" ]; then 
+if [ -z "${world_size}" ]; then 
+
     world_size=1
 fi
 
-echo ${graph_name} "Downloaded"
+# echo ${graph_name} "Downloaded"
 
-echo python3 ${python_dir}/prepare_dataset/get_npgraph.py --data_dir=$data_dir --graph_name=$graph_name
+# echo python3 ${python_dir}/prepare_dataset/get_npgraph.py --data_dir=$data_dir --graph_name=$graph_name
 
-echo ${graph_name} "Processing done"
-echo "Calculate weights with ${world_size} for ${graph_name}"
+# echo ${graph_name} "Processing done"
+# echo "Calculate weights with ${world_size} for ${graph_name}"
 
-echo python3 ${python_dir}/prepare_dataset/get_weight_fast.py --data_dir=$data_dir --graph_name=$graph_name --fanouts=15,15,15  --num_epoch=${num_epoch} --world_size=${world_size}
+# python3 ${python_dir}/prepare_dataset/get_weight_fast.py --data_dir=$data_dir --graph_name=$graph_name --fanouts=15,15,15  --num_epoch=${num_epoch} --world_size=${world_size}
 
-echo ${graph_name} "Partitioning done"
+# echo ${graph_name} "Partitioning done"
 
 node_weight="dst"
 edge_weight="freq"
