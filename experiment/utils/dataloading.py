@@ -89,6 +89,8 @@ def get_feat_dim(config: Config):
         return 128
     elif config.graph_name == "products":
         return 100
+    elif config.graph_name == "arxiv":
+        return 128
     else:
         print("Invalid graph name", config.graph_name)
         exit(-1)

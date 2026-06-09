@@ -1,4 +1,6 @@
 #!/bin/bash
+# These artifacts are now stale. S3 links are probably deleted.
+# Skip for now.  
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 source "${SCRIPT_DIR}/experiment/script/env.sh"
 mkdir -p $dataset_dir

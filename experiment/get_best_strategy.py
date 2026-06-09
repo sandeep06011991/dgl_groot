@@ -17,7 +17,7 @@ Usage:
 
 Done post partitioning. 
 """
-
+import time
 import os
 import torch
 import numpy as np
@@ -41,10 +41,12 @@ def run_simulation_hybrid_dp_split(cfg: Config,  device: str = "cuda:0") -> int:
         Optimal k (int in {1, …, num_layers}).
     """
     # Step 1: Load the dgl graph from data loading. 
-
+    s_time = time.time()
     graph, train_idx, valid_idx, test_idx = load_topo(cfg, is_pinned=False)
     input_feat_size =  get_feat_dim(cfg)
     partition_map = load_partition_map(cfg)
+    print(f"{cfg.graph_name} loading time is {time.time() - s_time}")
+    return 
     
     batch_size = cfg.batch_size
     fanouts = cfg.fanouts

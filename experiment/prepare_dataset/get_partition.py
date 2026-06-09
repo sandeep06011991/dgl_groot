@@ -52,6 +52,8 @@ def load_metis_graph(config:Config, node_mode: str, edge_mode: str):
         print(f"convert graph org_enum={e_num} to sym_enum={indices.shape[0]} in {timer.duration()} secs", flush=True)
         
     if is_sym == True and load_edge_weight and edge_pruned:
+        indices = indices.to(torch.int)
+        edge_weight = edge_weight.to(torch.int)
         indptr, indices, edge_weight = MakeSym(indptr, indices, edge_weight)
         print(f"convert graph org_enum={e_num} to sym_enum={indices.shape[0]} in {timer.duration()} secs", flush=True)
 
