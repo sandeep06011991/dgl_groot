@@ -5,105 +5,79 @@ This repository contains the source code of Spara, an efficient distributed GNN 
 # Project Structure
 Spara is highly integrated into DGL. The Python part for Spara is in the `python/dgl/dev` directory whereas the cpp source code are in the `src/spara` directory.
 
-# Software
-We assume you use a Linux machine.
+# Software Requirements
+
+- Linux with an NVIDIA GPU. Developed and tested on A40 (`sm_86`) and A100
+  (`sm_80`); runs end-to-end on a RunPod pod as well as the Unity cluster.
+- An NVIDIA driver that supports CUDA 12.4.
+- `conda` (Miniconda/Anaconda) on `PATH`.
+
+The CUDA 12.4 toolkit, the C++ compiler, PyTorch 2.4.0 (cu124) and PyG are all
+installed into a conda environment by the setup script below, so you do **not**
+need a system-wide CUDA install.
 
 # How to build
 
-## Install Docker
-Follow the instructions from this [website](https://docs.docker.com/engine/install/ubuntu/) to install docker.
+Spara builds from source in two steps: a one-time environment setup, then the
+DGL/Spara compile (which you re-run during development).
 
-## Install Nividia CUDA Driver
+## 1. One-time environment setup
+
+From the repo root:
 ```bash
-wget https://developer.download.nvidia.com/compute/cuda/12.3.2/local_installers/cuda_12.3.2_545.23.08_linux.run
-sudo sh cuda_12.3.2_545.23.08_linux.run --silent --driver
-sudo reboot
+bash environment_setup.sh
 ```
+This creates (or reuses) a conda env with CUDA 12.4, `gxx`, PyTorch 2.4.0
+(cu124) and PyG, builds the third-party dependencies (GKlib, METIS, oneTBB,
+NCCL) via `init.sh`, and then does the first Spara build by calling `build.sh`.
+It is designed to run end-to-end on a fresh GPU box such as a RunPod pod.
 
-# Option 1: Using Docker
-## Install NVIDIA Container Toolkit
-We recommend using docker to create the development environment. To do this, you need to [configure docker](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/latest/install-guide.html) to use nvidia GPUs inside a container. After installing Docker and the Nvidia driver, you can follow the remaining instructions to install the nvidia container toolkit.
+By default it installs into the currently-activated conda env; override the
+target with `ENV_PATH=/path/to/env`, or set `ENV_NAME` to create a sibling env.
 
-Configure the production repository of nvidia-container-toolkit:
+## 2. Build / rebuild during development
+
+The compile lives in its own script so you can re-run it as often as you like:
 ```bash
-curl -fsSL https://nvidia.github.io/libnvidia-container/gpgkey | sudo gpg --dearmor -o /usr/share/keyrings/nvidia-container-toolkit-keyring.gpg \
-  && curl -s -L https://nvidia.github.io/libnvidia-container/stable/deb/nvidia-container-toolkit.list | \
-    sed 's#deb https://#deb [signed-by=/usr/share/keyrings/nvidia-container-toolkit-keyring.gpg] https://#g' | \
-    sudo tee /etc/apt/sources.list.d/nvidia-container-toolkit.list
+./build.sh                 # debug build   -> build/          (default; for development)
+./build.sh release         # release build -> build-release/  (for performance measurements)
+./build.sh debug --clean   # wipe the build dir and reconfigure from scratch
 ```
+`build.sh` auto-detects `CUDA_HOME` from the active conda env and auto-detects
+the GPU's compute capability from `nvidia-smi`, building **only** for the arch
+actually present (e.g. A40 → `sm_86`, A100 → `sm_80`). On a machine with no
+visible GPU (e.g. a cluster login node), export `CUDA_ARCH_BIN` (e.g. `=80` for
+A100, `=86` for A40) to choose the target arch.
 
-Install and configure the container runtime by using the nvidia-ctk command:
-```bash
-sudo apt-get update
-sudo apt-get install -y nvidia-container-toolkit
-sudo nvidia-ctk runtime configure --runtime=docker
-sudo systemctl restart docker
-```
+## 3. Verify the install
 
-## Build the Docker Image
-
-```bash
-sudo docker build -t spara:latest .
-```
-
-## Run the docker image
-
-```bash
-$sudo docker run --shm-size=180GB --gpus all -itd spara:latest
-<container_id>
-$sudo docker exec -it <container_id> /bin/bash
-```
-
-# Option 2: Not Using Docker 
-
-```bash
-conda create -n spara python=3.10
-conda activate spara
-
-# install pytorch v2.0
-pip install torch==2.0.1 torchvision==0.15.2 torchaudio==2.0.2 --index-url https://download.pytorch.org/whl/cu118
-
-# install pyg
-pip install torch_geometric
-
-# install pyg lib
-pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv -f https://data.pyg.org/whl/torch-2.0.0+cu118.html
-
-# install dependencies
-pip install torchmetrics jupyterlab numpy matplotlib pandas ogb
-```
-
-Then, install CUDA toolkit 11.8 and set `CUDA_HOME` environment variable accordingly.
-Also install a C++ compiler, CMake, and Ninja, which will be used to build the source code.
-
-## Build Spara from the source
-
-Inside the docker container, you can find all the source code in the `/spara` directory.
-
-Then, you can build the project by running:
-```bash
-./build.sh
-```
-
-Then, check if you have installed Spara correctly:
 ```bash
 python -c "import dgl; print(dgl.__path__)"
 ```
-The output should be something like `['/conda/lib/python3.10/site-packages/dgl']`, indicating you have installed Spara correctly.
+This should print the `dgl` package path inside your conda env, e.g.
+`['/home/groot_env/lib/python3.11/site-packages/dgl']`.
+
+For more build detail and the C++/Python code architecture, see
+[`.claude/groot.md`](./.claude/groot.md).
 
 # Download Dataset
-# Option I: Download Raw Dataset and Process Them
-Please refer to [README.md](./experiment/prepare_dataset/README.md) for more details.
 
-# Option II: Download Preprocessed Dataset
-| Item | Description | Download Size | Uncompressed Size |  
-| --- | --- | --- | --- | 
-| [Graphs](https://spara-artifact-sc24.s3.us-east-2.amazonaws.com/dataset.tar.gz) | It contains graph topology, label, node and edge weights for produces, paper100M, orkut and friendster. | 75GB | 144GB | \
-| [Partition Maps](https://spara-artifact-sc24.s3.us-east-2.amazonaws.com/partition_map.tar.gz) | Contains partition maps for produces, paper100M, orkut and friendster using different combination of nodes and edge weights | 1GB | 4.1GB |
+The datasets consist of the graph topology data and the partition maps.
 
-You can use the `download.sh` script to download the dataset and save it to `./dataset` directory. The graph topology data will be in `./dataset/graph` directory whereas the partition maps will be inside `./dataset/graph/partition_map` directory.
-You can change the `dataset_dir` variable inside the [`env.sh`](./experiment/script/env.sh) script to change the default downloading folder. 
-(Notice that the `partition_map` directory must be inside `graph` directory so the dataloading function can find the maps correctly.)
+**Option I — generate from raw datasets (recommended):** see
+[experiment/prepare_dataset/README.md](./experiment/prepare_dataset/README.md).
+(Processing the large graphs can take several days.)
+
+**Option II — preprocessed datasets (stale):** the original SC24 artifact
+published preprocessed graphs and partition maps on Amazon S3 via `download.sh`.
+**Those S3 artifacts are no longer maintained and the links are likely dead** —
+use Option I to regenerate the data.
+
+Set the `dataset_dir` variable in [`env.sh`](./experiment/script/env.sh) to
+choose where data is stored. The graph topology lands in `${dataset_dir}/graph`
+and the partition maps in `${dataset_dir}/graph/partition_map`; the
+`partition_map` directory must live inside the `graph` directory so the
+dataloader can find the maps correctly.
 
 # Artifact Execution
 

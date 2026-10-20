@@ -103,7 +103,13 @@ else
   echo "Skipping PyG install (SKIP_PYG=1)"
 fi
 
-# ---- 7. Verification: torch + dgl on GPU ----
+# ---- 7. ogb (Open Graph Benchmark) ----
+# Required by the dataset-prep scripts, e.g. experiment/prepare_dataset/get_npgraph.py
+# (`from ogb.nodeproppred import DglNodePropPredDataset`).
+log "Installing ogb (Open Graph Benchmark, used by the dataset-prep scripts)"
+pip install ogb
+
+# ---- 8. Verification: torch + dgl on GPU ----
 log "Verifying torch + dgl on GPU"
 export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/build/lib:${LD_LIBRARY_PATH:-}"
 python - <<'EOF'

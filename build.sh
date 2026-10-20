@@ -36,11 +36,36 @@ else
   BUILD_DIR="${SCRIPT_DIR}/build"
 fi
 
-# Target GPU architecture for nvcc. We run on A100 only (Ampere, sm_80), so by
-# default we build for that single arch instead of DGL's full "All" list
+# Target GPU architecture for nvcc. We build for the single arch of the GPU
+# actually present on this machine, instead of DGL's full "All" list
 # (sm_60/70/75/80/86/90 + PTX), which compiles every CUDA .cu file ~7x and
-# dominates build time. Override with e.g. CUDA_ARCH_NAME=Hopper or =Auto.
-CUDA_ARCH_NAME="${CUDA_ARCH_NAME:-Ampere}"
+# dominates build time. The compute capability is read straight from nvidia-smi
+# so the binary always matches the hardware (A100 -> sm_80, A40 -> sm_86, ...);
+# nothing about the arch is hardcoded. We build the real binary AND the matching
+# PTX for the detected arch, so no load-time JIT is needed on this GPU.
+#
+# Override (skips auto-detection) by exporting an explicit sm number:
+#   CUDA_ARCH_BIN=86 [CUDA_ARCH_PTX=86]
+if [ -z "${CUDA_ARCH_BIN:-}" ]; then
+  if ! command -v nvidia-smi >/dev/null 2>&1; then
+    echo "ERROR: nvidia-smi not found, so the GPU compute capability can't be" >&2
+    echo "  detected. Run build.sh on a node with the target GPU visible, or" >&2
+    echo "  export CUDA_ARCH_BIN (e.g. =80 for A100, =86 for A40) and re-run." >&2
+    exit 1
+  fi
+  # e.g. "8.6" -> "86"; take the first GPU (they are identical on our nodes).
+  CUDA_ARCH_BIN="$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null \
+    | head -n1 | tr -d ' .')"
+  if [ -z "${CUDA_ARCH_BIN}" ]; then
+    echo "ERROR: nvidia-smi reported no GPU compute capability. Ensure a GPU is" >&2
+    echo "  visible here, or export CUDA_ARCH_BIN (e.g. =86 for A40) and re-run." >&2
+    exit 1
+  fi
+  echo "Detected GPU compute capability sm_${CUDA_ARCH_BIN}; building for that arch only."
+fi
+# DGL's cmake uses CUDA_ARCH_NAME=Manual to take explicit CUDA_ARCH_BIN/PTX.
+CUDA_ARCH_NAME="Manual"
+CUDA_ARCH_PTX="${CUDA_ARCH_PTX:-${CUDA_ARCH_BIN}}"
 
 # ---- Resolve CUDA_HOME ----
 # cmake/util/FindCUDA.cmake builds the CUDA library paths straight from
@@ -99,10 +124,12 @@ echo "Third-party deps present in ${TP}."
 if [ "${CLEAN}" = "1" ]; then
   rm -rf "${BUILD_DIR}"
 fi
-echo "CUDA arch: ${CUDA_ARCH_NAME}"
+echo "CUDA arch: ${CUDA_ARCH_NAME} (sm_${CUDA_ARCH_BIN}, ptx ${CUDA_ARCH_PTX})"
 cmake -B "${BUILD_DIR}" -S "${SCRIPT_DIR}" -GNinja \
   -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DBUILD_TYPE="${BUILD_TYPE}" \
   -DCUDA_ARCH_NAME="${CUDA_ARCH_NAME}" \
+  -DCUDA_ARCH_BIN="${CUDA_ARCH_BIN}" \
+  -DCUDA_ARCH_PTX="${CUDA_ARCH_PTX}" \
   -DCMAKE_POLICY_VERSION_MINIMUM=3.5
 cmake --build "${BUILD_DIR}" -j
 
