@@ -177,4 +177,53 @@ measure each phase at a few hidden sizes (e.g.\ $64,128,256,512$) at fixed
 graph/depth, fit linear vs.\ quadratic forms, and report the residual/error of
 projecting small$\rightarrow$large. This is left as the next step.
 
+\section{Microprofile Validation (nsys)}
+\label{sec:microprofile}
+To verify the cost model independently we microprofiled, on one representative
+batch, the \emph{fused} full-model forward$+$backward (what the trainer runs) against
+the simulator's \emph{per-layer isolated} forward$+$backward, swept over hidden size
+and model, with an \texttt{nsys} cross-check; and we measured the real pinned-host
+$\rightarrow$GPU feature gather over feature size.
+
+\begin{table}[h]
+\centering
+\caption{Compute: simulator per-layer vs.\ fused full-model step (products, depth~3,
+per-step ms). ratio $=$ sim/fused.}
+\label{tab:micro-compute}
+\begin{tabular}{l r r r r}
+\toprule
+Model & hidden & Fused (ms) & Sim-style (ms) & ratio \\
+\midrule
+SAGE & 64  & 5.71  & 8.34   & 1.46 \\
+SAGE & 128 & 5.19  & 11.83  & 2.28 \\
+SAGE & 256 & 9.49  & 21.60  & 2.27 \\
+SAGE & 512 & 15.27 & 53.11  & 3.48 \\
+GAT  & 64  & 15.31 & 29.72  & 1.94 \\
+GAT  & 128 & 25.26 & 40.00  & 1.58 \\
+GAT  & 256 & 41.06 & 64.19  & 1.56 \\
+GAT  & 512 & 79.83 & 137.00 & 1.72 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Findings.}
+(1) \textbf{Interconnect/bandwidth is now calibrated to hardware}: NVLink is
+$300$\,GB/s (confirmed via \texttt{nvidia-smi topo}: GPU0--GPU1 are NV12, i.e.\
+$12\times25$\,GB/s), and the pinned-host$\rightarrow$GPU gather sustains a steady
+\textbf{$\sim$25--26\,GB/s} independent of feature size, so \texttt{PCIE\_BW} was
+corrected $16\rightarrow25$\,GB/s.
+(2) \textbf{Feature loading is linear in feature size} (gather time $9.0\rightarrow139$\,ms
+as features go $64\rightarrow1024$; $\sim$constant GB/s), so the load/communication
+terms project cleanly by a single scale factor in feature (and hidden) size.
+(3) \textbf{Compute is GPU-bound GEMM} (\texttt{nsys}: \texttt{ampere\_sgemm\_*} kernels
+dominate), confirming the timing is real.
+(4) \textbf{The compute cost model over-counts} the true fused step by
+$1.5\text{--}3.5\times$ (Table~\ref{tab:micro-compute}), and the factor \emph{grows with
+hidden size} for SAGE---so it is not a constant correction. The cause is timing each
+layer's forward$+$backward in isolation (no shared autograd graph, extra input-gradient
+work) rather than as one fused step. Fixing this---so the summed per-layer estimate
+matches the fused measurement while preserving per-split-point ($k$) attribution---is
+the outstanding simulator-accuracy work; data-loading and interconnect are now
+validated.
+
 \end{document}
