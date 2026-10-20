@@ -39,6 +39,7 @@ for d in $DEPTHS; do
   echo "== SIM $GRAPH model=$MODEL ws=$WS depth=$d fanout=$fan =="
   python3 get_best_strategy.py --graph_name="$GRAPH" --data_dir="$data_dir" \
     --fanouts="$fan" --world_size="$WS" --hid_size="$HID" --model="$MODEL" \
+    --cache_size="${CACHE_SIZE:-10G}" \
     --node_weight=dst --edge_weight=freq --bal=xbal --nvlink --num_epoch="$NUM_EPOCH" \
     --log_file="${GRAPH}_${MODEL}_sim_w${WS}.csv" \
     || echo "WARN sim depth $d exited nonzero"

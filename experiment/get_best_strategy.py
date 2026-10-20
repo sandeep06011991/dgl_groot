@@ -78,7 +78,7 @@ if __name__ == "__main__":
         batch_size    = args.batch_size,
         system        = "split-sim",
         model         = args.model,
-        cache_size    = "0GB",
+        cache_size    = args.cache_size,
         hid_size      = args.hid_size,
         log_path      = log_path,
         data_dir      = args.data_dir,

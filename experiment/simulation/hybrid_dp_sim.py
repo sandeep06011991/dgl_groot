@@ -29,6 +29,14 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
     dataloading_cost = 0
     total_batches = train_idx.shape[0]//(num_devices * micro_batch_size)
     print("total num batches", total_batches)
+    # Fraction of input features NOT resident in the per-GPU feature cache.
+    # Each GPU caches its partition's nodes up to cache_size; collectively the
+    # GPUs cache min(1, total_cached / N) of all nodes, and only the uncached
+    # remainder is charged PCIe transfer. (With cache_size=0 this is 1.0 =
+    # transfer everything, the previous behaviour.)
+    total_cached = (cache_bytes(config.cache_size) // (input_feat_size * 4)) * num_devices
+    uncached_frac = max(0.0, 1.0 - min(1.0, total_cached / graph.num_nodes()))
+    print(f"cache_size={config.cache_size} -> uncached_frac={uncached_frac:.4f}")
     # try:
     if (graph.in_degrees() == 0).any():
         print("warning: graph has zero-in-degree nodes; sampling/GATConv handle this "
@@ -53,7 +61,7 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                             frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                             new_microbatches.append(frontier)
                             if layer_no == lastlayer:
-                                dataloading_cost += frontier.shape[0] * input_feat_size * 4 / PCIE_BW
+                                dataloading_cost += frontier.shape[0] * uncached_frac * input_feat_size * 4 / PCIE_BW
                         current_microbatches = new_microbatches
                         
                     if layer_no == k:
@@ -67,7 +75,7 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                         frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                         minibatch = (frontier)
                         if layer_no == lastlayer:
-                            dataloading_cost += frontier.shape[0] * input_feat_size * 4 / PCIE_BW
+                            dataloading_cost += frontier.shape[0] * uncached_frac * input_feat_size * 4 / PCIE_BW
                         src, dest = subgraph.edges()
                         # compute_cost of split parallelism.
                         comm_volume = []
