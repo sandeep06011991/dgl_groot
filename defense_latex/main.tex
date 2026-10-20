@@ -1,0 +1,121 @@
+\documentclass[11pt]{report}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{siunitx}
+\sisetup{group-separator={,}, detect-weight=true}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
+
+\title{Spara: Partition-Aware Distributed GNN Training\\[4pt]
+       \large Dissertation Defense --- Experimental Results}
+\author{Sandeep Polisetty}
+\date{\today}
+
+\begin{document}
+\maketitle
+\tableofcontents
+
+\chapter{Experimental Evaluation}
+
+\section{System}
+Spara (\texttt{gsplit}) is an efficient distributed GNN training system built on
+top of the Deep Graph Library (DGL). It introduces \emph{partition-aware
+sampling} and \emph{feature loading} to reduce cross-GPU communication during
+multi-GPU graph neural network training. Each GPU owns a partition of the graph
+(a METIS partition weighted by sampling frequency); sampling, feature caching,
+and the model forward/backward exchange only boundary data across GPUs via NCCL.
+
+\section{Experimental Setup}
+All experiments were run on \textbf{RunPod} using a node with
+\textbf{2$\times$ NVIDIA A100-SXM4-80GB} GPUs (NVLink/NVSwitch). The software
+stack is \textbf{CUDA 12.4}, \textbf{PyTorch 2.4 (cu124)}, and a custom build of
+\textbf{DGL} containing the Spara C++/CUDA operators.
+
+We evaluate the \texttt{split} (Spara) system on OGB node-classification graphs
+with a GraphSAGE model (hidden size 256, batch size 1024). The neighbor
+\textbf{fanout is 15 per layer}, and we sweep the number of sampling layers
+(depth) over $\{3,4,5\}$. Results below use \textbf{2 GPUs} (\texttt{world\_size}
+$=2$) with the corresponding 2-partition map
+(\texttt{\_w2\_ndst\_efreq\_xbal}), real OGB features, and the partition-aware
+split dataloader in UVA mode. Partition maps for both 2 and 4 partitions are
+generated and archived; the 4-GPU runs are future work.
+
+All timings are \textbf{per-epoch averages}; GPU memory is the peak allocated;
+test accuracy is reported from the partition-local evaluation on rank~0.
+
+\section{Results}
+
+\subsection{ogbn-arxiv}
+\texttt{ogbn-arxiv} ($\approx$0.17\,M nodes, 1.2\,M edges, 128-dim features,
+40 classes), 5 training epochs.
+
+\begin{table}[h]
+\centering
+\caption{Spara (split) on ogbn-arxiv, 2$\times$A100-SXM, fanout 15, per-epoch.}
+\label{tab:arxiv}
+\begin{tabular}{r rrrrr r r r}
+\toprule
+Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
+GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
+\midrule
+3 & 1.42 & 0.46 & 0.03 & 0.42 & 0.44 & 159 & 56.93 & 0.99 \\
+4 & 1.83 & 0.53 & 0.04 & 0.60 & 0.59 & 254 & 54.92 & 2.48 \\
+5 & 2.26 & 0.61 & 0.02 & 0.73 & 0.81 & 377 & 56.33 & 4.74 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ogbn-papers100M}
+\texttt{ogbn-papers100M} ($\approx$111\,M nodes, 1.6\,B directed edges,
+128-dim features, 172 classes), 3 training epochs.
+
+\begin{table}[h]
+\centering
+\caption{Spara (split) on ogbn-papers100M, 2$\times$A100-SXM, fanout 15, per-epoch.}
+\label{tab:papers}
+\begin{tabular}{r rrrrr r r r}
+\toprule
+Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
+GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
+\midrule
+3 & 20.79 & 10.61 & 0.11 & 3.81 & 5.52 & \num{11618} & 45.45 & 58.1 \\
+4 & 51.14 & 26.84 & 4.42 & 8.87 & 10.62 & \num{12609} & 46.14 & 246.0 \\
+5 & 127.63 & 48.36 & 31.66 & 23.60 & 23.62 & \num{15289} & 45.26 & 802.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{ogbn-products}
+\emph{Run in progress --- results to be filled in once the 2-GPU sweep completes.}
+
+\begin{table}[h]
+\centering
+\caption{Spara (split) on ogbn-products, 2$\times$A100-SXM, fanout 15, per-epoch.}
+\label{tab:products}
+\begin{tabular}{r rrrrr r r r}
+\toprule
+Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
+GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
+\midrule
+3 & --- & --- & --- & --- & --- & --- & --- & --- \\
+4 & --- & --- & --- & --- & --- & --- & --- & --- \\
+5 & --- & --- & --- & --- & --- & --- & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Discussion}
+Across both graphs, per-epoch time grows with sampling depth as the sampled
+subgraph (edges computed) expands super-linearly: on papers100M, going from 3 to
+5 layers grows edges computed from $58$\,M to $802$\,M and epoch time from
+$\sim$21\,s to $\sim$128\,s. Neighbor sampling dominates the per-step cost at
+every depth, while feature-loading time stays small until depth~5 on
+papers100M, where the working set no longer fits the on-GPU feature cache and
+more features are gathered from host memory over UVA. Test accuracy is stable
+across depths ($\sim$55\% on arxiv, $\sim$45\% on papers100M in a short run),
+confirming the pipeline trains correctly on real features.
+
+\end{document}

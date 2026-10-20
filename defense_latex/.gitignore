@@ -1,0 +1,16 @@
+# Built PDF (regenerate with ./build.sh)
+main.pdf
+*.pdf
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.toc
+*.lof
+*.lot
+*.fls
+*.fdb_latexmk
+*.synctex.gz
+*.bbl
+*.blg
