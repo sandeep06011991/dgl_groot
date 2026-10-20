@@ -1,29 +1,112 @@
-#!/bin/bash
-CUR_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+#!/usr/bin/env bash
+# Build DGL/Spara from this checkout. Run this as often as you like during
+# development — one-time environment provisioning lives in environment_setup.sh.
+#
+# Usage:
+#   ./build.sh [debug|release] [--clean]
+#
+#   debug    (default) -O0 -g, assertions on. Use this for development.
+#   release            optimized build; use this for performance measurements.
+#   --clean            wipe the build dir and reconfigure from scratch.
+#
+# debug and release use separate build dirs (build/ and build-release/) so you
+# can keep a release build for measurements alongside a debug build you develop
+# against, without a full recompile every time you switch.
+set -euo pipefail
 
-export PATH=/work/pi_huiguan_umass_edu/sandeep/conda_environment/dgl_groot/bin:$PATH
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
+cd "${SCRIPT_DIR}"
 
-export CUDA_HOME="${CUDA_HOME:=/usr/local/cuda}"
+# ---- Parse args ----
+BUILD_TYPE="debug"
+CLEAN=0
+for arg in "$@"; do
+  case "${arg}" in
+    debug|release) BUILD_TYPE="${arg}" ;;
+    --clean)       CLEAN=1 ;;
+    -h|--help)     sed -n '2,13p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "Unknown argument: ${arg}" >&2
+       echo "Usage: $0 [debug|release] [--clean]" >&2; exit 1 ;;
+  esac
+done
 
-export CUDA_HOME=/work/pi_huiguan_umass_edu/sandeep/conda_environment/dgl_groot/
+if [ "${BUILD_TYPE}" = "release" ]; then
+  BUILD_DIR="${SCRIPT_DIR}/build-release"
+else
+  BUILD_DIR="${SCRIPT_DIR}/build"
+fi
 
-echo "CUDA_HOME=$CUDA_HOME"
+# Target GPU architecture for nvcc. We run on A100 only (Ampere, sm_80), so by
+# default we build for that single arch instead of DGL's full "All" list
+# (sm_60/70/75/80/86/90 + PTX), which compiles every CUDA .cu file ~7x and
+# dominates build time. Override with e.g. CUDA_ARCH_NAME=Hopper or =Auto.
+CUDA_ARCH_NAME="${CUDA_ARCH_NAME:-Ampere}"
 
-bash init.sh
+# ---- Resolve CUDA_HOME ----
+# cmake/util/FindCUDA.cmake builds the CUDA library paths straight from
+# $CUDA_HOME, e.g. ${CUDA_HOME}/lib/libcudart.so. If CUDA_HOME is empty when
+# cmake configures, it bakes the bogus path /lib/libcudart.so into build.ninja
+# and the link fails with:
+#   ninja: error: '/lib/libcudart.so', needed by 'libdgl.so', missing
+# Default to the active conda env, which is where environment_setup.sh installs
+# the CUDA toolkit.
+if [ -z "${CUDA_HOME:-}" ]; then
+  if [ -n "${CONDA_PREFIX:-}" ] && [ -e "${CONDA_PREFIX}/lib/libcudart.so" ]; then
+    CUDA_HOME="${CONDA_PREFIX}"
+  elif [ -e /usr/local/cuda/lib/libcudart.so ] || [ -e /usr/local/cuda/lib64/libcudart.so ]; then
+    CUDA_HOME="/usr/local/cuda"
+  fi
+fi
+export CUDA_HOME="${CUDA_HOME:-}"
 
-rm -rf build
+if [ -z "${CUDA_HOME}" ] || [ ! -e "${CUDA_HOME}/lib/libcudart.so" ]; then
+  echo "ERROR: could not locate a CUDA toolkit with lib/libcudart.so." >&2
+  echo "  CUDA_HOME='${CUDA_HOME}'" >&2
+  echo "  Activate the conda env (so CONDA_PREFIX is set), or export CUDA_HOME" >&2
+  echo "  to a toolkit that contains lib/libcudart.so, then re-run." >&2
+  exit 1
+fi
+export PATH="${CUDA_HOME}/bin:${PATH}"
+echo "CUDA_HOME=${CUDA_HOME}"
+echo "Build type: ${BUILD_TYPE}    Build dir: ${BUILD_DIR}"
 
-cmake -B build -GNinja -DCMAKE_BUILD_TYPE=debug -DBUILD_TYPE=debug -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+# ---- Third-party deps (GKlib/METIS/oneTBB/NCCL), built once into third_party/build ----
+# Check for the actual headers/libs DGL links against, not just the directory:
+# a partial init.sh (e.g. GKlib/METIS failing while TBB/NCCL succeed) leaves the
+# dir present but DGL's compile then fails on missing GKlib.h / metis.h.
+TP="${SCRIPT_DIR}/third_party/build"
+third_party_ready() {
+  [ -f "${TP}/include/GKlib.h" ] \
+    && [ -f "${TP}/include/metis.h" ] \
+    && [ -f "${TP}/include/nccl.h" ] \
+    && ls "${TP}"/lib/libmetis.*  >/dev/null 2>&1 \
+    && ls "${TP}"/lib/libnccl.so* >/dev/null 2>&1 \
+    && ls "${TP}"/lib/libtbb.*    >/dev/null 2>&1
+}
+if ! third_party_ready; then
+  echo "Third-party deps incomplete in ${TP}; building them via init.sh ..."
+  bash "${SCRIPT_DIR}/init.sh"
+  if ! third_party_ready; then
+    echo "ERROR: init.sh ran but third-party deps are still incomplete." >&2
+    echo "  Expected GKlib.h, metis.h, nccl.h in ${TP}/include and the" >&2
+    echo "  matching libs in ${TP}/lib. Check init.sh output above." >&2
+    exit 1
+  fi
+fi
+echo "Third-party deps present in ${TP}."
 
-cmake --build build -j
+# ---- Configure + build ----
+if [ "${CLEAN}" = "1" ]; then
+  rm -rf "${BUILD_DIR}"
+fi
+echo "CUDA arch: ${CUDA_ARCH_NAME}"
+cmake -B "${BUILD_DIR}" -S "${SCRIPT_DIR}" -GNinja \
+  -DCMAKE_BUILD_TYPE="${BUILD_TYPE}" -DBUILD_TYPE="${BUILD_TYPE}" \
+  -DCUDA_ARCH_NAME="${CUDA_ARCH_NAME}" \
+  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
+cmake --build "${BUILD_DIR}" -j
 
-cd python && pip install . && cd ../
+# ---- Install the python package ----
+(cd "${SCRIPT_DIR}/python" && pip install .)
 
-exit 1
-
-export LD_LIBRARY_PATH=${CUR_DIR}/third_party/build/lib:${LD_LIBRARY_PATH}
-export CPATH=${CUR_DIR}/third_party/build/include:${CPATH}
-
-# cd third_party/torch-quiver && python3 setup.py build_ext --inplace && cd ../../
-
-# cd third_party/dist_cache/torch-quiver && python3 setup.py build_ext --inplace && cd ../../
+echo "Build (${BUILD_TYPE}) complete. Verify with: python -c 'import dgl; print(dgl.__path__)'"

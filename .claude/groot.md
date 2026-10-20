@@ -7,32 +7,31 @@ python setup.py build_ext --inplace
 ```
 
 ### Prerequisites
-- CUDA 11.8+ with `CUDA_HOME` set
-- PyTorch 2.0.1, PyG, torchmetrics, ogb
+- CUDA 12.4 with `CUDA_HOME` set (the conda env created by `environment_setup.sh` provides this)
+- PyTorch 2.4.0 (cu124), PyG, torchmetrics, ogb
 - C++17 compiler, CMake 3.18+, Ninja
 - Third-party deps: GKlib, METIS, oneTBB, NCCL (built by `init.sh`)
 
-### Build Steps
-
-**Step 1: Build third-party dependencies (only needed once)**
+### One-time environment setup
 ```bash
-bash init.sh
+bash environment_setup.sh
 ```
-Builds GKlib, METIS, oneTBB, and NCCL into `third_party/build/`.
+Creates/reuses a conda env (installs CUDA 12.4 toolkit, gxx, PyTorch 2.4.0 cu124,
+PyG), builds the third-party deps via `init.sh`, then does the first DGL build by
+calling `build.sh`. By default it installs into the currently-activated conda env;
+override with `ENV_PATH=/path/to/env`.
 
-**Step 2: Build DGL/Spara**
+### Rebuilding during development
+The compile is in its own script so you can re-run it as often as you like:
 ```bash
-export CUDA_HOME=/path/to/cuda   # or conda env path
-cmake -B build -GNinja -DCMAKE_BUILD_TYPE=debug -DBUILD_TYPE=debug
-cmake --build build -j
-cd python && pip install . && cd ../
+./build.sh            # debug build  -> build/          (default; for development)
+./build.sh release    # release build -> build-release/ (for performance measurements)
+./build.sh debug --clean   # wipe the build dir and reconfigure from scratch
 ```
-
-Or simply run:
-```bash
-bash build.sh
-```
-Note: `build.sh` currently has `exit 1` after `pip install .` — lines after that are vestigial.
+`build.sh` resolves `CUDA_HOME` automatically from the active conda env
+(`CONDA_PREFIX`) — this is what prevents the `/lib/libcudart.so missing` link
+error that occurs when `CUDA_HOME` is empty at cmake-configure time. Debug and
+release use separate build dirs so both can coexist.
 
 **Verify installation:**
 ```bash
@@ -40,9 +39,10 @@ python -c "import dgl; print(dgl.__path__)"
 ```
 
 ### CMake Build Types
-- `dev` — debug symbols, `-O0 -g3` (default in `build.sh`)
-- `dogfood` — intermediate testing, `-O2`
-- `release` — production, `-O2`
+DGL's `BUILD_TYPE` option accepts `dev`, `dogfood`, `release` (see `CMakeLists.txt`);
+`build.sh` passes `debug`/`release` as both `CMAKE_BUILD_TYPE` and `BUILD_TYPE`.
+`CMAKE_BUILD_TYPE` controls optimization/debug flags (`debug` → `-O0 -g`,
+`release` → optimized).
 
 Key CMake options: `USE_CUDA=ON`, `BUILD_TORCH=ON` (builds tensoradapter for PyTorch), `BUILD_SPARSE/BUILD_GRAPHBOLT` (disabled by default).
 

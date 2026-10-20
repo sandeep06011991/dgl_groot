@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Build a clean conda environment for DGL/Spara against PyTorch 2.4.0 + CUDA 12.4,
-# build DGL from this checkout, and verify torch/dgl can both use the GPU.
+# One-time environment provisioning for DGL/Spara: create (or reuse) a conda env
+# with PyTorch 2.4.0 + CUDA 12.4, build the third-party deps, then compile and
+# verify DGL from this checkout.
+#
+# This is the *setup* script, run once per machine/env. The actual DGL compile is
+# delegated to build.sh, which you re-run as often as you like during development
+# (./build.sh debug | ./build.sh release). This script just calls it for you once.
 #
 # Assumes `conda` is already installed and on PATH. Designed to run end-to-end on a
 # fresh GPU box (e.g. a RunPod pod) as well as on Unity.
+#
+# By default it installs into the currently-activated conda env. Override the
+# target env with ENV_PATH=/path/to/env, or set ENV_NAME to create a sibling env.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -11,6 +19,12 @@ cd "${SCRIPT_DIR}"
 
 # ---- Configuration (override via env vars) ----
 ENV_NAME="${ENV_NAME:-dgl_groot_cu124}"
+# Default to the already-active conda env (unless it's base); otherwise fall back
+# to a sibling conda_environment/<ENV_NAME> that this script will create.
+if [ -z "${ENV_PATH:-}" ] && [ -n "${CONDA_PREFIX:-}" ] \
+   && [ "$(basename "${CONDA_PREFIX}")" != "base" ]; then
+  ENV_PATH="${CONDA_PREFIX}"
+fi
 ENV_PATH="${ENV_PATH:-${SCRIPT_DIR}/../conda_environment/${ENV_NAME}}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
 CUDA_VERSION="${CUDA_VERSION:-12.4.0}"
@@ -39,6 +53,13 @@ else
 fi
 conda activate "${ENV_PATH}"
 
+# Ensure the env owns its own Python + pip, so the env's pip (not a system one on
+# PATH) is used below and `pip install .` installs DGL *into this env* — the whole
+# point of isolating from the container. Also covers reusing an env that only had
+# the CUDA toolkit installed.
+conda install -y "python=${PYTHON_VERSION}" pip
+echo "Using pip: $(command -v pip)"
+
 # ---- 2. CUDA toolkit + compiler + build tools (inside the env, self-contained) ----
 log "Installing CUDA ${CUDA_VERSION} toolkit, gxx==${GXX_VERSION}, cmake, ninja"
 if ! conda install -y -c "nvidia/label/cuda-${CUDA_VERSION}" cuda-toolkit; then
@@ -64,13 +85,10 @@ log "Building third-party dependencies via init.sh"
 bash "${SCRIPT_DIR}/init.sh"
 
 # ---- 5. Build + install DGL/Spara from this checkout ----
-log "Building DGL/Spara from source"
-rm -rf "${SCRIPT_DIR}/build"
-cmake -B "${SCRIPT_DIR}/build" -S "${SCRIPT_DIR}" -GNinja \
-  -DCMAKE_BUILD_TYPE=debug -DBUILD_TYPE=debug \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-cmake --build "${SCRIPT_DIR}/build" -j
-(cd "${SCRIPT_DIR}/python" && pip install .)
+# The compile itself lives in build.sh so it can be re-run during development.
+# Pass CUDA_HOME through so build.sh links against this env's CUDA toolkit.
+log "Building DGL/Spara from source (debug) via build.sh"
+CUDA_HOME="${CUDA_HOME}" bash "${SCRIPT_DIR}/build.sh" debug --clean
 
 # ---- 6. PyG extension stack (best-effort; nothing in groot/Spara depends on it) ----
 if [ "${SKIP_PYG}" != "1" ]; then
