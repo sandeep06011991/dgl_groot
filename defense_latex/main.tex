@@ -108,37 +108,73 @@ cost (cross-partition feature volume $\div$ interconnect bandwidth), and
 results through the same logging path as the measured runs, so the two are directly
 comparable.
 
-To validate the simulator we compare its $k=0$ prediction against the measured numbers
-from Section~\ref{sec:measured}: predicted \emph{computation} vs.\ measured
-\emph{train}, and predicted \emph{data-loading} vs.\ measured \emph{load}. (Sampling
-time is deliberately not modelled---see above.)
+We compare the simulator's $k{=}0$ prediction against the measured numbers from
+Section~\ref{sec:measured}. The compute-cost model times the \emph{forward} pass only,
+so the honest comparison is predicted \emph{computation} vs.\ measured \emph{forward}
+(a full training step adds a backward pass of comparable cost). Predicted
+\emph{data-loading} is compared to measured \emph{load}; sampling is deliberately not
+modelled (Section~\ref{sec:measured}).
 
 \begin{table}[h]
 \centering
-\caption{Simulator ($k{=}0$, full split) vs.\ measured, per-epoch. \emph{Simulator run
-in progress---values to be inserted once \texttt{run\_simulation.sh} completes.}}
+\caption{Simulator ($k{=}0$, full split) vs.\ measured, per-epoch (seconds).
+2$\times$A100-SXM, fanout 15, hidden 256.}
 \label{tab:sim}
 \begin{tabular}{l l r r r r r}
 \toprule
- & & \multicolumn{2}{c}{Train / Compute (s)} & \multicolumn{2}{c}{Load (s)} & Comm (s) \\
+ & & \multicolumn{2}{c}{Compute vs.\ Forward} & \multicolumn{2}{c}{Data-load vs.\ Load} & Comm \\
 \cmidrule(lr){3-4}\cmidrule(lr){5-6}
-Graph & Layers & Measured & Sim & Measured & Sim & Sim \\
+Graph & L & Sim & Measured & Sim & Measured & Sim \\
 \midrule
-ogbn-products & 3 & 2.05  & --- & 0.09 & --- & --- \\
-ogbn-products & 4 & 8.11  & --- & 0.03 & --- & --- \\
-ogbn-products & 5 & 22.65 & --- & 0.22 & --- & --- \\
+products (SAGE) & 3 & 1.34  & 1.19  & 2.84 & 0.09 & 0.02 \\
+products (SAGE) & 4 & 4.77  & 4.73  & 4.60 & 0.03 & 0.07 \\
+products (SAGE) & 5 & 10.31 & 12.32 & 5.22 & 0.22 & 0.13 \\
 \midrule
-ogbn-arxiv    & 3 & 0.86  & --- & 0.03 & --- & --- \\
-ogbn-arxiv    & 4 & 1.19  & --- & 0.04 & --- & --- \\
-ogbn-arxiv    & 5 & 1.54  & --- & 0.02 & --- & --- \\
+products (GAT)  & 3 & 2.43  & 2.30  & 2.81 & 0.09 & 0.02 \\
+products (GAT)  & 4 & 7.06  & 7.95  & 4.57 & 0.01 & 0.07 \\
+products (GAT)  & 5 & 13.45 & 18.33 & 5.21 & 0.24 & 0.13 \\
+\midrule
+arxiv (SAGE)    & 3 & 0.27  & 0.42  & 0.08 & 0.03 & 0.00 \\
+arxiv (SAGE)    & 4 & 0.36  & 0.60  & 0.10 & 0.04 & 0.00 \\
+arxiv (SAGE)    & 5 & 0.46  & 0.73  & 0.11 & 0.02 & 0.00 \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{Calibration notes.}
-Two model choices affect how closely the prediction matches hardware and are being
-validated: (i) the interconnect model (NVLink vs.\ PCIe bandwidth) must match the
-A100-SXM NVLink fabric; (ii) the mapping from sampled hops to convolution layers in the
-compute-cost loop. These are being checked against the measured numbers above.
+\paragraph{Findings.}
+The \textbf{compute model is accurate}: on products it tracks the measured forward
+time within $\sim$10--25\% (e.g.\ SAGE depth~4: $4.77$ vs.\ $4.73$\,s), confirming the
+GPU layer-timing approach is sound; it under-predicts on the tiny arxiv graph where
+fixed kernel-launch overhead dominates. The \textbf{data-loading model is the main
+source of error}: it over-predicts by $30$--$150\times$ because it assumes \emph{every}
+frontier feature is transferred over PCIe and \textbf{ignores the on-GPU feature
+cache}---with a $10$\,GB cache, products' features are resident and the measured load is
+near zero. Predicted \textbf{communication} is small, consistent with the NVLink fabric.
+
+\paragraph{Simple improvements (not yet applied).}
+\begin{enumerate}
+  \item \textbf{Add the backward pass} to the compute cost (currently forward-only);
+        a full step is $\approx 2\times$ forward, so either double the estimate or time
+        the backward explicitly.
+  \item \textbf{Model the feature cache} in the data-loading cost: subtract the
+        \texttt{cache\_size}-resident (partition-local) nodes and only charge PCIe for
+        the uncached remainder. This is the single biggest fix.
+  \item \textbf{Fix the hop$\rightarrow$layer mapping} (\texttt{model\_layers[-layer\_no]}),
+        which likely explains the arxiv/GAT under-prediction at deeper layers.
+  \item \textbf{Average over a few epochs} for small graphs to remove launch-overhead noise.
+  \item \textbf{Confirm the interconnect branch} matches the A100-SXM NVLink topology.
+\end{enumerate}
+
+\paragraph{Reduced-hidden-size projection (feasibility --- to be proven first).}
+A promising shortcut is to measure cost at a \emph{small} hidden size and project to
+larger ones, avoiding a full sweep. The components scale differently:
+\emph{communication} and \emph{data-loading} are $\propto$ (boundary nodes $\times$
+hidden), i.e.\ \textbf{linear} in hidden size and projectable by a single scale factor;
+\emph{computation} contains the hidden$\rightarrow$hidden GEMMs, which are
+$\propto \text{hidden}^2$, so it is \textbf{affine--quadratic}, $a\,h + b\,h^2$, not a
+single linear factor. Before relying on this, we must \emph{prove} projectability:
+measure each phase at a few hidden sizes (e.g.\ $64,128,256,512$) at fixed
+graph/depth, fit linear vs.\ quadratic forms, and report the residual/error of
+projecting small$\rightarrow$large. This is left as the next step.
 
 \end{document}
