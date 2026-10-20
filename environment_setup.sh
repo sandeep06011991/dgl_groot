@@ -87,6 +87,12 @@ fi
 conda install -y -c conda-forge "gxx==${GXX_VERSION}"
 pip install -U cmake ninja
 
+# Nsight Systems (nsys) for profiling the simulator / training (best-effort).
+log "Installing Nsight Systems (nsys) for profiling"
+conda install -y -c nvidia nsight-systems || \
+  conda install -y -c conda-forge nsight-systems || \
+  echo "WARN: could not install nsight-systems via conda; install manually if nsys profiling is needed" >&2
+
 export CUDA_HOME="${ENV_PATH}"
 export PATH="${CUDA_HOME}/bin:${PATH}"
 echo "CUDA_HOME=${CUDA_HOME}"
