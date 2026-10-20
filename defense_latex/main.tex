@@ -188,20 +188,21 @@ $\rightarrow$GPU feature gather over feature size.
 \begin{table}[h]
 \centering
 \caption{Compute: simulator per-layer vs.\ fused full-model step (products, depth~3,
-per-step ms). ratio $=$ sim/fused.}
+per-step ms), after the per-layer attribution fix. ratio $=$ sim/fused; the last
+column is the ratio \emph{before} the fix.}
 \label{tab:micro-compute}
-\begin{tabular}{l r r r r}
+\begin{tabular}{l r r r r r}
 \toprule
-Model & hidden & Fused (ms) & Sim-style (ms) & ratio \\
+Model & hidden & Fused (ms) & Sim (ms) & ratio & (ratio before) \\
 \midrule
-SAGE & 64  & 5.71  & 8.34   & 1.46 \\
-SAGE & 128 & 5.19  & 11.83  & 2.28 \\
-SAGE & 256 & 9.49  & 21.60  & 2.27 \\
-SAGE & 512 & 15.27 & 53.11  & 3.48 \\
-GAT  & 64  & 15.31 & 29.72  & 1.94 \\
-GAT  & 128 & 25.26 & 40.00  & 1.58 \\
-GAT  & 256 & 41.06 & 64.19  & 1.56 \\
-GAT  & 512 & 79.83 & 137.00 & 1.72 \\
+SAGE & 64  & 6.02  & 8.66  & 1.44 & 1.46 \\
+SAGE & 128 & 5.16  & 7.44  & 1.44 & 2.28 \\
+SAGE & 256 & 9.61  & 10.11 & \textbf{1.05} & 2.27 \\
+SAGE & 512 & 15.84 & 16.13 & \textbf{1.02} & 3.48 \\
+GAT  & 64  & 15.69 & 30.69 & 1.96 & 1.94 \\
+GAT  & 128 & 25.05 & 38.86 & 1.55 & 1.58 \\
+GAT  & 256 & 40.34 & 52.34 & \textbf{1.30} & 1.56 \\
+GAT  & 512 & 79.69 & 92.82 & \textbf{1.16} & 1.72 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -217,13 +218,19 @@ as features go $64\rightarrow1024$; $\sim$constant GB/s), so the load/communicat
 terms project cleanly by a single scale factor in feature (and hidden) size.
 (3) \textbf{Compute is GPU-bound GEMM} (\texttt{nsys}: \texttt{ampere\_sgemm\_*} kernels
 dominate), confirming the timing is real.
-(4) \textbf{The compute cost model over-counts} the true fused step by
-$1.5\text{--}3.5\times$ (Table~\ref{tab:micro-compute}), and the factor \emph{grows with
-hidden size} for SAGE---so it is not a constant correction. The cause is timing each
-layer's forward$+$backward in isolation (no shared autograd graph, extra input-gradient
-work) rather than as one fused step. Fixing this---so the summed per-layer estimate
-matches the fused measurement while preserving per-split-point ($k$) attribution---is
-the outstanding simulator-accuracy work; data-loading and interconnect are now
-validated.
+(4) \textbf{The compute cost model originally over-counted} the fused step by
+$1.5\text{--}3.5\times$, worsening with hidden size, because it paired sampled hop $j$
+(seeds-outward) with convolution $\text{-}j$ instead of $L\!-\!1\!-\!j$---placing the
+expensive hidden$\times$hidden GEMMs on the largest outer frontiers. \textbf{After
+correcting the hop$\rightarrow$layer pairing} (and dropping the input gradient on the
+true input layer), the summed per-layer estimate matches the fused full-model step to
+\textbf{within $\sim$2--5\% for SAGE at hidden $\ge 256$} (Table~\ref{tab:micro-compute})
+---i.e.\ in the large-hidden regime where communication dominates and the hybrid
+decision actually matters. The residual ($\sim$1.4$\times$ at small hidden, higher for
+GAT) is the \emph{inherent per-layer overhead} of a per-layer cost model: isolated
+backward setup and kernel-launch/attention small-ops that the fused step amortizes, and
+which are a large fraction only when the GEMM itself is tiny. Per-layer attribution is
+kept deliberately, to extend to pipeline and hybrid data parallelism. Data-loading and
+interconnect are validated (Findings 1--3).
 
 \end{document}
