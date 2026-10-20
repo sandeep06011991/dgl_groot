@@ -118,7 +118,7 @@ def load_data(config: Config, is_pinned=False):
     feat = None
     label = None
     num_label = None
-    if config.graph_name in ["products"]: # also supports papers100M
+    if config.graph_name in ["products", "arxiv", "papers100M"]: # real feat/label (proof-of-correctness)
         feat, label, num_label = load_feat_label(os.path.join(config.data_dir, config.graph_name))
     else:
         v_num = graph.num_nodes()

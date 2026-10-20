@@ -115,34 +115,37 @@ def train_split_ddp(rank: int, config: Config, unique_id,
     forward_time = get_duration(forward_timers)
     backward_time = get_duration(backward_timers)
 
-    if config.graph_name == "products2":
-        t2 = Timer()
-        print(f"testing model accuracy on {device}")
-        model.eval()
-        ys = []
-        y_hats = []
-        dataloader.set_target_idx(test_idx)
-        step = 0
-        step_per_epoch = dataloader.max_step_per_epoch
-        
-        for input_nodes, output_nodes, blocks in dataloader:
-            with torch.no_grad():
-                batch_feat = dataloader.get_feature()
-                batch_label = label[output_nodes]
-                ys.append(batch_label)
-                batch_pred = model(blocks, batch_feat)
-                y_hats.append(batch_pred)
-            step+=1
-            log_step(rank, "testing", step, step_per_epoch, timer)
+    acc = 0
+    if config.graph_name in ["products", "arxiv", "papers100M"]:
+        # proof-of-correctness: per-rank local test accuracy on real labels.
+        # collective-free (no all_reduce/barrier) and guarded so a failure here
+        # can never lose the timing row written below.
+        try:
+            t2 = Timer()
+            print(f"testing model accuracy on {device}")
+            model.eval()
+            ys = []
+            y_hats = []
+            dataloader.set_target_idx(test_idx)
+            step = 0
+            step_per_epoch = dataloader.max_step_per_epoch
 
-        acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=config.num_classes)
-        dist.all_reduce(acc, op=dist.ReduceOp.SUM)
-        acc = round(acc.item() * 100 / config.world_size, 2)
-        if rank == 0:
-            print(f"test accuracy={acc}% in {t2.duration()} secs")
-        dist.barrier()
-    else:
-        acc = 0
+            for input_nodes, output_nodes, blocks in dataloader:
+                with torch.no_grad():
+                    batch_feat = dataloader.get_feature()
+                    batch_label = label[output_nodes]
+                    ys.append(batch_label)
+                    batch_pred = model(blocks, batch_feat)
+                    y_hats.append(batch_pred)
+                step+=1
+                log_step(rank, "testing", step, step_per_epoch, timer)
+
+            acc = MF.accuracy(torch.cat(y_hats), torch.cat(ys), task="multiclass", num_classes=config.num_classes)
+            acc = round(acc.item() * 100, 2)
+            print(f"[rank {rank}] test accuracy={acc}% in {t2.duration()} secs")
+        except Exception as e:
+            print(f"WARN accuracy eval failed on rank {rank}: {e}")
+            acc = 0
 
     if rank == 0:
         profiler = Profiler(duration=duration, sampling_time=sampling_time,

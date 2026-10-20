@@ -127,6 +127,11 @@ fi
 log "Installing ogb (Open Graph Benchmark, used by the dataset-prep scripts)"
 pip install ogb
 
+# torchmetrics is imported by the node-prediction trainers (nodepred/*_trainer.py);
+# without it, training aborts with ModuleNotFoundError: No module named 'torchmetrics'.
+log "Installing torchmetrics (required by experiment/nodepred trainers)"
+pip install torchmetrics
+
 # ---- 8. Verification: torch + dgl on GPU ----
 log "Verifying torch + dgl on GPU"
 export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/build/lib:${LD_LIBRARY_PATH:-}"
