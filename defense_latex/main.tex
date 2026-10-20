@@ -20,115 +20,125 @@
 
 \chapter{Experimental Evaluation}
 
-\section{System}
-Spara (\texttt{gsplit}) is an efficient distributed GNN training system built on
-top of the Deep Graph Library (DGL). It introduces \emph{partition-aware
-sampling} and \emph{feature loading} to reduce cross-GPU communication during
-multi-GPU graph neural network training. Each GPU owns a partition of the graph
-(a METIS partition weighted by sampling frequency); sampling, feature caching,
-and the model forward/backward exchange only boundary data across GPUs via NCCL.
+Spara (\texttt{gsplit}) is an efficient distributed GNN training system built on top
+of the Deep Graph Library (DGL). It introduces \emph{partition-aware sampling} and
+\emph{feature loading} to reduce cross-GPU communication during multi-GPU GNN
+training: each GPU owns a METIS partition (weighted by sampling frequency), and
+sampling, feature caching, and the model forward/backward exchange only boundary data
+across GPUs via NCCL. We are additionally exploring \emph{hybrid parallelism}: for
+certain hidden sizes and depths the split communication cost becomes too large, and a
+hybrid of data- and split-parallelism should do better. To choose the best strategy
+\emph{without} building every variant, we use a cost-model simulator; this chapter
+reports the measured system performance (Section~\ref{sec:measured}) and how faithfully
+the simulator reproduces it (Section~\ref{sec:simulator}).
 
-\section{Experimental Setup}
-All experiments were run on \textbf{RunPod} using a node with
-\textbf{2$\times$ NVIDIA A100-SXM4-80GB} GPUs (NVLink/NVSwitch). The software
-stack is \textbf{CUDA 12.4}, \textbf{PyTorch 2.4 (cu124)}, and a custom build of
-\textbf{DGL} containing the Spara C++/CUDA operators.
+\paragraph{Setup.}
+All experiments ran on \textbf{RunPod}, on a node with \textbf{2$\times$ NVIDIA
+A100-SXM4-80GB} GPUs (NVLink/NVSwitch). Software: \textbf{CUDA 12.4},
+\textbf{PyTorch 2.4 (cu124)}, and a custom \textbf{DGL} build with the Spara
+C++/CUDA operators. We run the \texttt{split} (Spara) system on OGB
+node-classification graphs with \textbf{fanout 15 per layer}, hidden size 256, batch
+size 1024, real OGB features, on \textbf{2 GPUs} (\texttt{world\_size}$=2$, 2-partition
+map \texttt{\_w2\_ndst\_efreq\_xbal}, UVA mode), sweeping depth over $\{3,4,5\}$ and
+models \{GraphSAGE, GAT\}. All times are per-epoch averages.
 
-We evaluate the \texttt{split} (Spara) system on OGB node-classification graphs
-with a GraphSAGE model (hidden size 256, batch size 1024). The neighbor
-\textbf{fanout is 15 per layer}, and we sweep the number of sampling layers
-(depth) over $\{3,4,5\}$. Results below use \textbf{2 GPUs} (\texttt{world\_size}
-$=2$) with the corresponding 2-partition map
-(\texttt{\_w2\_ndst\_efreq\_xbal}), real OGB features, and the partition-aware
-split dataloader in UVA mode. Partition maps for both 2 and 4 partitions are
-generated and archived; the 4-GPU runs are future work.
+\section{Measured Spara Performance}
+\label{sec:measured}
 
-All timings are \textbf{per-epoch averages}; GPU memory is the peak allocated;
-test accuracy is reported from the partition-local evaluation on rank~0.
-
-\section{Results}
-
-\subsection{ogbn-arxiv}
-\texttt{ogbn-arxiv} ($\approx$0.17\,M nodes, 1.2\,M edges, 128-dim features,
-40 classes), 5 training epochs.
+Table~\ref{tab:measured} reports, per configuration, the time spent in the three
+phases: \textbf{sample} (neighbor sampling + the partition-aware neighbor exchange),
+\textbf{load} (feature gather to the GPU), and \textbf{train} (forward $+$ backward).
+Test accuracy confirms the pipeline trains correctly on real features.
 
 \begin{table}[h]
 \centering
-\caption{Spara (split) on ogbn-arxiv, 2$\times$A100-SXM, fanout 15, per-epoch.}
-\label{tab:arxiv}
-\begin{tabular}{r rrrrr r r r}
+\caption{Measured Spara (\texttt{split}) per-epoch breakdown. Fanout is 15 per layer;
+hidden size 256; 2$\times$A100-SXM.}
+\label{tab:measured}
+\begin{tabular}{l l r r r r r r r}
 \toprule
-Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
-GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
+Graph & Model & Layers & Fanout & Hidden & Sample (s) & Load (s) & Train (s) & Acc (\%) \\
 \midrule
-3 & 1.42 & 0.46 & 0.03 & 0.42 & 0.44 & 159 & 56.93 & 0.99 \\
-4 & 1.83 & 0.53 & 0.04 & 0.60 & 0.59 & 254 & 54.92 & 2.48 \\
-5 & 2.26 & 0.61 & 0.02 & 0.73 & 0.81 & 377 & 56.33 & 4.74 \\
+ogbn-arxiv      & SAGE & 3 & 15 & 256 & 0.46 & 0.03 & 0.86 & 56.9 \\
+ogbn-arxiv      & SAGE & 4 & 15 & 256 & 0.53 & 0.04 & 1.19 & 54.9 \\
+ogbn-arxiv      & SAGE & 5 & 15 & 256 & 0.61 & 0.02 & 1.54 & 56.3 \\
+\midrule
+ogbn-products   & SAGE & 3 & 15 & 256 & 1.26 & 0.09 & 2.05 & 86.5 \\
+ogbn-products   & SAGE & 4 & 15 & 256 & 4.32 & 0.03 & 8.11 & 86.7 \\
+ogbn-products   & SAGE & 5 & 15 & 256 & 8.61 & 0.22 & 22.65 & 87.2 \\
+\midrule
+ogbn-products   & GAT  & 3 & 15 & 256 & 1.30 & 0.09 & 5.80 & 85.8 \\
+ogbn-products   & GAT  & 4 & 15 & 256 & 4.16 & 0.01 & 15.66 & 86.5 \\
+ogbn-products   & GAT  & 5 & 15 & 256 & 8.76 & 0.24 & 44.85 & 86.3 \\
+\midrule
+ogbn-papers100M & SAGE & 3 & 15 & 256 & 10.61 & 0.11 & 9.33 & 45.5 \\
+ogbn-papers100M & SAGE & 4 & 15 & 256 & 26.84 & 4.42 & 19.49 & 46.1 \\
+ogbn-papers100M & SAGE & 5 & 15 & 256 & 48.36 & 31.66 & 47.22 & 45.3 \\
 \bottomrule
 \end{tabular}
 \end{table}
-
-\subsection{ogbn-papers100M}
-\texttt{ogbn-papers100M} ($\approx$111\,M nodes, 1.6\,B directed edges,
-128-dim features, 172 classes), 3 training epochs.
-
-\begin{table}[h]
-\centering
-\caption{Spara (split) on ogbn-papers100M, 2$\times$A100-SXM, fanout 15, per-epoch.}
-\label{tab:papers}
-\begin{tabular}{r rrrrr r r r}
-\toprule
-Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
-GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
-\midrule
-3 & 20.79 & 10.61 & 0.11 & 3.81 & 5.52 & \num{11618} & 45.45 & 58.1 \\
-4 & 51.14 & 26.84 & 4.42 & 8.87 & 10.62 & \num{12609} & 46.14 & 246.0 \\
-5 & 127.63 & 48.36 & 31.66 & 23.60 & 23.62 & \num{15289} & 45.26 & 802.3 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\subsection{ogbn-products}
-\emph{Run in progress --- results to be filled in once the 2-GPU sweep completes.}
-
-\begin{table}[h]
-\centering
-\caption{Spara (split) on ogbn-products, 2$\times$A100-SXM, fanout 15, per-epoch.}
-\label{tab:products}
-\begin{tabular}{r rrrrr r r r}
-\toprule
-Layers & Epoch (s) & Sample (s) & Feat (s) & Fwd (s) & Bwd (s) &
-GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
-\midrule
-3 & --- & --- & --- & --- & --- & --- & --- & --- \\
-4 & --- & --- & --- & --- & --- & --- & --- & --- \\
-5 & --- & --- & --- & --- & --- & --- & --- & --- \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\section{Discussion}
-Across both graphs, per-epoch time grows with sampling depth as the sampled
-subgraph (edges computed) expands super-linearly: on papers100M, going from 3 to
-5 layers grows edges computed from $58$\,M to $802$\,M and epoch time from
-$\sim$21\,s to $\sim$128\,s.
 
 \paragraph{Where the bottleneck is (and isn't).}
-Neighbor sampling is \emph{not} the primary bottleneck for choosing a parallelism
-strategy. The local sampling work depends only on graph topology and fanout: it is
-\textbf{independent of hidden size} and, across our runs, relatively insensitive to
-depth. It is also \emph{strategy-independent}---incurred identically under data,
-split, or hybrid parallelism---so it cannot be reduced by changing the parallelism
-strategy. (In the \texttt{split} measurements the reported ``sample'' phase additionally
-bundles the partition-aware neighbor exchange over NCCL, which is communication, not
-sampling, and is why that column is large.) The costs that actually drive the
-parallelism trade-off are \textbf{feature loading} and \textbf{cross-partition
-communication}, which grow with hidden size and depth---these are what the simulator
-models and what hybrid parallelism aims to reduce. On papers100M the feature-transfer
-cost rises sharply at depth~5 as the working set exceeds the on-GPU feature cache and
-more features are gathered from host memory over UVA.
+Neighbor sampling is \emph{not} the primary target for parallelism: the local sampling
+work depends only on topology and fanout, is \textbf{independent of hidden size}, and
+across our runs is relatively insensitive to depth. It is also
+\emph{strategy-independent}---incurred identically under data, split, or hybrid
+parallelism---so changing the parallelism strategy cannot reduce it. (In the
+\texttt{split} measurements the ``Sample'' column additionally bundles the
+partition-aware neighbor exchange over NCCL, i.e.\ communication, which is why it is
+large.) The costs that actually drive the parallelism trade-off are \textbf{feature
+loading} and \textbf{cross-partition communication}, which grow with hidden size and
+depth---these are what the simulator models and what hybrid parallelism aims to reduce.
+On papers100M the load cost jumps at depth~5 as the working set exceeds the on-GPU
+feature cache and more features are gathered from host memory over UVA; and GAT's
+heavier per-layer compute roughly doubles train time vs.\ SAGE at equal depth.
 
-Test accuracy is stable across depths ($\sim$55\% on arxiv, $\sim$45\% on papers100M
-in a short run), confirming the pipeline trains correctly on real features.
+\section{Simulator Fidelity}
+\label{sec:simulator}
+
+To pick a hybrid-parallelism strategy before building it, Spara includes a cost-model
+simulator (\texttt{get\_best\_strategy.py} $\rightarrow$
+\texttt{simulation/hybrid\_dp\_sim.py}). For a given graph, model, depth and hidden
+size it sweeps the \emph{split-point} $k$ (the layer from which split parallelism is
+used): $k=0$ is full split parallelism---identical to the measured \texttt{split}
+system---and $k=L$ is full data parallelism. For each $k$ it predicts the per-epoch
+\textbf{computation} cost (model-layer compute, timed on GPU), \textbf{communication}
+cost (cross-partition feature volume $\div$ interconnect bandwidth), and
+\textbf{data-loading} cost (frontier feature transfer $\div$ PCIe). The simulator writes
+results through the same logging path as the measured runs, so the two are directly
+comparable.
+
+To validate the simulator we compare its $k=0$ prediction against the measured numbers
+from Section~\ref{sec:measured}: predicted \emph{computation} vs.\ measured
+\emph{train}, and predicted \emph{data-loading} vs.\ measured \emph{load}. (Sampling
+time is deliberately not modelled---see above.)
+
+\begin{table}[h]
+\centering
+\caption{Simulator ($k{=}0$, full split) vs.\ measured, per-epoch. \emph{Simulator run
+in progress---values to be inserted once \texttt{run\_simulation.sh} completes.}}
+\label{tab:sim}
+\begin{tabular}{l l r r r r r}
+\toprule
+ & & \multicolumn{2}{c}{Train / Compute (s)} & \multicolumn{2}{c}{Load (s)} & Comm (s) \\
+\cmidrule(lr){3-4}\cmidrule(lr){5-6}
+Graph & Layers & Measured & Sim & Measured & Sim & Sim \\
+\midrule
+ogbn-products & 3 & 2.05  & --- & 0.09 & --- & --- \\
+ogbn-products & 4 & 8.11  & --- & 0.03 & --- & --- \\
+ogbn-products & 5 & 22.65 & --- & 0.22 & --- & --- \\
+\midrule
+ogbn-arxiv    & 3 & 0.86  & --- & 0.03 & --- & --- \\
+ogbn-arxiv    & 4 & 1.19  & --- & 0.04 & --- & --- \\
+ogbn-arxiv    & 5 & 1.54  & --- & 0.02 & --- & --- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{Calibration notes.}
+Two model choices affect how closely the prediction matches hardware and are being
+validated: (i) the interconnect model (NVLink vs.\ PCIe bandwidth) must match the
+A100-SXM NVLink fabric; (ii) the mapping from sampled hops to convolution layers in the
+compute-cost loop. These are being checked against the measured numbers above.
 
 \end{document}
