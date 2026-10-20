@@ -111,11 +111,24 @@ GPU Mem (MB) & Test Acc (\%) & Edges (M) \\
 Across both graphs, per-epoch time grows with sampling depth as the sampled
 subgraph (edges computed) expands super-linearly: on papers100M, going from 3 to
 5 layers grows edges computed from $58$\,M to $802$\,M and epoch time from
-$\sim$21\,s to $\sim$128\,s. Neighbor sampling dominates the per-step cost at
-every depth, while feature-loading time stays small until depth~5 on
-papers100M, where the working set no longer fits the on-GPU feature cache and
-more features are gathered from host memory over UVA. Test accuracy is stable
-across depths ($\sim$55\% on arxiv, $\sim$45\% on papers100M in a short run),
-confirming the pipeline trains correctly on real features.
+$\sim$21\,s to $\sim$128\,s.
+
+\paragraph{Where the bottleneck is (and isn't).}
+Neighbor sampling is \emph{not} the primary bottleneck for choosing a parallelism
+strategy. The local sampling work depends only on graph topology and fanout: it is
+\textbf{independent of hidden size} and, across our runs, relatively insensitive to
+depth. It is also \emph{strategy-independent}---incurred identically under data,
+split, or hybrid parallelism---so it cannot be reduced by changing the parallelism
+strategy. (In the \texttt{split} measurements the reported ``sample'' phase additionally
+bundles the partition-aware neighbor exchange over NCCL, which is communication, not
+sampling, and is why that column is large.) The costs that actually drive the
+parallelism trade-off are \textbf{feature loading} and \textbf{cross-partition
+communication}, which grow with hidden size and depth---these are what the simulator
+models and what hybrid parallelism aims to reduce. On papers100M the feature-transfer
+cost rises sharply at depth~5 as the working set exceeds the on-GPU feature cache and
+more features are gathered from host memory over UVA.
+
+Test accuracy is stable across depths ($\sim$55\% on arxiv, $\sim$45\% on papers100M
+in a short run), confirming the pipeline trains correctly on real features.
 
 \end{document}

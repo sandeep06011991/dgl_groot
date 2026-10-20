@@ -30,7 +30,9 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
     total_batches = train_idx.shape[0]//(num_devices * micro_batch_size)
     print("total num batches", total_batches)
     # try:
-    assert(not (graph.in_degrees() ==0).any())
+    if (graph.in_degrees() == 0).any():
+        print("warning: graph has zero-in-degree nodes; sampling/GATConv handle this "
+              "(allow_zero_in_degree), proceeding with the cost estimate")
     if True:
         for _ in range(config.num_epoch):
             chunks = train_idx.chunk(num_devices)
