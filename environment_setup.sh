@@ -40,8 +40,26 @@ log() { printf '\n=== %s ===\n\n' "$*"; }
 
 # ---- 1. Conda environment ----
 log "Setting up conda env at ${ENV_PATH}"
+# Make conda usable in this *non-interactive* shell. `conda` is normally only
+# wired up by the 'conda init' block in ~/.bashrc, which bash does NOT read
+# unless started with -i. So a plain `bash environment_setup.sh` would otherwise
+# die here even though conda is installed. Locate conda's base from the env that
+# `conda init` leaves behind (or common install paths) and source its profile
+# script, so `conda activate` works without requiring `bash -i`.
 if ! command -v conda &>/dev/null; then
-  echo "conda not found on PATH. This script assumes conda is already installed." >&2
+  for base in "${_CONDA_ROOT:-}" "${CONDA_EXE:+$(dirname "$(dirname "${CONDA_EXE}")")}" \
+              "${HOME}/miniconda3" "${HOME}/anaconda3" /home/miniconda3 /opt/conda; do
+    if [ -n "${base}" ] && [ -f "${base}/etc/profile.d/conda.sh" ]; then
+      # shellcheck disable=SC1091
+      source "${base}/etc/profile.d/conda.sh"
+      break
+    fi
+  done
+fi
+if ! command -v conda &>/dev/null; then
+  echo "ERROR: conda not found. Install Miniconda first, then re-run this script." >&2
+  echo "  (If conda IS installed, run it from a shell where conda is initialized," >&2
+  echo "   e.g. 'bash -i environment_setup.sh'.)" >&2
   exit 1
 fi
 source "$(conda info --base)/etc/profile.d/conda.sh"

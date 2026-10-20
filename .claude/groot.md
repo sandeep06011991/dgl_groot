@@ -12,14 +12,38 @@ python setup.py build_ext --inplace
 - C++17 compiler, CMake 3.18+, Ninja
 - Third-party deps: GKlib, METIS, oneTBB, NCCL (built by `init.sh`)
 
-### One-time environment setup
+### One-time environment setup (from scratch)
+
+RunPod pods are ephemeral: on termination the container filesystem (conda, the
+env, and this repo, all under `/home` on the overlay mount) is wiped, so the
+whole setup is redone on each new pod. The flow:
+
 ```bash
+# 1. Install Miniconda (if not already present) and create + ACTIVATE an env.
+#    conda itself and the env are your manual steps; the script installs INTO
+#    whatever env is active.
+conda create -y -p /home/groot_env python=3.11
+conda activate /home/groot_env
+
+# 2. Clone the repo and run the setup from inside the activated env.
+git clone <repo-url> /home/dgl_groot
+cd /home/dgl_groot
 bash environment_setup.sh
 ```
-Creates/reuses a conda env (installs CUDA 12.4 toolkit, gxx, PyTorch 2.4.0 cu124,
-PyG), builds the third-party deps via `init.sh`, then does the first DGL build by
-calling `build.sh`. By default it installs into the currently-activated conda env;
-override with `ENV_PATH=/path/to/env`.
+
+`environment_setup.sh` installs CUDA 12.4 toolkit + gxx + CMake/Ninja, PyTorch
+2.4.0 (cu124), PyG and `ogb` into the active env, builds the third-party deps
+via `init.sh`, then does the first DGL build via `build.sh`.
+
+- **Which env it installs into:** by default the currently-activated conda env
+  (`ENV_PATH` defaults to `$CONDA_PREFIX`). Override with `ENV_PATH=/path/to/env`
+  to target a different one, or `ENV_NAME=...` to create a sibling env.
+- **No `bash -i` needed:** `conda init` only wires up the `conda` command for
+  *interactive* shells (via `~/.bashrc`), so a plain non-interactive
+  `bash environment_setup.sh` historically failed at the conda check. The script
+  now locates conda's base itself (from `$_CONDA_ROOT`/`$CONDA_EXE`/common install
+  paths) and sources its `conda.sh`, so running it inside the active env works
+  directly. (`bash -i environment_setup.sh` still works if you prefer.)
 
 ### Rebuilding during development
 The compile is in its own script so you can re-run it as often as you like:
