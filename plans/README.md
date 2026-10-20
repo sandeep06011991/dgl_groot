@@ -10,9 +10,17 @@ Two new parallelism schemes to build on top of the existing Spara/gsplit **split
    *trigger the shuffle at a later layer* rather than from layer 0.
 
 2. **Pipeline + Split** — [`02_pipeline_plus_split.md`](02_pipeline_plus_split.md)
-   Two micro-batch **streams** run alternately on the *same* model; the backward
-   passes accumulate gradients before a single optimizer step. Expected to be mostly an
-   **external driver** change (not a model change).
+   Two micro-batch **streams** staggered so one stream's compute overlaps the other's
+   communication (single NCCL comm, sequential sampling); backward passes accumulate
+   gradients before a single optimizer step. Mostly an **external driver** change.
+
+Plus a cross-cutting study:
+
+3. **Configurations & GPU spectrum** — [`03_configurations_and_gpus.md`](03_configurations_and_gpus.md)
+   Which strategy wins depends on the GPU's compute-vs-interconnect ratio (fast-compute/
+   slow-comm → DP; fast-comm → split; both high → pipeline). Maps RunPod GPU types onto
+   that spectrum, assesses whether the simulator captures it, and defines the "interesting
+   situations" matrix to run the framework in.
 
 ## Methodology (applies to both)
 
