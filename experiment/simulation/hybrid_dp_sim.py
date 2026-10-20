@@ -56,7 +56,8 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                         new_microbatches = []
                         for layer_nds in current_microbatches:
                             subgraph = dgl.sampling.sample_neighbors(graph, layer_nds, fanout)
-                            computation_cost += measure_compute_cost_layer(subgraph, model_layers[-layer_no], layer_nds )
+                            li = len(fanouts) - 1 - layer_no   # hop j (seeds-outward) -> conv L-1-j
+                            computation_cost += measure_compute_cost_layer(subgraph, model_layers[li], layer_nds, input_requires_grad=(li != 0))
                             torch.cuda.empty_cache()
                             frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                             new_microbatches.append(frontier)
@@ -70,8 +71,9 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                     if layer_no >= k:
                         layer_nds = minibatch
                         subgraph = dgl.sampling.sample_neighbors(graph, layer_nds, fanout)
-                        in_src_feats = model_layers[-layer_no]._in_src_feats
-                        computation_cost += measure_compute_cost_layer(subgraph, model_layers[-layer_no], layer_nds )
+                        li = len(fanouts) - 1 - layer_no   # hop j (seeds-outward) -> conv L-1-j
+                        in_src_feats = model_layers[li]._in_src_feats
+                        computation_cost += measure_compute_cost_layer(subgraph, model_layers[li], layer_nds, input_requires_grad=(li != 0))
                         frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                         minibatch = (frontier)
                         if layer_no == lastlayer:

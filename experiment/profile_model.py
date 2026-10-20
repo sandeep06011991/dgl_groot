@@ -86,8 +86,9 @@ def main():
         total = 0.0
         cur2 = seeds
         for i, fo in enumerate(fanouts):
+            li = len(fanouts) - 1 - i   # hop i (seeds-outward) -> conv L-1-i (fixed pairing)
             sg = dgl.sampling.sample_neighbors(graph, cur2, fo)
-            total += measure_compute_cost_layer(sg, layers[-i], cur2)  # mirrors the sim's indexing
+            total += measure_compute_cost_layer(sg, layers[li], cur2, input_requires_grad=(li != 0))
             cur2 = torch.cat([sg.edges()[0], sg.edges()[1]]).unique()
         return total
 

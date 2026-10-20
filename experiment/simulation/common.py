@@ -9,7 +9,7 @@ BARRIER_COST = 1e-6 # 1ms
 
 # subgraph -> bipartite graph
 # model layer is a torch representation 
-def measure_compute_cost_layer(subgraph, model_layer, seeds):
+def measure_compute_cost_layer(subgraph, model_layer, seeds, input_requires_grad=True):
     # 1. re_index the subgraph [0, N], where N is unique nodes.
     block = dgl.to_block(subgraph, seeds)
     # 2. Create a block with dummy input features sized to the layer's input dim.
@@ -18,7 +18,10 @@ def measure_compute_cost_layer(subgraph, model_layer, seeds):
     num_dest = block.num_dst_nodes()
     assert(num_dest == seeds.shape[0])
     in_feats = model_layer._in_src_feats
-    feat = torch.empty((num_src, in_feats), device=device, requires_grad=True)
+    # The true input layer reads raw features (a leaf, no input gradient); inner
+    # layers propagate a gradient to their input. Model that so the backward cost
+    # matches the fused step rather than over-counting an input grad everywhere.
+    feat = torch.empty((num_src, in_feats), device=device, requires_grad=input_requires_grad)
     block = block.to(device)
 
     # 3. Time a full training step for this layer: forward + backward, so the
