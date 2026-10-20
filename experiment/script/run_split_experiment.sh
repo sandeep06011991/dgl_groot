@@ -3,19 +3,21 @@
 # graph across sampling depths. Ensures data first (provision_data.sh), then
 # runs train_main.py once per depth, writing one CSV row each.
 #
-#   Usage:  run_split_experiment.sh <graph> [world_size] ["depths"] [num_epoch]
-#   e.g.    run_split_experiment.sh arxiv 2 "3 4 5" 5
-#           run_split_experiment.sh papers100M 2 "3 4 5" 3
+#   Usage:  run_split_experiment.sh <graph> [world_size] ["depths"] [num_epoch] [model]
+#   e.g.    run_split_experiment.sh arxiv 2 "3 4 5" 5 sage
+#           run_split_experiment.sh products 2 "3 4 5" 5 gat
 #
-# world_size selects the partition map (w<world_size>) and the #GPUs. Results:
-#   experiment/logs/<graph>_split_w<ws>_d<depth>.csv
+# world_size selects the partition map (w<world_size>) and the #GPUs. model is
+# sage|gat. Results:
+#   experiment/logs/<graph>_<model>_w<ws>_d<depth>.csv
 # Requires the conda env active (so LD_LIBRARY_PATH/CUDA/torch resolve); see RUNBOOK.md.
 set -uo pipefail
 
-GRAPH="${1:?usage: run_split_experiment.sh <graph> [world_size] [depths] [num_epoch]}"
+GRAPH="${1:?usage: run_split_experiment.sh <graph> [world_size] [depths] [num_epoch] [model]}"
 WS="${2:-2}"
 DEPTHS="${3:-3 4 5}"
 NUM_EPOCH="${4:-3}"
+MODEL="${5:-sage}"
 : "${data_dir:=/root/graph}"
 : "${MACHINE_NAME:=a100sxm}"; export MACHINE_NAME
 
@@ -39,17 +41,17 @@ cd "$PD"
 for d in $DEPTHS; do
   # fanout = d copies of "15"
   fan=$(printf '15%.0s,' $(seq 1 "$d")); fan=${fan%,}
-  echo "== $GRAPH  split  world_size=$WS  depth=$d  fanout=$fan =="
-  python3 train_main.py --system=split --model=sage --fanouts="$fan" \
+  echo "== $GRAPH  split  model=$MODEL  world_size=$WS  depth=$d  fanout=$fan =="
+  python3 train_main.py --system=split --model="$MODEL" --fanouts="$fan" \
     --graph_name="$GRAPH" --data_dir="$data_dir" --cache_size=10G --batch_size=1024 \
-    --world_size="$WS" --num_epoch="$NUM_EPOCH" --log_file="${GRAPH}_split_w${WS}_d${d}.csv" \
-    || echo "WARN train depth $d exited nonzero"
+    --world_size="$WS" --num_epoch="$NUM_EPOCH" --log_file="${GRAPH}_${MODEL}_w${WS}_d${d}.csv" \
+    || echo "WARN train $MODEL depth $d exited nonzero"
 done
 
-echo "== results =="
+echo "== results ($GRAPH $MODEL w$WS) =="
 for d in $DEPTHS; do
-  echo "-- $GRAPH w$WS d$d --"
-  tail -n1 "logs/${GRAPH}_split_w${WS}_d${d}.csv" 2>/dev/null || echo "(missing)"
+  echo "-- d$d --"
+  tail -n1 "logs/${GRAPH}_${MODEL}_w${WS}_d${d}.csv" 2>/dev/null || echo "(missing)"
 done
 
 # Back up result CSVs to B2 (pods are ephemeral + no network volume, so the logs
@@ -57,7 +59,7 @@ done
 : "${B2_REMOTE:=gsplit-b2}"; : "${B2_PREFIX:=gsplit-data/groot}"
 if command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q "^${B2_REMOTE}:"; then
   echo "== backing up logs to B2 =="
-  rclone copy "$PD/logs" "$B2_REMOTE:$B2_PREFIX/logs" --include "${GRAPH}_split_w${WS}_d*.csv" -P || echo "WARN log backup failed"
+  rclone copy "$PD/logs" "$B2_REMOTE:$B2_PREFIX/logs" --include "${GRAPH}_${MODEL}_w${WS}_d*.csv" -P || echo "WARN log backup failed"
 else
   echo "NOTE: no '$B2_REMOTE' rclone remote; CSVs are only in $PD/logs/ — scp them off before 'pod delete'."
 fi
