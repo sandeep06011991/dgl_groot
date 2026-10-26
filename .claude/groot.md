@@ -7,32 +7,55 @@ python setup.py build_ext --inplace
 ```
 
 ### Prerequisites
-- CUDA 11.8+ with `CUDA_HOME` set
-- PyTorch 2.0.1, PyG, torchmetrics, ogb
+- CUDA 12.4 with `CUDA_HOME` set (the conda env created by `environment_setup.sh` provides this)
+- PyTorch 2.4.0 (cu124), PyG, torchmetrics, ogb
 - C++17 compiler, CMake 3.18+, Ninja
 - Third-party deps: GKlib, METIS, oneTBB, NCCL (built by `init.sh`)
 
-### Build Steps
+### One-time environment setup (from scratch)
 
-**Step 1: Build third-party dependencies (only needed once)**
-```bash
-bash init.sh
-```
-Builds GKlib, METIS, oneTBB, and NCCL into `third_party/build/`.
+RunPod pods are ephemeral: on termination the container filesystem (conda, the
+env, and this repo, all under `/home` on the overlay mount) is wiped, so the
+whole setup is redone on each new pod. The flow:
 
-**Step 2: Build DGL/Spara**
 ```bash
-export CUDA_HOME=/path/to/cuda   # or conda env path
-cmake -B build -GNinja -DCMAKE_BUILD_TYPE=debug -DBUILD_TYPE=debug
-cmake --build build -j
-cd python && pip install . && cd ../
+# 1. Install Miniconda (if not already present) and create + ACTIVATE an env.
+#    conda itself and the env are your manual steps; the script installs INTO
+#    whatever env is active.
+conda create -y -p /home/groot_env python=3.11
+conda activate /home/groot_env
+
+# 2. Clone the repo and run the setup from inside the activated env.
+git clone <repo-url> /home/dgl_groot
+cd /home/dgl_groot
+bash environment_setup.sh
 ```
 
-Or simply run:
+`environment_setup.sh` installs CUDA 12.4 toolkit + gxx + CMake/Ninja, PyTorch
+2.4.0 (cu124), PyG and `ogb` into the active env, builds the third-party deps
+via `init.sh`, then does the first DGL build via `build.sh`.
+
+- **Which env it installs into:** by default the currently-activated conda env
+  (`ENV_PATH` defaults to `$CONDA_PREFIX`). Override with `ENV_PATH=/path/to/env`
+  to target a different one, or `ENV_NAME=...` to create a sibling env.
+- **No `bash -i` needed:** `conda init` only wires up the `conda` command for
+  *interactive* shells (via `~/.bashrc`), so a plain non-interactive
+  `bash environment_setup.sh` historically failed at the conda check. The script
+  now locates conda's base itself (from `$_CONDA_ROOT`/`$CONDA_EXE`/common install
+  paths) and sources its `conda.sh`, so running it inside the active env works
+  directly. (`bash -i environment_setup.sh` still works if you prefer.)
+
+### Rebuilding during development
+The compile is in its own script so you can re-run it as often as you like:
 ```bash
-bash build.sh
+./build.sh            # debug build  -> build/          (default; for development)
+./build.sh release    # release build -> build-release/ (for performance measurements)
+./build.sh debug --clean   # wipe the build dir and reconfigure from scratch
 ```
-Note: `build.sh` currently has `exit 1` after `pip install .` — lines after that are vestigial.
+`build.sh` resolves `CUDA_HOME` automatically from the active conda env
+(`CONDA_PREFIX`) — this is what prevents the `/lib/libcudart.so missing` link
+error that occurs when `CUDA_HOME` is empty at cmake-configure time. Debug and
+release use separate build dirs so both can coexist.
 
 **Verify installation:**
 ```bash
@@ -40,9 +63,10 @@ python -c "import dgl; print(dgl.__path__)"
 ```
 
 ### CMake Build Types
-- `dev` — debug symbols, `-O0 -g3` (default in `build.sh`)
-- `dogfood` — intermediate testing, `-O2`
-- `release` — production, `-O2`
+DGL's `BUILD_TYPE` option accepts `dev`, `dogfood`, `release` (see `CMakeLists.txt`);
+`build.sh` passes `debug`/`release` as both `CMAKE_BUILD_TYPE` and `BUILD_TYPE`.
+`CMAKE_BUILD_TYPE` controls optimization/debug flags (`debug` → `-O0 -g`,
+`release` → optimized).
 
 Key CMake options: `USE_CUDA=ON`, `BUILD_TORCH=ON` (builds tensoradapter for PyTorch), `BUILD_SPARSE/BUILD_GRAPHBOLT` (disabled by default).
 

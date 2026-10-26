@@ -1,9 +1,17 @@
 #!/usr/bin/env bash
-# Build a clean conda environment for DGL/Spara against PyTorch 2.4.0 + CUDA 12.4,
-# build DGL from this checkout, and verify torch/dgl can both use the GPU.
+# One-time environment provisioning for DGL/Spara: create (or reuse) a conda env
+# with PyTorch 2.4.0 + CUDA 12.4, build the third-party deps, then compile and
+# verify DGL from this checkout.
+#
+# This is the *setup* script, run once per machine/env. The actual DGL compile is
+# delegated to build.sh, which you re-run as often as you like during development
+# (./build.sh debug | ./build.sh release). This script just calls it for you once.
 #
 # Assumes `conda` is already installed and on PATH. Designed to run end-to-end on a
 # fresh GPU box (e.g. a RunPod pod) as well as on Unity.
+#
+# By default it installs into the currently-activated conda env. Override the
+# target env with ENV_PATH=/path/to/env, or set ENV_NAME to create a sibling env.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -11,6 +19,12 @@ cd "${SCRIPT_DIR}"
 
 # ---- Configuration (override via env vars) ----
 ENV_NAME="${ENV_NAME:-dgl_groot_cu124}"
+# Default to the already-active conda env (unless it's base); otherwise fall back
+# to a sibling conda_environment/<ENV_NAME> that this script will create.
+if [ -z "${ENV_PATH:-}" ] && [ -n "${CONDA_PREFIX:-}" ] \
+   && [ "$(basename "${CONDA_PREFIX}")" != "base" ]; then
+  ENV_PATH="${CONDA_PREFIX}"
+fi
 ENV_PATH="${ENV_PATH:-${SCRIPT_DIR}/../conda_environment/${ENV_NAME}}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.11}"
 CUDA_VERSION="${CUDA_VERSION:-12.4.0}"
@@ -26,8 +40,26 @@ log() { printf '\n=== %s ===\n\n' "$*"; }
 
 # ---- 1. Conda environment ----
 log "Setting up conda env at ${ENV_PATH}"
+# Make conda usable in this *non-interactive* shell. `conda` is normally only
+# wired up by the 'conda init' block in ~/.bashrc, which bash does NOT read
+# unless started with -i. So a plain `bash environment_setup.sh` would otherwise
+# die here even though conda is installed. Locate conda's base from the env that
+# `conda init` leaves behind (or common install paths) and source its profile
+# script, so `conda activate` works without requiring `bash -i`.
 if ! command -v conda &>/dev/null; then
-  echo "conda not found on PATH. This script assumes conda is already installed." >&2
+  for base in "${_CONDA_ROOT:-}" "${CONDA_EXE:+$(dirname "$(dirname "${CONDA_EXE}")")}" \
+              "${HOME}/miniconda3" "${HOME}/anaconda3" /home/miniconda3 /opt/conda; do
+    if [ -n "${base}" ] && [ -f "${base}/etc/profile.d/conda.sh" ]; then
+      # shellcheck disable=SC1091
+      source "${base}/etc/profile.d/conda.sh"
+      break
+    fi
+  done
+fi
+if ! command -v conda &>/dev/null; then
+  echo "ERROR: conda not found. Install Miniconda first, then re-run this script." >&2
+  echo "  (If conda IS installed, run it from a shell where conda is initialized," >&2
+  echo "   e.g. 'bash -i environment_setup.sh'.)" >&2
   exit 1
 fi
 source "$(conda info --base)/etc/profile.d/conda.sh"
@@ -39,6 +71,13 @@ else
 fi
 conda activate "${ENV_PATH}"
 
+# Ensure the env owns its own Python + pip, so the env's pip (not a system one on
+# PATH) is used below and `pip install .` installs DGL *into this env* — the whole
+# point of isolating from the container. Also covers reusing an env that only had
+# the CUDA toolkit installed.
+conda install -y "python=${PYTHON_VERSION}" pip
+echo "Using pip: $(command -v pip)"
+
 # ---- 2. CUDA toolkit + compiler + build tools (inside the env, self-contained) ----
 log "Installing CUDA ${CUDA_VERSION} toolkit, gxx==${GXX_VERSION}, cmake, ninja"
 if ! conda install -y -c "nvidia/label/cuda-${CUDA_VERSION}" cuda-toolkit; then
@@ -47,6 +86,12 @@ if ! conda install -y -c "nvidia/label/cuda-${CUDA_VERSION}" cuda-toolkit; then
 fi
 conda install -y -c conda-forge "gxx==${GXX_VERSION}"
 pip install -U cmake ninja
+
+# Nsight Systems (nsys) for profiling the simulator / training (best-effort).
+log "Installing Nsight Systems (nsys) for profiling"
+conda install -y -c nvidia nsight-systems || \
+  conda install -y -c conda-forge nsight-systems || \
+  echo "WARN: could not install nsight-systems via conda; install manually if nsys profiling is needed" >&2
 
 export CUDA_HOME="${ENV_PATH}"
 export PATH="${CUDA_HOME}/bin:${PATH}"
@@ -64,13 +109,10 @@ log "Building third-party dependencies via init.sh"
 bash "${SCRIPT_DIR}/init.sh"
 
 # ---- 5. Build + install DGL/Spara from this checkout ----
-log "Building DGL/Spara from source"
-rm -rf "${SCRIPT_DIR}/build"
-cmake -B "${SCRIPT_DIR}/build" -S "${SCRIPT_DIR}" -GNinja \
-  -DCMAKE_BUILD_TYPE=debug -DBUILD_TYPE=debug \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5
-cmake --build "${SCRIPT_DIR}/build" -j
-(cd "${SCRIPT_DIR}/python" && pip install .)
+# The compile itself lives in build.sh so it can be re-run during development.
+# Pass CUDA_HOME through so build.sh links against this env's CUDA toolkit.
+log "Building DGL/Spara from source (debug) via build.sh"
+CUDA_HOME="${CUDA_HOME}" bash "${SCRIPT_DIR}/build.sh" debug --clean
 
 # ---- 6. PyG extension stack (best-effort; nothing in groot/Spara depends on it) ----
 if [ "${SKIP_PYG}" != "1" ]; then
@@ -85,7 +127,18 @@ else
   echo "Skipping PyG install (SKIP_PYG=1)"
 fi
 
-# ---- 7. Verification: torch + dgl on GPU ----
+# ---- 7. ogb (Open Graph Benchmark) ----
+# Required by the dataset-prep scripts, e.g. experiment/prepare_dataset/get_npgraph.py
+# (`from ogb.nodeproppred import DglNodePropPredDataset`).
+log "Installing ogb (Open Graph Benchmark, used by the dataset-prep scripts)"
+pip install ogb
+
+# torchmetrics is imported by the node-prediction trainers (nodepred/*_trainer.py);
+# without it, training aborts with ModuleNotFoundError: No module named 'torchmetrics'.
+log "Installing torchmetrics (required by experiment/nodepred trainers)"
+pip install torchmetrics
+
+# ---- 8. Verification: torch + dgl on GPU ----
 log "Verifying torch + dgl on GPU"
 export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/build/lib:${LD_LIBRARY_PATH:-}"
 python - <<'EOF'
