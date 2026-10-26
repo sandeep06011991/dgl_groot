@@ -5,7 +5,7 @@ from torch.utils.data import DataLoader
 from .measurements import KProfiler
 # Approximate unidirectional bandwidth in bytes/sec
 NVLINK_BW       = 300e9   # NVLink 3.0  ~300 GB/s
-PCIE_BW         =  16e9   # PCIe 4.0 x16 ~16 GB/s
+PCIE_BW         =  25e9   # PCIe 4.0 x16, measured ~25-26 GB/s host->GPU UVA gather
 BYTES_PER_FLOAT = 4         
 BARRIER_COST = 1e-6 # 1ms 
 
@@ -29,8 +29,18 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
     dataloading_cost = 0
     total_batches = train_idx.shape[0]//(num_devices * micro_batch_size)
     print("total num batches", total_batches)
+    # Fraction of input features NOT resident in the per-GPU feature cache.
+    # Each GPU caches its partition's nodes up to cache_size; collectively the
+    # GPUs cache min(1, total_cached / N) of all nodes, and only the uncached
+    # remainder is charged PCIe transfer. (With cache_size=0 this is 1.0 =
+    # transfer everything, the previous behaviour.)
+    total_cached = (cache_bytes(config.cache_size) // (input_feat_size * 4)) * num_devices
+    uncached_frac = max(0.0, 1.0 - min(1.0, total_cached / graph.num_nodes()))
+    print(f"cache_size={config.cache_size} -> uncached_frac={uncached_frac:.4f}")
     # try:
-    assert(not (graph.in_degrees() ==0).any())
+    if (graph.in_degrees() == 0).any():
+        print("warning: graph has zero-in-degree nodes; sampling/GATConv handle this "
+              "(allow_zero_in_degree), proceeding with the cost estimate")
     if True:
         for _ in range(config.num_epoch):
             chunks = train_idx.chunk(num_devices)
@@ -46,12 +56,13 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                         new_microbatches = []
                         for layer_nds in current_microbatches:
                             subgraph = dgl.sampling.sample_neighbors(graph, layer_nds, fanout)
-                            computation_cost += measure_compute_cost_layer(subgraph, model_layers[-layer_no], layer_nds )
+                            li = len(fanouts) - 1 - layer_no   # hop j (seeds-outward) -> conv L-1-j
+                            computation_cost += measure_compute_cost_layer(subgraph, model_layers[li], layer_nds, input_requires_grad=(li != 0))
                             torch.cuda.empty_cache()
                             frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                             new_microbatches.append(frontier)
                             if layer_no == lastlayer:
-                                dataloading_cost += frontier.shape[0] * input_feat_size * 4 / PCIE_BW
+                                dataloading_cost += frontier.shape[0] * uncached_frac * input_feat_size * 4 / PCIE_BW
                         current_microbatches = new_microbatches
                         
                     if layer_no == k:
@@ -60,12 +71,13 @@ def simulate_optimal_k( graph, train_idx, partition_map, device, k,
                     if layer_no >= k:
                         layer_nds = minibatch
                         subgraph = dgl.sampling.sample_neighbors(graph, layer_nds, fanout)
-                        in_src_feats = model_layers[-layer_no]._in_src_feats
-                        computation_cost += measure_compute_cost_layer(subgraph, model_layers[-layer_no], layer_nds )
+                        li = len(fanouts) - 1 - layer_no   # hop j (seeds-outward) -> conv L-1-j
+                        in_src_feats = model_layers[li]._in_src_feats
+                        computation_cost += measure_compute_cost_layer(subgraph, model_layers[li], layer_nds, input_requires_grad=(li != 0))
                         frontier = torch.cat([subgraph.edges()[0], subgraph.edges()[1]]).unique()
                         minibatch = (frontier)
                         if layer_no == lastlayer:
-                            dataloading_cost += frontier.shape[0] * input_feat_size * 4 / PCIE_BW
+                            dataloading_cost += frontier.shape[0] * uncached_frac * input_feat_size * 4 / PCIE_BW
                         src, dest = subgraph.edges()
                         # compute_cost of split parallelism.
                         comm_volume = []
