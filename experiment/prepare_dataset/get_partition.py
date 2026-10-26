@@ -135,9 +135,13 @@ def get_args():
     parser.add_argument('--graph_name', default="products", type=str, help="Input graph name", choices=["products", "papers100M", "orkut", "friendster","arxiv"])
     parser.add_argument('--data_dir', required=True, type=str, help="Input graph directory")
     parser.add_argument('--num_partition', default=4, type=int, help='Number of partitions')
-    parser.add_argument('--node_weight', default="uniform", type=str, help="Node weight configuraion", choices=["uniform", "degree", "src", "dst", "input"] )
-    parser.add_argument('--edge_weight', default="uniform", type=str, help="Edge weight configuraion", choices=["uniform", "freq"])
-    parser.add_argument('--bal', default="bal", type=str, help='Balance target idx on each partition or not', choices=["bal", "xbal"])
+    # Defaults match the training path (utils/args.py) and provision_data.sh so the
+    # default partition map is always `ndst_efreq_xbal` on every entry point. Do not
+    # revert to uniform/uniform/bal: training's load_partition_map would then look for
+    # a differently-named map than this script produces.
+    parser.add_argument('--node_weight', default="dst", type=str, help="Node weight configuraion", choices=["uniform", "degree", "src", "dst", "input"] )
+    parser.add_argument('--edge_weight', default="freq", type=str, help="Edge weight configuraion", choices=["uniform", "freq"])
+    parser.add_argument('--bal', default="xbal", type=str, help='Balance target idx on each partition or not', choices=["bal", "xbal"])
     return parser.parse_args()
 
 if __name__ == "__main__":

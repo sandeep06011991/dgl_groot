@@ -7,7 +7,8 @@ Graphs are stored as NumPy arrays in `<data_dir>/<graph_name>/`:
 - `indices_xsym.npy` / `indices_sym.npy` — CSC indices
 - `feat.npy`, `label.npy` — node features and labels
 - `train_idx.npy`, `valid_idx.npy`, `test_idx.npy` — split indices
-- `edge_weight.npy`, `node_weight_*.npy` — frequency weights for partitioning
+- `edge_weight.npy`, `node_weight.npy` — sampling-frequency weights (build-only
+  intermediates: read by `get_partition.py` to build maps, not read at train time)
 
 Partition maps live in `<data_dir>/partition_map/<graph_name>/`:
 - Filename convention: `<graph_name>_w<num_partitions>_n<node_weight>_e<edge_weight>_<bal>.npy`
@@ -53,8 +54,9 @@ bash experiment/script/main.sh
 cd experiment/prepare_dataset
 python3 get_npgraph.py --data_dir=../../dataset/graph --graph_name=products
 python3 get_weight.py --data_dir=../../dataset/graph --graph_name=products
+# defaults are already dst/freq/xbal (-> map name ndst_efreq_xbal); flags shown for clarity
 python3 get_partition.py --num_partition=4 --graph_name=products \
-    --data_dir=../../dataset/graph --node_mode=dst --edge_mode=freq --bal=xbal
+    --data_dir=../../dataset/graph --node_weight=dst --edge_weight=freq --bal=xbal
 ```
 
 ## Python Tests

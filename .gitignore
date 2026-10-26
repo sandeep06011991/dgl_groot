@@ -182,3 +182,15 @@ logs/*.err
 logs/*.out
 *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].err
 *-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9].out
+
+# Secrets — B2 creds live outside the repo; never commit any filled-in env file.
+# (repo is PUBLIC). The placeholder template b2.env.example IS tracked.
+*.env
+**/b2.env
+!experiment/script/b2.env.example
+
+# Partition maps are large binaries persisted to Backblaze B2 (Tier A2), not git.
+partition_map/
+# Result CSVs (experiment/logs/*.csv) ARE tracked on purpose — keep them out of the
+# broad ignores above; only the *.err/*.out runtime logs are ignored.
+!experiment/logs/*.csv
