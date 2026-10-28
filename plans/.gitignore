@@ -1,0 +1,9 @@
+# Built PDF (regenerate with ./build_pdf.sh) and LaTeX intermediates
+plans.pdf
+*.pdf
+*.aux
+*.log
+*.out
+# markdown.sty conversion cache (created if a build ever runs in this dir)
+_markdown_*/
+*.markdown.*

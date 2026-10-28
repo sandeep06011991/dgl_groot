@@ -12,8 +12,9 @@ cross-partition fan-in is large; the earliest layers (closest to seeds, smallest
 frontier) can stay replicated/DP and avoid communication entirely. `k` is the
 split-from-layer: `k=0` = today's full split, `k=L` = pure DP.
 
-The authoritative cost-model spec already exists: `experiment/simulation/hybrid_dp_sim.py::simulate_optimal_k`
-("k=0 full split … k=L data parallelism"; microbatches concatenated at layer k).
+`experiment/simulation/hybrid_dp_sim.py::simulate_optimal_k` is the authoritative
+cost-model spec ("k=0 full split … k=L data parallelism"; microbatches concatenated
+at layer k).
 
 ## How gsplit works today (what we extend)
 - **Per-layer shuffle in the model.** `python/dgl/dev/splitmodel.py` `SRC_TO_DEST.forward`

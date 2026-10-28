@@ -20,14 +20,22 @@ bandwidth) plane, and the **framework should pick per (GPU, graph, hidden, depth
 ## RunPod GPU spectrum (from `runpodctl gpu list`)
 Interconnect/compute figures below are **nominal vendor specs to confirm empirically**
 (via the probes in the last section), not measured this session. "Inter-GPU BW" is the
-2-GPU link that the shuffle rides.
+2-GPU link that the shuffle rides. The spectrum is split across two tables — specs, then
+example GPUs — sharing the archetype key **A–D**, so neither row runs off the page.
 
-| Archetype | Example GPU(s) | Inter-GPU link | ~BF16 TFLOPS | $/hr (secure) | Favors |
-|---|---|---|---|---|---|
-| **A: high compute / slow comm** | RTX 4090 (24G), RTX 5090 (32G), L40S, RTX 6000 Ada, A40/A6000 | **PCIe only** (~25–64 GB/s), no NVLink | 165–360+ | 0.59–1.19 | **DP / redundant (Plan 1, large k)** |
-| **B: fast comm / moderate compute** | **A100 SXM** (80G), A100 SXM 40G | **NVLink** ~600 GB/s (NV12×25) | ~312 | 1.79 | **gsplit / split (k=0)** |
-| **C: both high (comparable)** | **H100 SXM** (80G), **H200 SXM** (141G) | **NVLink** ~900 GB/s | ~990 | 3.99–5.29 | **pipeline (Plan 2)** |
-| **D: middle / PCIe datacenter** | A100 PCIe (80G), H200 NVL | PCIe / partial NVLink | ~312–990 | 1.79–3.79 | sweeps / boundary cases |
+| Arch | Inter-GPU link | ~BF16 TFLOPS | $/hr (secure) | Favors |
+|---|---|---|---|---|
+| **A** | **PCIe only** (~25–64 GB/s) | 165–360+ | 0.59–1.19 | **DP / redundant (large k)** |
+| **B** | **NVLink** ~600 GB/s (NV12×25) | ~312 | 1.79 | **gsplit / split (k=0)** |
+| **C** | **NVLink** ~900 GB/s | ~990 | 3.99–5.29 | **pipeline (Plan 2)** |
+| **D** | PCIe / partial NVLink | ~312–990 | 1.79–3.79 | sweeps / boundary |
+
+| Arch | Regime | Example GPU(s) |
+|---|---|---|
+| **A** | high compute / slow comm | RTX 4090/5090, L40S, RTX 6000 Ada |
+| **B** | fast comm / moderate compute | A100 SXM (80G / 40G) |
+| **C** | both high (comparable) | H100 SXM (80G), H200 SXM (141G) |
+| **D** | middle / PCIe datacenter | A100 PCIe (80G), H200 NVL |
 
 Notes:
 - **RTX 4090** is the cleanest "compute-cheap, comm-expensive" box: high FP throughput, no
@@ -72,15 +80,18 @@ archetype; prefer the probe.
 Target: a table of (GPU archetype × graph × hidden/depth) → measured winning strategy,
 used both to validate the simulator's prediction and as the paper's config study.
 
-| GPU | Graph | Hidden | Expected winner | Why |
+(Interconnect per GPU is as in the spectrum tables above: RTX 4090 = PCIe,
+`-SXM` = NVLink, `-PCIe` = PCIe.)
+
+| GPU | Graph | Hidden | Winner | Why |
 |---|---|---|---|---|
-| RTX 4090 ×2 (PCIe) | products | 256–512 | **DP / large k** | comm expensive → recompute locally |
-| RTX 4090 ×2 (PCIe) | papers100M | 256 | DP / large k | same, more pronounced (big shuffle) |
-| A100-SXM ×2 (NVLink) | products | 256 | **split (k=0)** | comm cheap → shuffle beats recompute |
+| RTX 4090 ×2 | products | 256–512 | **DP / large k** | comm expensive → recompute |
+| RTX 4090 ×2 | papers100M | 256 | DP / large k | same, bigger shuffle |
+| A100-SXM ×2 | products | 256 | **split (k=0)** | comm cheap → shuffle wins |
 | A100-SXM ×2 | arxiv | 256 | split | small graph, comm cheap |
-| H100-SXM ×2 (NVLink) | products | 512 | **pipeline** | comm≈compute → overlap wins |
+| H100-SXM ×2 | products | 512 | **pipeline** | comm≈compute → overlap |
 | H100-SXM ×2 | papers100M | 256–512 | pipeline / split | large shuffle to overlap |
-| A100-PCIe ×2 | products | 256 | boundary (DP↔split) | moderate both — tests the crossover |
+| A100-PCIe ×2 | products | 256 | boundary (DP↔split) | moderate both — crossover |
 
 For each cell: (a) simulator prediction (cheap), then (b) a real micro/short run to confirm
 — prioritizing the cheap archetypes (RTX 4090, A100-SXM) for the crossover story.
