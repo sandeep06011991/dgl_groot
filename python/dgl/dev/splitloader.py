@@ -24,6 +24,9 @@ class SplitGraphLoader:
         self.fanouts = config.fanouts
         self.replace = config.replace
         self.reindex = config.reindex
+        self.num_dp = config.num_dp
+        assert 0 <= self.num_dp <= len(config.fanouts), \
+            f"num_dp (k={self.num_dp}) must be in [0, {len(config.fanouts)}]"
         self.config = config
         if config.mode == "uva":
             self.g = g.pin_memory_()
@@ -50,6 +53,7 @@ class SplitGraphLoader:
         SetFanout(config.fanouts)
         SetPartitionMap(config.num_partition, partition_map.to(self.device))
         SetRank(config.rank, config.world_size)
+        SetNumDP(self.num_dp)
         InitNccl(config.rank, config.world_size, ncclUniqueId)
 
         self.set_target_idx(target_idx)
@@ -94,6 +98,6 @@ class SplitGraphLoader:
         nvtx.range_pop()
 
         nvtx.range_push("create block")
-        ret = GetBlocks(self.batch_id, reindex=self.reindex, layers=len(self.fanouts))
+        ret = GetBlocks(self.batch_id, reindex=self.reindex, layers=len(self.fanouts), num_dp=self.num_dp)
         nvtx.range_pop()
         return ret

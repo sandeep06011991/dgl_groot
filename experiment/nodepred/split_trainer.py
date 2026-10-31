@@ -50,7 +50,7 @@ def train_split_ddp(rank: int, config: Config, unique_id,
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
     sample_config = SampleConfig(rank=rank, num_partition=config.num_partition, batch_size=config.batch_size,
                                  world_size=config.world_size, mode=mode, fanouts=config.fanouts, reindex=True,
-                                 drop_last=True)
+                                 drop_last=True, num_dp=config.num_redundant_layer)
 
     dataloader = SplitGraphLoader(graph, partition_map, train_idx, unique_id, sample_config)
     local_ids = torch.empty([], dtype=torch.int64)

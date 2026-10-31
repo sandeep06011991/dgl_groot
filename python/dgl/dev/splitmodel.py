@@ -53,10 +53,13 @@ class SRC_TO_DEST(torch.nn.Module):
 
     def forward(self, blocks, input, inference = False):
         x = input
-        assert(self.num_dp == 0)
-        # Todo refactor this code such that redundant_layer != 0 is handled automatically
+        # Hybrid DP-then-split: the loader builds a ScatteredArray only for the
+        # split layers and leaves block.scattered_src=None for the leading DP
+        # layers (which, after GetBlocks reverses block order, are the *last*
+        # num_dp layers here). Shuffle exactly where a scattered array exists;
+        # this is order-independent and reduces to full-split when num_dp==0.
         for i, (block,layer) in enumerate(zip(blocks, self.layers)):
-            if not inference:
+            if not inference and getattr(block, "scattered_src", None) is not None:
                 x = Shuffle.apply(block.scattered_src, x, self.rank, self.world_size)
             if(self.model_name == "hgt"):
                 x = layer(block, x, torch.zeros(x.shape[0],  dtype = torch.int64, device = x.device) \

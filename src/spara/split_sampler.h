@@ -168,7 +168,9 @@ class SplitSampler {
       num_dsts.push_back(frontier.NumElements());
 
       if (layer < _num_dp) {
-        CHECK_EQ(_num_dp, 0) << "does not support hybrid sampling for now";
+        // Data-parallel layer: each rank samples its own seed shard's
+        // neighborhood locally. No cross-GPU exchange, so no ScatteredArray is
+        // built; the local unique frontier feeds the next (deeper) layer.
         frontiers.push_back(unique_src);
       } else {
         auto partition_idx = IndexSelect(

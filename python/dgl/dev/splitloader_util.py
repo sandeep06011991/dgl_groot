@@ -28,6 +28,11 @@ def SetGraph(indptr: Tensor, indices: Tensor, data: Tensor = None) -> None:
 def SetFanout(fanout: list[int]) -> None:
     _CAPI_Split_SetFanout(fanout)
 
+def SetNumDP(num_dp: int) -> None:
+    # k = number of leading DP (no-shuffle) layers; sampler builds no
+    # ScatteredArray for sampler-layers [0, num_dp).
+    _CAPI_Split_SetNumDP(num_dp)
+
 def SampleBatch(seeds: Tensor, replace : bool = False) -> int:
     return _CAPI_Split_SampleBatch(to_dgl_nd(seeds), replace)
 
@@ -44,7 +49,7 @@ def GetBlockData(batch_id: int, layer: int):
     data = _CAPI_Split_GetBlockData(batch_id, layer)
     return from_dgl_nd(data)
 
-def GetBlocks(batch_id: int, reindex: bool = True, layers: int = 3, edge_data: bool = False) -> (Tensor, Tensor, list[DGLBlock]):
+def GetBlocks(batch_id: int, reindex: bool = True, layers: int = 3, edge_data: bool = False, num_dp: int = 0) -> (Tensor, Tensor, list[DGLBlock]):
     input_node = _CAPI_Split_GetInputNode(batch_id)
     input_node = from_dgl_nd(input_node)
     output_node = _CAPI_Split_GetOutputNode(batch_id)
@@ -57,7 +62,12 @@ def GetBlocks(batch_id: int, reindex: bool = True, layers: int = 3, edge_data: b
 
         nvtx.range_push("dgl create block")
         block = DGLBlock(gidx, (['_N'], ['_N']), ['_E'])
-        block.scattered_src = _CAPI_GetBlockScatteredSrc(batch_id, layer)
+        # sampler-layers [0, num_dp) are data-parallel: no ScatteredArray was
+        # built for them, so there is nothing to shuffle (scattered_src=None).
+        if layer >= num_dp:
+            block.scattered_src = _CAPI_GetBlockScatteredSrc(batch_id, layer)
+        else:
+            block.scattered_src = None
         nvtx.range_pop()
 
         nvtx.range_push("dgl get block data")

@@ -38,6 +38,9 @@ if __name__ == "__main__":
                     nvlink=True,
                     partition_type=get_partition_type(node_weight, edge_weight, bal),
                     sample_mode=sample_mode)
+    cfg.num_redundant_layer = args.num_redundant_layer
+    assert 0 <= cfg.num_redundant_layer <= len(fanouts), \
+        f"num_redundant_layer (k={cfg.num_redundant_layer}) must be in [0, {len(fanouts)}]"
     if cfg.system == "split":
         from nodepred.trainer import bench_split
         bench_split(cfg)

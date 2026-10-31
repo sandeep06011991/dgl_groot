@@ -13,6 +13,7 @@ class SampleConfig:
     reindex: bool = True  # whether to make the sampled vertex to be 0 indexed
     fanouts: list[int] = None
     drop_last: bool = False
+    num_dp: int = 0  # k = number of leading DP (no-shuffle) layers for hybrid split
 
     @staticmethod
     def header():
