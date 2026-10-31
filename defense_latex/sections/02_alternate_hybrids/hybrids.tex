@@ -1,0 +1,36 @@
+\section{Alternate Hybrids}
+\label{sec:hybrids}
+
+\paraq{If full split parallelism is too expensive in those settings, what are the alternatives?}
+We consider two hybrid schemes that keep gsplit's partition-aware shuffle where it pays
+off but avoid or hide it where it does not. This section is kept deliberately brief; it
+will gain detail once the experimental results of the later sections are in.
+
+\subsection{Hybrid Data Parallelism}
+\label{sec:hybrid-dp}
+
+\paraq{How does the data-parallel hybrid reduce shuffle cost?}
+The top layers of the model run as traditional \textbf{data parallelism}---each GPU
+processes its own micro-batch with a replicated graph and \emph{no} cross-GPU
+shuffle---and only the bottom layers run gsplit-style \textbf{split} parallelism. A
+single parameter, the split-point $k$, controls the switch: layers $0{\ldots}k{-}1$ are
+data-parallel and layers $k{\ldots}L{-}1$ shuffle. Intuitively the earliest layers
+(nearest the seeds, smallest frontier) are the cheapest to replicate, so moving the
+shuffle later removes the least-useful shuffles first.
+
+\subsection{Hybrid Pipeline Parallelism}
+\label{sec:hybrid-pipeline}
+
+\paraq{How does the pipeline hybrid hide shuffle cost instead of removing it?}
+Two micro-batch streams run concurrently and are staggered so that one stream's
+\textbf{shuffle} (communication) overlaps with the other stream's \textbf{compute}. The
+shuffle cost is not reduced but hidden behind useful work, so the epoch is bounded by the
+larger of compute and communication rather than their sum.
+
+\paraq{Conclusion of this section.}
+Both hybrids can \emph{potentially} fix the settings where gsplit underperforms, but each
+introduces \textbf{additional configuration parameters} (the split-point $k$ for the
+data-parallel hybrid; the stream count and staggering for the pipeline hybrid). The
+brute-force way to choose them---sweep every configuration on real hardware---is too
+expensive, which motivates the simulator of the next section. Design details for both
+schemes are in \texttt{plans/01\_dp\_plus\_split.md} and \texttt{plans/02\_pipeline\_plus\_split.md}.

@@ -1,0 +1,46 @@
+\section{Final Results}
+\label{sec:results}
+
+\paraq{With the simulator-chosen configurations, do the hybrids actually beat gsplit and the baseline at runtime?}
+This section reports the real multi-GPU runtime of the two hybrids---data-parallel and
+pipeline---at the configurations the simulator selected in Section~\ref{sec:predicted},
+on the deep-layer and large-hidden settings (products and papers100M) where gsplit
+underperformed in Section~\ref{sec:limitations}.
+
+\paraq{Status: are the hybrid models built yet?}
+Both hybrid models may not be implemented at the time of writing. A \textbf{separate build
+loop} will implement the data-parallel and pipeline hybrids (starting from the micro-tests
+in \texttt{plans/}), and the measured numbers will be filled into Table~\ref{tab:final}
+once those runs complete. The table below is scratch.
+
+\begin{table}[h]
+\centering
+\caption{Final per-epoch time (s): baseline (DGL) vs.\ gsplit vs.\ the two hybrids at
+their simulator-chosen configurations. Default 4$\times$A100-SXM. \placeholder{} = to fill
+once built.}
+\label{tab:final}
+\begin{tabular}{l l r r r r}
+\toprule
+Graph & Setting & DGL & gsplit & DP-hybrid & Pipeline-hybrid \\
+\midrule
+products   & deep ($L{=}5$)   & \placeholder & \placeholder & \placeholder & \placeholder \\
+products   & large hidden     & \placeholder & \placeholder & \placeholder & \placeholder \\
+papers100M & deep ($L{=}5$)   & \placeholder & \placeholder & \placeholder & \placeholder \\
+papers100M & large hidden     & \placeholder & \placeholder & \placeholder & \placeholder \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\expdiag{a grouped bar chart (per setting: DGL / gsplit / DP-hybrid / pipeline-hybrid) rather
+than a large table, once the runs are complete.}
+
+\paraq{What do we expect the final results to show?}
+\expected{at least one hybrid beats both gsplit and DGL in every case where gsplit
+previously lost, and the simulator's ranking of the configurations matches the measured
+ranking.} Divergence between the predicted and measured ranking is the key thing to check:
+it would indicate a gap in the cost model rather than in the hybrid itself.
+
+\paraq{Conclusion of this section.}
+\placeholder{} (to be written once results land: state whether the hybrids recovered the
+settings where gsplit underperformed, and whether the simulator correctly selected their
+configurations).

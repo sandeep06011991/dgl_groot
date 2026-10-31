@@ -1,0 +1,107 @@
+\section{Where gsplit Underperforms}
+\label{sec:limitations}
+
+\paraq{In which settings does gsplit's gain over the baseline collapse?}
+Our ablation studies isolate two settings in which gsplit's advantage shrinks or
+disappears relative to a replicated-graph baseline. Both act through the same mechanism:
+they inflate the cross-partition \textbf{shuffle} cost until it overwhelms the savings
+partition-aware training was meant to deliver.
+
+\paraq{Why does increasing depth hurt gsplit?}
+Each GNN layer triggers one partition-aware all-to-all shuffle of boundary features, so
+the shuffle cost grows (roughly) linearly in the number of layers. At shallow depth the
+shuffle is a small part of the epoch; by depth~5 it is repeated enough times that
+communication, not compute, sets the pace.
+
+\paraq{Why does increasing hidden size hurt gsplit?}
+The volume moved in each shuffle is proportional to the hidden dimension (boundary nodes
+$\times$ hidden). Doubling the hidden size doubles the bytes shuffled per layer, so the
+communication term grows while the baseline---which replicates the graph and never
+shuffles features---pays nothing extra for communication.
+
+\paraq{How do gsplit, DGL, and Quiver compare as we push depth and hidden size?}
+We report per-epoch training time for \textbf{DGL}, \textbf{Quiver}, and \textbf{gsplit}
+on our two real graphs---\textbf{products} (Table~\ref{tab:abl-products}) and
+\textbf{papers100M} (Table~\ref{tab:abl-papers})---each sweeping the two settings that
+drive shuffle cost: a \emph{layer ablation} (at the default hidden size) and a
+\emph{hidden ablation} (at the default depth), for both SAGE and GAT. arxiv is omitted as
+a toy graph used only for correctness checks. All cells are scratch: DGL and Quiver come
+from the baseline trainers (\texttt{experiment/nodepred/\{dgl,quiver\}\_trainer.py}) and
+gsplit must be re-measured at the default 4$\times$A100 setting.
+
+\begin{table}[h]
+\centering
+\caption{\textbf{products} ablation: per-epoch time (s), DGL vs.\ Quiver vs.\ gsplit.
+Default 4$\times$A100-SXM, fanout 15. Layer sweep at hidden 256; hidden sweep at $L{=}3$.
+\placeholder{} = to fill.}
+\label{tab:abl-products}
+\begin{tabular}{l l r r r}
+\toprule
+Model & Config & DGL & Quiver & gsplit \\
+\midrule
+\multicolumn{5}{l}{\textit{Layer ablation (hidden 256)}}\\
+SAGE & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
+\midrule
+\multicolumn{5}{l}{\textit{Hidden ablation ($L{=}3$)}}\\
+SAGE & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{\textbf{papers100M} ablation: per-epoch time (s), DGL vs.\ Quiver vs.\ gsplit.
+Default 4$\times$A100-SXM, fanout 15. Layer sweep at hidden 256; hidden sweep at $L{=}3$.
+\placeholder{} = to fill.}
+\label{tab:abl-papers}
+\begin{tabular}{l l r r r}
+\toprule
+Model & Config & DGL & Quiver & gsplit \\
+\midrule
+\multicolumn{5}{l}{\textit{Layer ablation (hidden 256)}}\\
+SAGE & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
+\midrule
+\multicolumn{5}{l}{\textit{Hidden ablation ($L{=}3$)}}\\
+SAGE & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
+SAGE & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
+GAT  & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\expdiag{grouped bar charts of per-epoch time by system, one per graph, highlighting where gsplit's bar exceeds DGL's as depth/hidden grow.}
+
+\paraq{What do we expect these ablations to show?}
+\expected{gsplit falls behind DGL as depth and hidden size grow---worst at the deepest
+layers and largest hidden sizes---on both products and papers100M, with the crossover
+earlier on papers100M where cross-partition volume is larger.} Once the real baseline
+numbers are in, deviations from this expectation tell us whether the shuffle cost grows as
+predicted or whether some other phase (e.g.\ sampling, feature load) dominates.
+
+\paraq{Conclusion of this section.}
+There exist concrete experimental settings---deep models and/or large hidden sizes, on
+both products and papers100M---in which gsplit's performance is \emph{not} good and a
+replicated-graph baseline is faster. These are precisely the settings the hybrid schemes
+of the next section aim to fix.

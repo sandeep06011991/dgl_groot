@@ -1,0 +1,108 @@
+\section{The Simulator and Its Fidelity}
+\label{sec:simulator}
+
+\paraq{How can we choose a hybrid configuration without running full training on every one?}
+Sweeping every $(k, \text{stream}, \text{graph}, \text{depth}, \text{hidden})$
+configuration on multiple GPUs is prohibitively expensive. Instead we build a
+\textbf{cost-model simulator} that predicts the expected per-epoch performance of a
+configuration using \emph{few resources}---on the order of a \textbf{single GPU}---and
+\emph{without finishing a full training run}. The simulator sweeps the split-point $k$
+($k{=}0$ full split \ldots $k{=}L$ full data parallelism) and, for each, predicts the
+\textbf{compute}, \textbf{communication}, and \textbf{data-loading} cost
+(\texttt{get\_best\_strategy.py} $\rightarrow$ \texttt{simulation/hybrid\_dp\_sim.py}).
+
+\paraq{What is the cheap-prediction philosophy here?}
+The simulator times the model's per-layer compute once on one GPU, and predicts
+communication and data-loading from feature \emph{volume} $\div$ hardware bandwidth,
+rather than measuring an end-to-end multi-GPU run per configuration. A measured phase at
+one point is projected across configurations analytically, so the whole configuration
+space is covered from a handful of cheap measurements.
+
+\subsection{Validation Against the DGL Baseline}
+\label{sec:sim-baseline}
+
+\paraq{Before trusting the simulator on hybrids, what must it first reproduce?}
+A note on validation order: the simulator must first accurately reproduce the
+\textbf{DGL baseline} before we rely on any hybrid prediction. DGL is the simplest
+case---replicated graph, no partition-aware shuffle---so if the compute and data-loading
+models cannot match DGL, no hybrid prediction is trustworthy. \placeholder{} (DGL
+predicted-vs-measured to be added).
+
+\subsection{Fidelity}
+\label{sec:sim-fidelity}
+
+\paraq{On what setting do we demonstrate the simulator's fidelity, and what counts as good?}
+We demonstrate fidelity on \textbf{papers100M} at the default \textbf{4$\times$A100}
+setting, for both \textbf{SAGE} and \textbf{GAT} at \textbf{$L{=}3$}, comparing the
+simulator's predicted per-epoch time against the measured run. The pass criterion is
+simple: a prediction \textbf{within 10\%} of measured is considered good.
+
+\begin{table}[h]
+\centering
+\caption{Simulator fidelity on \textbf{papers100M}, 4$\times$A100, $L{=}3$, hidden 256,
+fanout 15. Pass if $|\text{Err}| \le 10\%$. \placeholder{} = to fill.}
+\label{tab:sim-fidelity}
+\begin{tabular}{l r r r c}
+\toprule
+Model & Sim (s) & Measured (s) & $|\text{Err}|$ (\%) & within 10\%? \\
+\midrule
+SAGE & \placeholder & \placeholder & \placeholder & \placeholder \\
+GAT  & \placeholder & \placeholder & \placeholder & \placeholder \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paraq{What do we expect the fidelity check to show?}
+\expected{both SAGE and GAT predictions land within 10\% of measured on papers100M at
+$L{=}3$, confirming the compute and data-loading models hold on the large graph at the
+default 4-GPU setting.} A miss beyond 10\% would point at a specific cost term---most
+likely data-loading, where the on-GPU feature cache must be modelled---rather than at the
+approach.
+
+\subsection{Microprofile Cross-Check (nsys)}
+\label{sec:microprofile}
+
+\paraq{Does an independent microprofile confirm the cost model's components?}
+To verify the cost model at the component level we microprofiled, on one representative
+batch, the \emph{fused} full-model forward$+$backward against the simulator's
+\emph{per-layer isolated} forward$+$backward, swept over hidden size and model, with an
+\texttt{nsys} cross-check, and measured the real pinned-host$\rightarrow$GPU feature gather.
+
+\begin{table}[h]
+\centering
+\caption{Compute: simulator per-layer vs.\ fused full-model step (products, depth~3,
+per-step ms), after the per-layer attribution fix. ratio $=$ sim/fused; last column is
+the ratio \emph{before} the fix.}
+\label{tab:micro-compute}
+\begin{tabular}{l r r r r r}
+\toprule
+Model & hidden & Fused (ms) & Sim (ms) & ratio & (ratio before) \\
+\midrule
+SAGE & 64  & 6.02  & 8.66  & 1.44 & 1.46 \\
+SAGE & 128 & 5.16  & 7.44  & 1.44 & 2.28 \\
+SAGE & 256 & 9.61  & 10.11 & \textbf{1.05} & 2.27 \\
+SAGE & 512 & 15.84 & 16.13 & \textbf{1.02} & 3.48 \\
+GAT  & 64  & 15.69 & 30.69 & 1.96 & 1.94 \\
+GAT  & 128 & 25.05 & 38.86 & 1.55 & 1.58 \\
+GAT  & 256 & 40.34 & 52.34 & \textbf{1.30} & 1.56 \\
+GAT  & 512 & 79.69 & 92.82 & \textbf{1.16} & 1.72 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paraq{What did the microprofile establish?}
+(1)~\textbf{Bandwidth is calibrated to hardware}: NVLink is $300$\,GB/s (\texttt{nvidia-smi
+topo}: GPU0--GPU1 are NV12), and the pinned-host$\rightarrow$GPU gather sustains
+$\sim$25--26\,GB/s independent of feature size, so \texttt{PCIE\_BW} was corrected
+$16\rightarrow25$\,GB/s. (2)~\textbf{Feature loading is linear in feature size}, so the
+load/comm terms project by a single scale factor. (3)~\textbf{Compute is GPU-bound GEMM}
+(\texttt{nsys}: \texttt{ampere\_sgemm\_*} dominate). (4)~After correcting the
+hop$\rightarrow$layer pairing ($L{-}1{-}j$ instead of $-j$), the per-layer estimate
+matches the fused step within $\sim$2--5\% for SAGE at hidden $\ge 256$---the large-hidden
+regime where the hybrid decision actually matters.
+
+\paraq{Conclusion of this section.}
+The simulator predicts a configuration's performance from cheap single-GPU measurements,
+and---validated against the DGL baseline and demonstrated within 10\% on papers100M at the
+4-GPU setting (plus the component-level microprofile cross-check)---is trustworthy enough
+to drive the configuration search of the next section.

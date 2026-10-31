@@ -1,0 +1,47 @@
+\section{Simulator-Predicted Cases}
+\label{sec:predicted}
+
+\paraq{Now that the simulator is trustworthy, what does it predict for the settings where gsplit lost?}
+We run the validated simulator on the Section~\ref{sec:limitations} cases---the deep-layer
+and large-hidden settings on products and papers100M---to predict, \emph{before building
+anything}, which strategy performs best and at what configuration. For each case the
+simulator sweeps the hybrid configuration space (the split-point $k$ for the data-parallel
+hybrid, and the pipeline schedule) and reports the best predicted \textbf{Split}/hybrid
+configuration, placed against the predicted \textbf{Quiver} and \textbf{DGL} baselines.
+
+\paraq{What does the simulator predict as the best performer per case?}
+Table~\ref{tab:predicted} reports, per case, the predicted per-epoch time of DGL, Quiver,
+and the simulator's \emph{best} Split/hybrid configuration (with the chosen $k$). These
+predictions set the targets that the real runs of Section~\ref{sec:results} must hit.
+
+\begin{table}[h]
+\centering
+\caption{Simulator-predicted per-epoch time (s) for the Section~\ref{sec:limitations} cases.
+``Best Split'' is the best hybrid configuration found by the sweep; $k^\star$ is its
+split-point. Default 4$\times$A100. \placeholder{} = to fill.}
+\label{tab:predicted}
+\begin{tabular}{l l r r r c}
+\toprule
+Graph & Setting & DGL & Quiver & Best Split & $k^\star$ \\
+\midrule
+products   & deep ($L{=}5$) & \placeholder & \placeholder & \placeholder & \placeholder \\
+products   & large hidden   & \placeholder & \placeholder & \placeholder & \placeholder \\
+papers100M & deep ($L{=}5$) & \placeholder & \placeholder & \placeholder & \placeholder \\
+papers100M & large hidden   & \placeholder & \placeholder & \placeholder & \placeholder \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\expdiag{per-case predicted-time bars (DGL / Quiver / best Split) with the chosen $k^\star$ annotated.}
+
+\paraq{What do we expect the simulator to predict?}
+\expected{for each case a hybrid configuration ($0 < k^\star < L$) is predicted to beat
+both full-split gsplit ($k{=}0$) and Quiver, and the predicted best moves toward larger
+$k^\star$ (more data-parallel layers) as depth and hidden size grow.} If instead the sweep
+keeps selecting $k^\star{=}0$, the hybrids would offer no predicted benefit and the premise
+of this chapter would be in question---so this is the key prediction to check.
+
+\paraq{Conclusion of this section.}
+The simulator yields, for each problematic setting, a concrete best-predicted Split/hybrid
+configuration and its expected standing against Quiver and DGL. These predicted
+configurations are exactly the ones we build and measure for real in the next section.
