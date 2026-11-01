@@ -2,11 +2,11 @@ from utils import *
 from torch.utils.data import DataLoader
 from .common import *
 
-# Approximate unidirectional bandwidth in bytes/sec
-NVLINK_BW       = 300e9   # NVLink 3.0  ~300 GB/s
-PCIE_BW         =  16e9   # PCIe 4.0 x16 ~16 GB/s
-BYTES_PER_FLOAT = 4         
-NVLINK_BARRIER_COST = 1e-6 # 1ms 
+# Bandwidth constants come from common.py (single source of truth) via the
+# `from .common import *` above — do NOT redefine them here. This file used to
+# shadow PCIE_BW=16e9, which disagreed with common.py's 25e9 for the same
+# host->GPU feature-gather path; that inconsistency is now removed.
+NVLINK_BARRIER_COST = 1e-6 # 1us
 
 # Estimate the commmunication and computation cost of pipeline parellelism.
 def get_costs_for_pipeline_parallelism( graph, train_idx, partition_map, device, k,

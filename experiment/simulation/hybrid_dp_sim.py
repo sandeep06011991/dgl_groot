@@ -3,11 +3,8 @@ from utils import *
 from .common import *
 from torch.utils.data import DataLoader
 from .measurements import KProfiler
-# Approximate unidirectional bandwidth in bytes/sec
-NVLINK_BW       = 300e9   # NVLink 3.0  ~300 GB/s
-PCIE_BW         =  25e9   # PCIe 4.0 x16, measured ~25-26 GB/s host->GPU UVA gather
-BYTES_PER_FLOAT = 4         
-BARRIER_COST = 1e-6 # 1ms 
+# Bandwidth + barrier constants come from common.py (single source of truth) via
+# `from .common import *` above — do NOT redefine them here.
 
 
 
