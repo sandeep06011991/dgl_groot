@@ -107,6 +107,15 @@ hidden ∈ {256,512,1024} and depth ∈ {2,3,4}, run as two 1-D sweeps crossing 
 Aggressive NVLink run was KILLED mid-flight; its partial CSV archived (.aggressive.bak);
 GPUs confirmed idle before relaunch.
 
+## DIRECTIVE (user, 2026-11-01) — deadline + escalation cap
+- Must have >=1 deep+large-hidden cell where gsplit is bad. Escalate if needed, but
+  CAP at L5 / hidden 2048 — do NOT go further. Added corner cells L4/h512,h1024 first.
+- HARD DEADLINE: everything (all sections 1-4 + prose) done by user's MORNING for review.
+  => Prioritize finishing ALL sections over an exhaustive papers100M grid. Size the
+  papers100M sweep to fit the time budget (representative configs + the corner), reserve
+  time for Section 3 (sim validation+prediction) and Section 4 (measure predicted).
+  Time-box: decide papers grid after timing one papers cell.
+
 ## Step 1b NVLink pass — DONE (products)  —  40 rows, no OOM
 Clean data. Per-epoch (s), winner per (model,depth,hid):
 - sage L2 h256: **dgl wins** (split 2.01 > dgl 1.46) — shallow+small: split's shuffle
