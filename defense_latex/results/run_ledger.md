@@ -107,7 +107,22 @@ hidden ∈ {256,512,1024} and depth ∈ {2,3,4}, run as two 1-D sweeps crossing 
 Aggressive NVLink run was KILLED mid-flight; its partial CSV archived (.aggressive.bak);
 GPUs confirmed idle before relaunch.
 
-## Step 1b sweep — RELAUNCHING lean (products, NVLink pass)
+## Step 1b NVLink pass — DONE (products)  —  40 rows, no OOM
+Clean data. Per-epoch (s), winner per (model,depth,hid):
+- sage L2 h256: **dgl wins** (split 2.01 > dgl 1.46) — shallow+small: split's shuffle
+  overhead not worth it. [gsplit-loses cell]
+- sage L3 h256/512/1024: split wins (3.27/3.60/4.89 vs dgl 4.35/5.08/5.98).
+- sage L4 h256: split wins big (8.91 vs dgl 17.76).
+- gat L2 h256: **dgl wins** (split 2.96 > dgl 2.36). [gsplit-loses cell]
+- gat L3 h256/512/1024, L4 h256: split wins.
+Takeaway: on NVLink (cheap shuffle) split wins except shallow L2. The hypothesized
+"gsplit loses at large hidden/deep" should surface on PCIe (expensive shuffle) → that's
+the key pass. CSV: logs/sweep_products_nvlink.csv (on pod).
+
+## Step 1b PCIe-emu pass — RUNNING (products, NCCL_P2P_DISABLE=1)
+Watcher bjng60r9v. No rebuild needed (split comm = runtime NCCL, respects P2P-disable;
+--nvlink only affects quiver policy + label). Risk 3 check deferred: confirm split
+shuffle is markedly slower than NVLink once rows land (if not, emulation unfaithful).
 - Smoke cell PASSED (split/sage/products/nvlink/1ep): schema OK (hardware=nvlink,
   cache_frac=-1.0), real feat (width=100), 5.72s/epoch — pipeline works end-to-end.
 - quiver NOT built by bootstrap → running `install_quiver.sh` on pod (bg, PID 27080).
