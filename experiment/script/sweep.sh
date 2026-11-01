@@ -40,8 +40,10 @@ GRAPH="${1:-${GRAPH:-products}}"
 HARDWARE="${HARDWARE:-nvlink}"
 WORLD_SIZE="${WORLD_SIZE:-4}"
 CACHE_SIZE="${CACHE_SIZE:-10G}"
-HID_SIZES="${HID_SIZES:-256 512 1024}"
-DEPTHS="${DEPTHS:-2 3 4}"
+# Note: '-' not ':-' so an explicit empty value (HID_SIZES="") is honored, letting
+# a top-up run do only the CROSS corner cells without re-running the 1-D sweeps.
+HID_SIZES="${HID_SIZES-256 512 1024}"
+DEPTHS="${DEPTHS-2 3 4}"
 DEPTH_BASE="${DEPTH_BASE:-3}"
 HID_BASE="${HID_BASE:-256}"
 FPL="${FPL:-15}"
