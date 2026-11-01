@@ -41,3 +41,26 @@ Python on WSL. Will run it on the pod as the first 1b action; fix-forward if nee
 
 Next decision: 1a reviewable-diff complete → commit, then proceed to 1b
 (provision A100-SXM pod, validate generator self-test, run the sweep).
+
+Follow-up fix (same step): `experiment/script/env.sh` — honor a preset
+`WORKSPACE_DIR`/`data_dir` and use `realpath -m`, so the sweep runs on a RunPod
+pod (`export WORKSPACE_DIR=/root`) instead of only the hardcoded Unity path.
+
+---
+
+## Step 1b — the sweep (compute)  —  verdict: IN PROGRESS
+- Pod acquisition launched (bg): 4×A100-SXM-80GB, 250GB disk, `groot-eval-products`.
+- Plan on pod: bootstrap_pod.sh (clone+build from GitHub) → sync_code.sh (push
+  local tree incl. 1a, no rebuild: Python/bash only) → provision_data.sh products
+  RESTORE_B2=1 → gen_results_table.py --self-test → smoke 1 cell → full sweep
+  NVLink then PCIe (NCCL_P2P_DISABLE=1) → consolidate sweep_all.csv → commit.
+
+## Master note — progress email channel (user request 2026-10-31)
+User asked for periodic progress + blocker emails to sandeep06011991@gmail.com.
+BLOCKER for that feature: no email channel available to the master —
+- claude.ai Gmail connector needs OAuth, unavailable in this non-interactive session;
+- no local mailer (msmtp/mail/sendmail) or SMTP creds on the control box.
+Fallback until resolved: progress is logged here (committed) as the durable trail.
+Options surfaced to user: (a) authorize the Gmail connector; (b) drop a Gmail
+app password in ~/.config/groot/ so the POD can send via smtplib (pod may run
+Python; WSL may not). The run itself is NOT blocked on this.
