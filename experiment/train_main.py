@@ -44,6 +44,9 @@ if __name__ == "__main__":
     if cfg.system == "split":
         from nodepred.trainer import bench_split
         bench_split(cfg)
+    elif cfg.system == "gsplit_pipepar":
+        from nodepred.trainer import bench_pipeline_split
+        bench_pipeline_split(cfg)
     elif cfg.system == "dgl":
         from nodepred.trainer import bench_dgl_batch
         bench_dgl_batch([cfg])

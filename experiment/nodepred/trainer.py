@@ -2,3 +2,4 @@
 from nodepred.dgl_trainer import bench_dgl_batch
 from nodepred.p3_trainer import bench_p3_batch
 from nodepred.split_trainer import bench_split
+from nodepred.pipeline_split_trainer import bench_pipeline_split
