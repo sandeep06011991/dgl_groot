@@ -92,7 +92,9 @@ def normalize(df):
         if col not in df.columns:
             df[col] = default
     df["depth"] = df["fanout"].apply(_depth)
-    df[PRIMARY_METRIC] = _num(df[PRIMARY_METRIC])
+    # numeric view of the primary metric for winner detection; keep the raw column
+    # intact so 'oom'/missing still render as text.
+    df["__metric_num"] = _num(df[PRIMARY_METRIC])
     return df
 
 
@@ -102,8 +104,8 @@ def emit_tex(df, caption="Sweep results", label="tab:sweep_all"):
     # winner (min epoch time) per cell; NaN metrics never win
     winners = {}
     for key, grp in df.groupby(cell_keys, dropna=False):
-        valid = grp.dropna(subset=[PRIMARY_METRIC])
-        winners[key] = valid[PRIMARY_METRIC].idxmin() if len(valid) else None
+        valid = grp.dropna(subset=["__metric_num"])
+        winners[key] = valid["__metric_num"].idxmin() if len(valid) else None
 
     lines = []
     ncol = 3 + len(METRIC_COLS)  # system, cache, (metrics...) ; graph/hw/model shown as section rows
@@ -122,22 +124,27 @@ def emit_tex(df, caption="Sweep results", label="tab:sweep_all"):
         lines.append("\\multicolumn{%d}{l}{\\textbf{%s / %s / %s / L%s}} \\\\" % (
             ncol - 1, _esc(graph), _esc(hardware), _esc(model), _esc(depth)))
         win_idx = winners.get(key)
-        grp = grp.sort_values(PRIMARY_METRIC, na_position="last")
+        grp = grp.sort_values("__metric_num", na_position="last")
         for idx, row in grp.iterrows():
             syslabel = _sys_label(row)
-            cache = row.get("cache_size", "")
-            if float(row.get("cache_frac", -1) or -1) > 0:
-                cache = f"{int(round(float(row['cache_frac'])*100))}\\%"
-            cells = [syslabel, _esc(cache)]
+            cache = _esc(str(row.get("cache_size", "")))
+            try:
+                frac = float(row.get("cache_frac", -1))
+            except Exception:
+                frac = -1.0
+            if frac > 0:
+                cache = f"{int(round(frac * 100))}\\%"   # already LaTeX-escaped
+            cells = [syslabel, cache]
             for col, _ in METRIC_COLS:
                 val = row.get(col, "")
-                if pd.isna(_num(pd.Series([val]))[0]) and str(val).lower() == "oom":
+                if isinstance(val, str) and val.strip().lower() == "oom":
                     cells.append("OOM")
+                    continue
+                num = _num(pd.Series([val]))[0]
+                if pd.isna(num):
+                    cells.append("OOM" if str(val).strip().lower() == "oom" else "--")
                 else:
-                    try:
-                        cells.append(f"{float(val):.2f}")
-                    except Exception:
-                        cells.append(_esc(val))
+                    cells.append(f"{num:.2f}")
             rowtex = " & ".join(cells) + " \\\\"
             if idx == win_idx:
                 rowtex = "\\rowcolor{red!15} " + rowtex  # fastest system in this cell
@@ -156,7 +163,7 @@ def emit_tex(df, caption="Sweep results", label="tab:sweep_all"):
 
 def _synthetic_csv(path):
     rows = [
-        # graph, hardware, model, depth, fanout, system, k, cache_size, cache_frac, dur, samp, feat, fwd, bwd, mem, acc
+        # graph, hardware, model, fanout, system, k, cache_size, cache_frac, dur, samp, feat, fwd, bwd, mem, acc
         ("products", "nvlink", "sage", "15,15,15", "split", 0, "10G", -1, 1.20, 0.3, 0.2, 0.4, 0.3, 8000, 78.1),
         ("products", "nvlink", "sage", "15,15,15", "split", 1, "10G", -1, 1.05, 0.3, 0.2, 0.3, 0.25, 8200, 78.0),
         ("products", "nvlink", "sage", "15,15,15", "dgl", 0, "10G", -1, 0.98, 0.3, 0.2, 0.25, 0.23, 9000, 78.2),
@@ -165,12 +172,13 @@ def _synthetic_csv(path):
         ("products", "pcie_emu", "sage", "15,15,15", "dgl", 0, "10G", -1, 1.60, 0.3, 0.2, 0.25, 0.23, 9000, 78.2),
         ("products", "pcie_emu", "sage", "15,15,15", "quiver", 0, "", 0.10, "oom", "oom", "oom", "oom", "oom", "oom", "oom"),
     ]
-    cols = ["graph_name", "hardware", "model", "depthx", "fanouts", "system",
+    cols = ["graph_name", "hardware", "model", "fanouts", "system",
             "num_redundant_layers", "cache_size", "cache_frac",
             "duration (s)", "sampling (s)", "feature (s)", "forward (s)",
             "backward (s)", "allocated (MB)", "test accuracy %"]
+    assert all(len(r) == len(cols) for r in rows), "synthetic row/col length mismatch"
     recs = [dict(zip(cols, r)) for r in rows]
-    df = pd.DataFrame(recs).drop(columns=["depthx"])
+    df = pd.DataFrame(recs)
     df.to_csv(path, index=False)
     return path
 

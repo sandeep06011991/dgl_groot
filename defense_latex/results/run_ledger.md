@@ -80,6 +80,23 @@ TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figure
   smoke 1 cell → full sweep NVLink then PCIe → scp sweep_*.csv back → consolidate →
   commit sweep_all.csv.
 
+## Step 1a generator — validated (on pod, pandas)  —  verdict: DONE
+- `gen_results_table.py --self-test` PASSES: valid tabular, red `\rowcolor` winner per
+  cell, OOM renders, `25\%` single-escaped. Fixed self-test col/row misalignment (stray
+  `depthx`), the double-%-escape, and the NaN-vs-OOM display (keep raw metric col, use a
+  separate `__metric_num` for winner detection). main.tex: `\usepackage[table]{xcolor}`
+  so `\rowcolor` compiles.
+- Note: CLAUDE.md relaxed (user) to allow CPU-only data processing on WSL; but WSL python3
+  lacks pandas and installs stay on RunPod, so the generator still runs on the pod for now.
+
+## Step 1b environment — pod ready  —  verdict: DONE
+- Bootstrap verified (torch 2.4+cu124, 4×A100, dgl imports). Local code synced.
+- B2: `--with-creds` auto-copy FAILED silently (empty remote → "account not found");
+  fixed by manual scp of b2.env + `rclone config create gsplit-b2`. Now authenticates.
+- B2 layout: `groot/graph/{arxiv,papers100M}` + `groot/partition_map/{arxiv,papers100M}`
+  (siblings). **products NOT in B2** → regenerate from OGB (provision fallback);
+  papers100M IS in B2 (matches memory). products provisioning running (bg, pod).
+
 ## Section 3 — simulator writeup (step 1 only; 2/4 await 1b data)  —  verdict: PARTIAL
 - simulator.tex scaffold was already accurate (compute measured per-layer NOT linear;
   PCIE_BW 16→25 documented; microprofile table with real numbers). Added the honesty
