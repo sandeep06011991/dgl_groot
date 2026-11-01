@@ -1,0 +1,4 @@
+graph,hw,model,depth,hid,sim_k0,measured_split,err_pct,best_k,best_k_pred
+products,nvlink,sage,3,256,1.33,3.26,-59.2,0,1.33
+products,pcie_emu,sage,3,256,1.61,4.81,-66.5,0,1.61
+products,pcie_emu,sage,3,1024,5.3,9.41,-43.7,0,5.3

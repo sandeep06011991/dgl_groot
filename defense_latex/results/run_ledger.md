@@ -7,6 +7,52 @@ verdict, next decision.
 
 ---
 
+## ====== STOP / HANDOFF SUMMARY (user out of time, 2026-11-01 ~19:00 UTC) ======
+
+**DONE & committed (ready to review):**
+- **Section 1 (limitations) — COMPLETE.** `defense_latex/sections/01_gsplit_limitations/limitations.tex`
+  rewritten to real data. Data: `defense_latex/results/sweep_all.csv` (154 rows:
+  products NVLink+PCIe = 112, papers100M PCIe = 42). Table: `defense_latex/tables/sweep_all.tex`
+  (auto-gen, fastest-system-per-cell in red). Losing cells: `defense_latex/results/losing_cells.csv`
+  (21 cells). Key result: PCIe SAGE gsplit loses, gap grows with hidden/depth
+  (products L3 +6.9/23.8/39.4%, L4/h1024 +55.6%); papers100M PCIe SAGE loses in
+  EVERY cell. NVLink: split wins everywhere (honest flip side). papers100M-NVLink
+  skipped for time.
+- **Section 2 (hybrids + diagrams) — COMPLETE.** `02_alternate_hybrids/hybrids.tex`
+  + `figures/data_split.tex`, `figures/pipeline_split.tex`. NOT LaTeX-compiled (no TeX
+  on WSL/pod) — needs `latexmk` to confirm figures render.
+- **Section 3 (simulator) — PARTIAL.** `03_simulator/simulator.tex` has the step-1 writeup
+  (honest assumptions) + microprofile table (pre-existing). Validation/prediction NOT
+  finished.
+
+**PARTIAL / NOT DONE (for resume):**
+- **Section 3 validation+prediction — INCOMPLETE.** Ran sim on 3 of 9 cells before stop:
+  `defense_latex/results/sim_all_partial.csv` (per-k predicted costs) and
+  `sim_vs_measured_partial.csv`. **FINDING: simulator UNDER-predicts measured 4-GPU split
+  by 44–66%** and picks k=0 everywhere → it is NOT calibrated; **needs Step 3a
+  (nsys + refit PCIE_BW/compute constants in experiment/simulation/common.py) before its
+  predictions are usable.** Do NOT write Section-3 prediction claims off the current sim.
+- **Section 4 (final eval) — NOT STARTED.** `05_final_results/final_results.tex` still scaffold.
+  Needs: Section-3 predicted_configs (after 3a) → measure predicted k/pipeline per losing
+  cell → append to sweep_all.csv → regen table + prose.
+
+**HOW TO RESUME (pod will be STOPPED to halt $7.16/hr billing):**
+- Restart pod `u99vfp5yn57bgc`: `runpodctl pod start u99vfp5yn57bgc` (if container disk
+  survived) OR re-provision a fresh pod via `experiment/script/acquire_pod.sh` +
+  `bootstrap_pod.sh` (now builds quiver automatically) + `sync_code.sh <ip:port>`.
+- Data: products regenerates fast; papers100M + maps restore from B2 (RESTORE_B2=1).
+- Sweep: `RANDOM_FEAT=1 RUN_TIMEOUT=900 HARDWARE=<nvlink|pcie> bash script/sweep.sh <graph>`.
+- Sim: `python3 experiment/run_section3_sim.py` (edit CELLS) — but do Step 3a first.
+
+**CODE CHANGES THIS RUN (committed, review the diffs):** config.py/args.py (hardware,
+cache_frac, random_feat cols+flags), train_main.py, quiver_trainer.py (cache_frac),
+dataloading.py (random_feat guard), profiler.py (timeout_profiler), record_timeout.py (new),
+script/sweep.sh (new), script/env.sh (WORKSPACE_DIR), gen_results_table.py (new),
+environment_setup.sh (builds quiver). NONE pushed to GitHub (local commits only on
+`final_dissertation`).
+
+---
+
 ## Preflight (master, 2026-10-31)
 - `0cd49acb` (pipeline-split `gsplit_pipepar`) present in `git log` on
   `final_dissertation` ✓ — no merge needed.

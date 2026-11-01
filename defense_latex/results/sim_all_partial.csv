@@ -1,0 +1,13 @@
+timestamp,machine_name,hardware,graph_name,feat_width,world_size,num_partition,num_epoch,fanouts,num_redundant_layers,batch_size,system,model,hid_size,cache_size,cache_frac,partition_type,Split from layer,num_nvlinks,computation_cost (s),communication_cost (s),dataloading_cost(s)
+2026-11-01 18:45:32.261422,a100sxm_nvlink,nvlink,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,0,4,1.32,0.01,0.0
+2026-11-01 18:45:37.005701,a100sxm_nvlink,nvlink,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,1,4,1.77,0.01,0.0
+2026-11-01 18:45:42.932467,a100sxm_nvlink,nvlink,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,2,4,2.49,0.01,0.0
+2026-11-01 18:45:56.563798,a100sxm_nvlink,nvlink,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,3,4,5.06,0.0,0.0
+2026-11-01 18:46:06.497678,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,0,0,1.37,0.24,0.0
+2026-11-01 18:46:11.110974,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,1,0,1.74,0.24,0.0
+2026-11-01 18:46:16.467099,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,2,0,2.41,0.2,0.0
+2026-11-01 18:46:29.894724,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,256,10G,-1.0,ndst_efreq_xbal,3,0,5.12,0.0,0.0
+2026-11-01 18:46:43.307123,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,1024,10G,-1.0,ndst_efreq_xbal,0,0,4.81,0.49,0.0
+2026-11-01 18:46:54.554874,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,1024,10G,-1.0,ndst_efreq_xbal,1,0,7.45,0.48,0.0
+2026-11-01 18:47:17.959568,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15]",0,1024,split-sim,sage,1024,10G,-1.0,ndst_efreq_xbal,2,0,16.81,0.2,0.0
+2026-11-01 18:48:14.205283,a100sxm_pcie,pcie_emu,products,100,4,4,1,"[15, 15, 15, 15]",0,1024,split-sim,sage,1024,10G,-1.0,ndst_efreq_xbal,0,0,29.46,2.23,0.0
