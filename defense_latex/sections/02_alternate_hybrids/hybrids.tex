@@ -14,18 +14,80 @@ The top layers of the model run as traditional \textbf{data parallelism}---each 
 processes its own micro-batch with a replicated graph and \emph{no} cross-GPU
 shuffle---and only the bottom layers run gsplit-style \textbf{split} parallelism. A
 single parameter, the split-point $k$, controls the switch: layers $0{\ldots}k{-}1$ are
-data-parallel and layers $k{\ldots}L{-}1$ shuffle. Intuitively the earliest layers
-(nearest the seeds, smallest frontier) are the cheapest to replicate, so moving the
-shuffle later removes the least-useful shuffles first.
+data-parallel and layers $k{\ldots}L{-}1$ shuffle (Figure~\ref{fig:data-split}).
+Intuitively the earliest layers (nearest the seeds, smallest frontier) are the cheapest
+to replicate, so moving the shuffle later removes the least-useful shuffles first.
+$k{=}0$ is today's full split and $k{=}L$ is pure data parallelism.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/data_split}
+  \caption{\textbf{Data-split (DP-then-split)} with $L{=}4$ layers and split-point
+  $k{=}2$. Layers $0,1$ run data-parallel: each GPU computes its own micro-batch on a
+  replicated graph with \emph{no} cross-GPU communication (blue). At the switch point the
+  per-GPU micro-batches are concatenated into the global batch and nodes are assigned to
+  their owning partition; layers $2,3$ then run split, performing an all-to-all
+  \emph{shuffle} before each conv (red). Trading shuffle for replicated/redundant compute:
+  larger $k$ removes more shuffles but makes every GPU redo more of the early-layer work.}
+  \label{fig:data-split}
+\end{figure}
 
 \subsection{Hybrid Pipeline Parallelism}
 \label{sec:hybrid-pipeline}
 
 \paraq{How does the pipeline hybrid hide shuffle cost instead of removing it?}
-Two micro-batch streams run concurrently and are staggered so that one stream's
-\textbf{shuffle} (communication) overlaps with the other stream's \textbf{compute}. The
-shuffle cost is not reduced but hidden behind useful work, so the epoch is bounded by the
-larger of compute and communication rather than their sum.
+Two micro-batch streams run concurrently and are staggered by one stage so that one
+stream's \textbf{shuffle} (communication) overlaps with the other stream's
+\textbf{compute} (Figure~\ref{fig:pipeline-split}). The shuffle cost is not reduced but
+hidden behind useful work, so per layer the cost is $\max(\text{compute},
+\text{comm})$ rather than their sum. Because the stagger keeps exactly one all-to-all in
+flight at a time, a single NCCL communicator suffices and the two micro-batches simply
+accumulate gradients into one optimizer step.
+
+\begin{figure}[t]
+  \centering
+  \input{figures/pipeline_split}
+  \caption{\textbf{Pipeline-split} with two micro-batches $A,B$ on two CUDA streams.
+  Staggered by one stage, micro-batch $A$'s \emph{conv} (compute, blue) of a layer runs in
+  the same time column as micro-batch $B$'s \emph{shuffle} (comm, red) of the previous
+  layer. The epoch is then bounded by $\max$(compute, comm) per layer instead of their
+  sum; the benefit is largest exactly when the shuffle is expensive.}
+  \label{fig:pipeline-split}
+\end{figure}
+
+\subsection{The cost tradeoff and why the best strategy is machine-dependent}
+\label{sec:hybrid-tradeoff}
+
+\paraq{What are the two costs that every hybrid is trading against each other?}
+Both hybrids attack the same quantity---the per-layer all-to-all \textbf{shuffle}---but
+pay for it in different currency. Full split minimizes redundant computation (each node is
+computed once, by its owner) at the price of a shuffle at \emph{every} layer. The
+data-parallel hybrid buys back shuffles by replicating the early layers, but replication
+means every GPU recomputes the overlapping frontier, so \textbf{redundant compute} rises
+as $k$ grows. The pipeline hybrid keeps the shuffles but hides them behind compute, so it
+pays only when compute is large enough to cover the comm. The right choice is therefore a
+balance: \emph{how expensive is a shuffle relative to the compute it would displace or the
+redundant compute it would avoid?}
+
+\paraq{Why does that balance move with the machine and the hidden size?}
+The shuffle cost is (feature volume) $/$ (interconnect bandwidth), and both terms vary.
+A larger \textbf{hidden size} multiplies the feature volume moved at each layer, pushing
+the balance toward schemes that remove or hide shuffles. The \textbf{interconnect} sets
+the denominator: on an \textbf{NVLink} machine the all-to-all is cheap, so plain split is
+often already best and the hybrids have little to recover; emulating \textbf{PCIe} (here,
+by disabling NCCL peer-to-peer) drops the effective bandwidth several-fold, inflating
+every shuffle and making data-split (fewer shuffles) and pipeline-split (hidden shuffles)
+far more attractive. The same model can thus prefer different strategies on different
+hardware, which is precisely why a single static choice is wrong.
+
+\paraq{So what is the configuration problem this chapter must solve?}
+Each hybrid adds a knob---the split-point $k$ for data-split, and whether to enable
+overlap for pipeline-split---and the best setting depends jointly on the graph, the model
+depth, the hidden size, and the interconnect. The brute-force answer, sweeping every
+$(\text{strategy}, k, \text{hardware})$ cell on real multi-GPU hardware, is exactly the
+expensive measurement this chapter is trying to avoid. That cost is what motivates the
+simulator of Section~\ref{sec:simulator}: predict each configuration cheaply, then measure
+only the one it chooses.
 
 \paraq{Conclusion of this section.}
 Both hybrids can \emph{potentially} fix the settings where gsplit underperforms, but each

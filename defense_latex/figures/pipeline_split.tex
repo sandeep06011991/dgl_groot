@@ -1,0 +1,42 @@
+% Pipeline-split hybrid: 2 micro-batches (A,B) on 2 CUDA streams, staggered by one
+% stage so one stream's split SHUFFLE (comm) overlaps the other's CONV (compute).
+% At any instant exactly one all-to-all is in flight (single NCCL communicator).
+% \input{figures/pipeline_split} inside a figure environment.
+\begin{tikzpicture}[
+    font=\small,
+    comp/.style={draw, fill=blue!12, minimum height=0.8cm, align=center, font=\scriptsize},
+    comm/.style={draw, fill=red!14, minimum height=0.8cm, align=center, font=\scriptsize},
+    idle/.style={draw, dashed, fill=black!4, minimum height=0.8cm, align=center, font=\scriptsize\itshape},
+    ax/.style={-{Latex}, gray},
+  ]
+  \def\w{1.7}   % block width = one time unit
+  \def\ya{0}    % stream A row
+  \def\yb{-1.1} % stream B row
+
+  % time axis
+  \draw[ax] (-0.2,-1.95) -- (7.9,-1.95) node[right, font=\scriptsize] {time};
+  \foreach \t in {0,1,2,3,4}{ \draw[gray] (\t*\w,-1.9) -- (\t*\w,-2.0); }
+
+  % row labels
+  \node[left=2pt, font=\scriptsize] at (0,\ya) {stream $s_A$};
+  \node[left=2pt, font=\scriptsize] at (0,\yb) {stream $s_B$};
+
+  % Stream A: comm L0 | comp L0 | comp L1 | comp L2
+  \node[comm, anchor=west, minimum width=\w cm] at (0*\w,\ya) {shuffle $L_0$};
+  \node[comp, anchor=west, minimum width=\w cm] at (1*\w,\ya) {conv $L_0$};
+  \node[comp, anchor=west, minimum width=\w cm] at (2*\w,\ya) {conv $L_1$};
+  \node[comp, anchor=west, minimum width=\w cm] at (3*\w,\ya) {conv $L_2$};
+
+  % Stream B: idle | shuffle L0 | conv L0 | conv L1 ...  (staggered one stage)
+  \node[idle, anchor=west, minimum width=\w cm] at (0*\w,\yb) {--};
+  \node[comm, anchor=west, minimum width=\w cm] at (1*\w,\yb) {shuffle $L_0$};
+  \node[comp, anchor=west, minimum width=\w cm] at (2*\w,\yb) {conv $L_0$};
+  \node[comp, anchor=west, minimum width=\w cm] at (3*\w,\yb) {conv $L_1$};
+
+  % overlap highlight: A-conv aligns with B-shuffle in the same time column
+  \foreach \t in {1,2,3}{
+    \draw[<->, green!50!black, thick] (\t*\w+\w/2,\ya-0.45) -- (\t*\w+\w/2,\yb+0.45);
+  }
+  \node[font=\scriptsize\itshape, text=green!40!black, align=center] at (6.6,-0.55)
+    {compute $\parallel$ comm\\(one all-to-all\\in flight)};
+\end{tikzpicture}

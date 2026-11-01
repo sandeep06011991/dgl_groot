@@ -1,0 +1,46 @@
+% Data-split (DP-then-split) hybrid: first k layers data-parallel (no cross-GPU
+% shuffle), remaining L-k layers partition-aware split (all-to-all per layer).
+% \input{figures/data_split} inside a figure environment.
+\begin{tikzpicture}[
+    font=\small,
+    gpu/.style={draw, rounded corners, minimum width=2.1cm, minimum height=0.9cm, align=center},
+    dp/.style={gpu, fill=blue!8},
+    sp/.style={gpu, fill=red!10},
+    shuf/.style={-{Latex}, red!70!black, thick},
+    nolink/.style={-{Latex}, blue!60!black, dashed},
+    lbl/.style={font=\scriptsize\itshape, align=center},
+  ]
+  % layer columns: L0, L1 (DP, k=2) | L2, L3 (split); one row per GPU
+  \foreach \r/\y/\g in {0/0/0, 1/-1.1/1, 2/-2.2/2, 3/-3.3/3}{
+    \node[dp]  (a\r) at (0,\y)   {GPU \g\\\scriptsize own batch};
+    \node[dp]  (b\r) at (2.6,\y) {DP};
+    \node[sp]  (c\r) at (5.2,\y) {split};
+    \node[sp]  (d\r) at (7.8,\y) {split};
+  }
+  % layer headers
+  \node[lbl, above=2pt of a0] {Layer 0};
+  \node[lbl, above=2pt of b0] {Layer 1};
+  \node[lbl, above=2pt of c0] {Layer 2};
+  \node[lbl, above=2pt of d0] {Layer 3};
+
+  % DP region: independent per-GPU, no cross-GPU edges (dashed self-progress only)
+  \foreach \r in {0,1,2,3}{ \draw[nolink] (a\r) -- (b\r); }
+
+  % switch point k: concat micro-batches into the global batch, partition by owner
+  \draw[thick, dotted] ($(b0.north east)+(0.3,0.5)$) -- ($(b3.south east)+(0.3,-0.5)$);
+  \node[lbl, text=black, align=center] at (3.9,0.95) {switch $k{=}2$\\(concat $\to$ global batch)};
+
+  % split region: all-to-all shuffle BEFORE each conv (every GPU <-> every GPU)
+  \foreach \r in {0,1,2,3}{
+    \foreach \s in {0,1,2,3}{
+      \ifnum\r=\s\else \draw[shuf, opacity=0.5] (b\r.east) to[bend left=4] (c\s.west); \fi
+    }
+    \draw[shuf] (c\r) -- (d\r);
+  }
+
+  % brackets
+  \draw[decorate, decoration={brace, amplitude=5pt, mirror}] ($(a3.south west)+(0,-0.5)$) -- ($(b3.south east)+(0,-0.5)$)
+    node[midway, below=6pt, lbl, text=blue!60!black] {data-parallel\\(no shuffle)};
+  \draw[decorate, decoration={brace, amplitude=5pt, mirror}] ($(c3.south west)+(0,-0.5)$) -- ($(d3.south east)+(0,-0.5)$)
+    node[midway, below=6pt, lbl, text=red!70!black] {split\\(all-to-all / layer)};
+\end{tikzpicture}

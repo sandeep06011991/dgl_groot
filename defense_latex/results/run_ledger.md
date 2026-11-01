@@ -55,6 +55,21 @@ pod (`export WORKSPACE_DIR=/root`) instead of only the hardcoded Unity path.
   RESTORE_B2=1 → gen_results_table.py --self-test → smoke 1 cell → full sweep
   NVLink then PCIe (NCCL_P2P_DISABLE=1) → consolidate sweep_all.csv → commit.
 
+## Section 2 — diagrams + cost-tradeoff (independent)  —  verdict: DONE (compile unverified)
+Slave: master-inline (done during the pod bootstrap wait, since it needs no compute).
+- `main.tex` — added `tikz` + libraries (positioning, arrows.meta, fit, backgrounds,
+  calc, decorations.pathreplacing).
+- `figures/data_split.tex` (new) — DP-then-split, L=4 k=2: blue DP layers (no shuffle)
+  → switch/concat → red split layers (all-to-all per layer).
+- `figures/pipeline_split.tex` (new) — two streams staggered one stage; A-conv ∥
+  B-shuffle; epoch ~ max(compute,comm); one all-to-all in flight.
+- `sections/02_alternate_hybrids/hybrids.tex` — wired both figures in; added the
+  cost-tradeoff subsection (shuffle vs redundant-compute; NVLink cheap / PCIe-emu
+  inflates shuffle; hidden size scales volume; the config challenge + k knob → motivates
+  the simulator).
+Caveat: LaTeX not compiled — CLAUDE.md forbids builds on WSL and the pod image has no
+TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figures render.
+
 ## Master note — progress email channel (user request 2026-10-31)
 User asked for periodic progress + blocker emails to sandeep06011991@gmail.com.
 BLOCKER for that feature: no email channel available to the master —
