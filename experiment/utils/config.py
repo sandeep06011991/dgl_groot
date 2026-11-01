@@ -25,6 +25,7 @@ class Config:
         self.partition_type = partition_type
         self.sample_mode = sample_mode
         self.num_redundant_layer = 0
+        self.cache_frac = -1.0   # quiver cache as a fraction of feat (<=0 = n/a; cache_size used instead)
         self.in_feat = -1
         self.num_classes = -1
         self.test_model_acc = False
@@ -38,15 +39,16 @@ class Config:
                     f"{len(self.fanouts)}x{self.fanouts[0]}_{self.num_redundant_layer}_{self.cache_size}")
 
     def header(self):
-        return ["timestamp","machine_name", "graph_name", "feat_width", "world_size", "num_partition", "num_epoch", "fanouts", "num_redundant_layers", \
+        return ["timestamp","machine_name", "hardware", "graph_name", "feat_width", "world_size", "num_partition", "num_epoch", "fanouts", "num_redundant_layers", \
                 "batch_size", "system", \
-                    "model", "hid_size", "cache_size", "partition_type"]
-    
+                    "model", "hid_size", "cache_size", "cache_frac", "partition_type"]
+
     def content(self):
         connection = "_nvlink" if self.nvlink else "_pcie"
         machine_name = self.machine_name + connection
-        return [pd.Timestamp('now'), machine_name, self.graph_name, self.in_feat, self.world_size, self.num_partition, self.num_epoch, self.fanouts, self.num_redundant_layer, \
-                    self.batch_size, self.system, self.model, self.hid_size, self.cache_size, self.partition_type]
+        hardware = "nvlink" if self.nvlink else "pcie_emu"
+        return [pd.Timestamp('now'), machine_name, hardware, self.graph_name, self.in_feat, self.world_size, self.num_partition, self.num_epoch, self.fanouts, self.num_redundant_layer, \
+                    self.batch_size, self.system, self.model, self.hid_size, self.cache_size, self.cache_frac, self.partition_type]
 
     def __repr__(self):
         res = ""

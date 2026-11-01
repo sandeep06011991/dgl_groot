@@ -11,6 +11,7 @@ def get_args():
     parser.add_argument('--model', default="sage", type=str, help="Model type", choices=["sage", "gat"])
     parser.add_argument('--hid_size', default=256, type=int, help="Model hidden dimension")
     parser.add_argument('--cache_size', default="0GB", type=str, help="Feature data cache size")
+    parser.add_argument('--cache_frac', default=-1.0, type=float, help="Cache size as a fraction of the full feature tensor (e.g. 0.25, 0.10); overrides --cache_size for quiver when > 0. <=0 = use --cache_size")
     parser.add_argument('--sample_mode', default="uva", type=str, help="Sample mode", choices=["uva", "gpu"])
     parser.add_argument('--world_size', default=4, type=int, help='Number of GPUs')
     parser.add_argument('--num_partition', default=4, type=int, help='Number of partitions')

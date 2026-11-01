@@ -35,10 +35,11 @@ if __name__ == "__main__":
                     hid_size=hid_size,
                     log_path=log_path,
                     data_dir=data_dir,
-                    nvlink=True,
+                    nvlink=args.nvlink,
                     partition_type=get_partition_type(node_weight, edge_weight, bal),
                     sample_mode=sample_mode)
     cfg.num_redundant_layer = args.num_redundant_layer
+    cfg.cache_frac = args.cache_frac
     assert 0 <= cfg.num_redundant_layer <= len(fanouts), \
         f"num_redundant_layer (k={cfg.num_redundant_layer}) must be in [0, {len(fanouts)}]"
     if cfg.system == "split":

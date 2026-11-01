@@ -40,11 +40,20 @@ def bench_quiver_batch(configs: list[Config]):
     indptr, indices, edges = graph.adj_tensors("csc")
 
     csr_topo = quiver.CSRTopo(indptr=indptr, indices=indices)    
+    # PCIe (no nvlink): each GPU holds its own replicated cache (device_replicate);
+    # NVLink: caches are shared across the P2P clique. device_replicate is the
+    # non-partitioned path required on PCIe or quiver hangs (see sweep plan 1a).
     cache_policy = "p2p_clique_replicate" if config.nvlink else "device_replicate"
-    device_cache_size = config.cache_size # TODO: dynamically determine cache size
-    
-    if tensor_to_bytes(feat) < str_to_bytes(device_cache_size) * config.world_size:
-        device_cache_size = str(int(tensor_to_bytes(feat) / (1024 * 1024 * config.world_size))) + "MB"
+    if getattr(config, "cache_frac", -1.0) and config.cache_frac > 0:
+        # cache_frac is a fraction of the FULL feature tensor held on each GPU
+        # (device_replicate) -> absolute per-GPU cache = frac * total feat bytes.
+        frac_bytes = config.cache_frac * tensor_to_bytes(feat)
+        device_cache_size = str(int(frac_bytes / (1024 * 1024))) + "MB"
+        print(f"quiver cache_frac={config.cache_frac} -> {device_cache_size}")
+    else:
+        device_cache_size = config.cache_size # TODO: dynamically determine cache size
+        if tensor_to_bytes(feat) < str_to_bytes(device_cache_size) * config.world_size:
+            device_cache_size = str(int(tensor_to_bytes(feat) / (1024 * 1024 * config.world_size))) + "MB"
     
     print(f"{device_cache_size=}")
     sampling_mode = "UVA"
