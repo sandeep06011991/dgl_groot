@@ -1,4 +1,15 @@
 graph,hardware,model,depth,hid_size,winner,winner_dur,split_dur,gap_pct
+papers100M,pcie_emu,gat,2,256,dgl,13.9,15.54,11.8
+papers100M,pcie_emu,gat,3,256,dgl,26.63,27.02,1.5
+papers100M,pcie_emu,gat,3,512,dgl,27.97,29.88,6.8
+papers100M,pcie_emu,gat,4,256,dgl,51.58,53.33,3.4
+papers100M,pcie_emu,sage,2,256,dgl,7.34,8.27,12.7
+papers100M,pcie_emu,sage,3,256,dgl,13.49,14.41,6.8
+papers100M,pcie_emu,sage,3,512,dgl,16.55,18.22,10.1
+papers100M,pcie_emu,sage,3,1024,dgl,20.56,27.54,33.9
+papers100M,pcie_emu,sage,4,256,dgl,33.79,37.41,10.7
+papers100M,pcie_emu,sage,4,512,dgl,40.62,50.87,25.2
+papers100M,pcie_emu,sage,4,1024,dgl,68.84,89.15,29.5
 products,nvlink,gat,2,256,dgl,2.36,2.96,25.4
 products,nvlink,sage,2,256,dgl,1.46,2.01,37.7
 products,pcie_emu,gat,2,256,dgl,2.42,2.61,7.9

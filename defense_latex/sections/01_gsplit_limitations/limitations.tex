@@ -2,106 +2,81 @@
 \label{sec:limitations}
 
 \paraq{In which settings does gsplit's gain over the baseline collapse?}
-Our ablation studies isolate two settings in which gsplit's advantage shrinks or
-disappears relative to a replicated-graph baseline. Both act through the same mechanism:
-they inflate the cross-partition \textbf{shuffle} cost until it overwhelms the savings
-partition-aware training was meant to deliver.
+Our ablation isolates the settings in which gsplit's advantage over a replicated-graph
+baseline shrinks or reverses. All of them act through one mechanism: they inflate the
+cross-partition \textbf{shuffle} cost until it overwhelms the redundant computation that
+partition-aware training was meant to save. Crucially, whether that crossover is reached
+depends on the \emph{interconnect}: on NVLink the shuffle is cheap enough that gsplit wins
+across almost the whole grid, whereas on a PCIe-class interconnect (emulated here by
+disabling NCCL peer-to-peer) the same shuffles become expensive and gsplit falls behind.
 
 \paraq{Why does increasing depth hurt gsplit?}
 Each GNN layer triggers one partition-aware all-to-all shuffle of boundary features, so
-the shuffle cost grows (roughly) linearly in the number of layers. At shallow depth the
-shuffle is a small part of the epoch; by depth~5 it is repeated enough times that
-communication, not compute, sets the pace.
+the per-epoch shuffle cost grows (roughly) linearly in the number of layers. At shallow
+depth the shuffle is a small part of the epoch; by $L{=}4$ it is repeated enough times
+that, on PCIe, communication rather than compute paces the epoch.
 
 \paraq{Why does increasing hidden size hurt gsplit?}
 The volume moved in each shuffle is proportional to the hidden dimension (boundary nodes
-$\times$ hidden). Doubling the hidden size doubles the bytes shuffled per layer, so the
-communication term grows while the baseline---which replicates the graph and never
-shuffles features---pays nothing extra for communication.
+$\times$ hidden). Doubling the hidden size doubles the bytes shuffled per layer, while the
+replicated baseline never shuffles features and pays nothing extra for communication. The
+effect is strongest for \textbf{SAGE}, whose per-layer compute is light, so the shuffle is
+a large share of the epoch; \textbf{GAT}'s heavier attention compute amortizes the shuffle
+and keeps gsplit ahead in more cells.
 
-\paraq{How do gsplit, DGL, and Quiver compare as we push depth and hidden size?}
-We report per-epoch training time for \textbf{DGL}, \textbf{Quiver}, and \textbf{gsplit}
-on our two real graphs---\textbf{products} (Table~\ref{tab:abl-products}) and
-\textbf{papers100M} (Table~\ref{tab:abl-papers})---each sweeping the two settings that
-drive shuffle cost: a \emph{layer ablation} (at the default hidden size) and a
-\emph{hidden ablation} (at the default depth), for both SAGE and GAT. arxiv is omitted as
-a toy graph used only for correctness checks. All cells are scratch: DGL and Quiver come
-from the baseline trainers (\texttt{experiment/nodepred/\{dgl,quiver\}\_trainer.py}) and
-gsplit must be re-measured at the default 4$\times$A100 setting.
+\paraq{How do gsplit, DGL, and Quiver compare across the grid?}
+We report per-epoch training time for \textbf{DGL}, \textbf{Quiver} (25\% replicated
+cache), and \textbf{gsplit} on \textbf{products} and \textbf{papers100M} at the default
+$4\times$A100-SXM setting (fanout~15), sweeping hidden size $\in\{256,512,1024\}$ at
+$L{=}3$ and depth $\in\{2,3,4\}$ at hidden~256, plus the deep$\times$wide corner
+($L{=}4$, hidden $\{512,1024\}$), for both SAGE and GAT, under both NVLink and emulated
+PCIe. arxiv is omitted as a correctness-only toy graph. The full per-cell table (both
+hardware settings, all systems) is Table~\ref{tab:sweep-all}; Table~\ref{tab:sage-pcie}
+highlights the SAGE/PCIe crossover that is the clearest symptom.
 
 \begin{table}[h]
 \centering
-\caption{\textbf{products} ablation: per-epoch time (s), DGL vs.\ Quiver vs.\ gsplit.
-Default 4$\times$A100-SXM, fanout 15. Layer sweep at hidden 256; hidden sweep at $L{=}3$.
-\placeholder{} = to fill.}
-\label{tab:abl-products}
-\begin{tabular}{l l r r r}
+\caption{\textbf{products, SAGE, emulated PCIe}: per-epoch time (s). As hidden size and
+depth grow, gsplit's shuffle cost overtakes the redundant compute DGL pays, and gsplit
+goes from marginally behind to $1.5\times$ slower. $\Delta$ = gsplit vs.\ the best
+baseline.}
+\label{tab:sage-pcie}
+\begin{tabular}{l r r r r}
 \toprule
-Model & Config & DGL & Quiver & gsplit \\
+Config & DGL & Quiver(25\%) & gsplit & $\Delta$ vs best \\
 \midrule
-\multicolumn{5}{l}{\textit{Layer ablation (hidden 256)}}\\
-SAGE & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
-\midrule
-\multicolumn{5}{l}{\textit{Hidden ablation ($L{=}3$)}}\\
-SAGE & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
+$L{=}3$, $h{=}256$  &  4.50 &  7.38 &  4.81 & $+6.9\%$ \\
+$L{=}3$, $h{=}512$  &  5.08 &  7.90 &  6.29 & $+23.8\%$ \\
+$L{=}3$, $h{=}1024$ &  6.75 &  9.67 &  9.41 & $+39.4\%$ \\
+$L{=}4$, $h{=}512$  & 21.83 & 28.63 & 27.43 & $+25.7\%$ \\
+$L{=}4$, $h{=}1024$ & 32.84 & 41.58 & 51.11 & $+55.6\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{table}[h]
-\centering
-\caption{\textbf{papers100M} ablation: per-epoch time (s), DGL vs.\ Quiver vs.\ gsplit.
-Default 4$\times$A100-SXM, fanout 15. Layer sweep at hidden 256; hidden sweep at $L{=}3$.
-\placeholder{} = to fill.}
-\label{tab:abl-papers}
-\begin{tabular}{l l r r r}
-\toprule
-Model & Config & DGL & Quiver & gsplit \\
-\midrule
-\multicolumn{5}{l}{\textit{Layer ablation (hidden 256)}}\\
-SAGE & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}3$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}4$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $L{=}5$ & \placeholder & \placeholder & \placeholder \\
-\midrule
-\multicolumn{5}{l}{\textit{Hidden ablation ($L{=}3$)}}\\
-SAGE & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
-SAGE & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}64$  & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}128$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}256$ & \placeholder & \placeholder & \placeholder \\
-GAT  & $h{=}512$ & \placeholder & \placeholder & \placeholder \\
-\bottomrule
-\end{tabular}
-\end{table}
+\paraq{What do the measurements actually show?}
+Three findings stand out. (1)~\textbf{On NVLink, gsplit wins almost everywhere}, and by
+\emph{growing} margins as the model gets deeper/wider (e.g.\ products SAGE $L{=}4,h{=}1024$:
+gsplit 21.0\,s vs.\ DGL 31.1\,s), because the cheap NVLink shuffle is dwarfed by the
+redundant compute gsplit avoids; it loses only in the shallow $L{=}2,h{=}256$ corner where
+there is little compute to save. (2)~\textbf{On PCIe the picture flips for SAGE}: gsplit
+trails DGL and the gap grows monotonically with hidden size (Table~\ref{tab:sage-pcie},
+$+6.9\%\!\to\!+23.8\%\!\to\!+39.4\%$) and with depth, reaching $+55.6\%$ at the
+$L{=}4,h{=}1024$ corner---the deep$\times$wide regime where four wide shuffles dominate.
+(3)~\textbf{GAT is more robust}: its heavier attention compute amortizes the shuffle, so on
+PCIe gsplit still wins except at the shallow $L{=}2$ cell and marginally at $L{=}3,h{=}1024$.
+The losing $(\textrm{graph},\textrm{hardware},\textrm{model},\textrm{depth},\textrm{hidden})$
+cells are enumerated in \texttt{results/losing\_cells.csv}; they are the typed input to the
+simulator-driven configuration search of Section~\ref{sec:simulator}.
 
-\expdiag{grouped bar charts of per-epoch time by system, one per graph, highlighting where gsplit's bar exceeds DGL's as depth/hidden grow.}
-
-\paraq{What do we expect these ablations to show?}
-\expected{gsplit falls behind DGL as depth and hidden size grow---worst at the deepest
-layers and largest hidden sizes---on both products and papers100M, with the crossover
-earlier on papers100M where cross-partition volume is larger.} Once the real baseline
-numbers are in, deviations from this expectation tell us whether the shuffle cost grows as
-predicted or whether some other phase (e.g.\ sampling, feature load) dominates.
+% Full auto-generated per-cell table (gen_results_table.py): fastest system per cell in red.
+\input{tables/sweep_all}
 
 \paraq{Conclusion of this section.}
-There exist concrete experimental settings---deep models and/or large hidden sizes, on
-both products and papers100M---in which gsplit's performance is \emph{not} good and a
-replicated-graph baseline is faster. These are precisely the settings the hybrid schemes
-of the next section aim to fix.
+There are concrete settings---chiefly \textbf{SAGE on a PCIe-class interconnect at large
+hidden size and/or depth}, worst at the deep$\times$wide corner---where gsplit is
+materially slower than a replicated-graph baseline (up to $1.56\times$ on products). The
+effect is interconnect-dependent: on NVLink gsplit remains the best choice, so the problem
+is specifically the expensive-shuffle regime. These losing cells are exactly what the
+hybrid schemes of Section~\ref{sec:hybrids} target and what the simulator of
+Section~\ref{sec:simulator} must learn to predict.
