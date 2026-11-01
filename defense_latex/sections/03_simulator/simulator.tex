@@ -16,7 +16,13 @@ The simulator times the model's per-layer compute once on one GPU, and predicts
 communication and data-loading from feature \emph{volume} $\div$ hardware bandwidth,
 rather than measuring an end-to-end multi-GPU run per configuration. A measured phase at
 one point is projected across configurations analytically, so the whole configuration
-space is covered from a handful of cheap measurements.
+space is covered from a handful of cheap measurements. We state the approximation
+honestly: each layer's compute is \emph{measured} (a real forward$+$backward on dummy
+inputs), not fitted to a closed-form linear cost, so the estimate inherits the true
+GEMM/aggregation scaling; and the single-GPU timing holds \emph{no optimizer or
+gradient-accumulation state} across layers---it charges the per-layer step cost and omits
+the one-off optimizer update and parameter all-reduce, which are negligible beside the
+per-layer shuffle in the regimes we study.
 
 \subsection{Validation Against the DGL Baseline}
 \label{sec:sim-baseline}

@@ -70,6 +70,23 @@ Slave: master-inline (done during the pod bootstrap wait, since it needs no comp
 Caveat: LaTeX not compiled — CLAUDE.md forbids builds on WSL and the pod image has no
 TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figures render.
 
+## Step 1b — the sweep (compute)  —  verdict: IN PROGRESS (pod building)
+- Pod `u99vfp5yn57bgc`: 4×A100-SXM-80GB, 1001 GB RAM, 250 GB disk, $7.16/hr.
+  SSH `root@154.54.102.52:10938` (key ~/.runpod/ssh/runpodctl-ssh-key).
+- Bootstrap running detached on pod (nohup; survives SSH drops). Watcher bg task
+  `bwateg3b3` notifies on DONE/stall. User confirmed this is an overnight job.
+- Next (after bootstrap DONE): sync_code.sh (push local 1a/env.sh, no rebuild) →
+  provision_data.sh products RESTORE_B2=1 → gen_results_table.py --self-test (on pod) →
+  smoke 1 cell → full sweep NVLink then PCIe → scp sweep_*.csv back → consolidate →
+  commit sweep_all.csv.
+
+## Section 3 — simulator writeup (step 1 only; 2/4 await 1b data)  —  verdict: PARTIAL
+- simulator.tex scaffold was already accurate (compute measured per-layer NOT linear;
+  PCIE_BW 16→25 documented; microprofile table with real numbers). Added the honesty
+  sentence the plan requires: single-GPU estimate holds no optimizer/grad state, compute
+  measured not linear. Validation rows (DGL baseline, papers100M fidelity) + predicted
+  configs are DATA-DEPENDENT → blocked on 1b's sweep_all.csv. Not fabricating numbers.
+
 ## Master note — progress email channel (user request 2026-10-31)
 User asked for periodic progress + blocker emails to sandeep06011991@gmail.com.
 BLOCKER for that feature: no email channel available to the master —
