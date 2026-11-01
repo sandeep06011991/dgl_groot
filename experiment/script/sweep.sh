@@ -65,11 +65,16 @@ LOG_FILE="sweep_${GRAPH}_${HW_TAG}.csv"
 QUIVER_PYPATH="${SCRIPT_DIR}/../../python:${SCRIPT_DIR}/../../third_party/torch-quiver/srcs/python"
 BASE_PYPATH="${SCRIPT_DIR}/../../python"
 
-# Build the (depth:hidden) ablation list = two 1-D sweeps crossing at BASE.
+# Build the (depth:hidden) ablation list = two 1-D sweeps crossing at BASE,
+# PLUS explicit deep x large-hidden CORNER cells (CROSS) — the regime the chapter
+# thesis targets ("gsplit bad at deeper layers AND larger hidden"), which the two
+# 1-D sweeps alone skip.
+CROSS="${CROSS:-4:512 4:1024}"
 declare -A SEEN
 CONFIGS=()
 for h in $HID_SIZES; do k="${DEPTH_BASE}:${h}"; [ -n "${SEEN[$k]:-}" ] || { CONFIGS+=("$k"); SEEN[$k]=1; }; done
 for d in $DEPTHS;    do k="${d}:${HID_BASE}"; [ -n "${SEEN[$k]:-}" ] || { CONFIGS+=("$k"); SEEN[$k]=1; }; done
+for k in $CROSS;     do                       [ -n "${SEEN[$k]:-}" ] || { CONFIGS+=("$k"); SEEN[$k]=1; }; done
 
 fanout_of() { local d="$1" out="$FPL" i; for ((i=1;i<d;i++)); do out="${out},${FPL}"; done; echo "$out"; }
 
