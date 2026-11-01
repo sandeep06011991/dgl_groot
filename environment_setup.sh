@@ -138,7 +138,22 @@ pip install ogb
 log "Installing torchmetrics (required by experiment/nodepred trainers)"
 pip install torchmetrics
 
-# ---- 8. Verification: torch + dgl on GPU ----
+# ---- 8. torch-quiver (quiver / dist_cache baseline) ----
+# torch-quiver backs the `quiver`/`dist_cache` baseline (experiment/nodepred/
+# quiver_trainer.py). It is NOT built by build.sh, so without this step a fresh
+# env is missing the `torch_quiver` extension and every quiver sweep cell fails
+# with `ModuleNotFoundError: No module named 'torch_quiver'`. install_quiver.sh
+# applies the torch-2.4/CUDA-12.4 build fixes and checks out the submodule if
+# needed. Best-effort: quiver is a baseline, not core, so a build failure here
+# must not abort environment setup (set -e is on, hence the guard).
+log "Building torch-quiver (quiver baseline) via install_quiver.sh"
+if CUDA_HOME="${CUDA_HOME}" bash "${SCRIPT_DIR}/install_quiver.sh"; then
+  echo "torch-quiver installed (quiver baseline available)."
+else
+  echo "WARNING: torch-quiver build failed - the quiver baseline will be unavailable." >&2
+fi
+
+# ---- 9. Verification: torch + dgl on GPU ----
 log "Verifying torch + dgl on GPU"
 export LD_LIBRARY_PATH="${SCRIPT_DIR}/third_party/build/lib:${LD_LIBRARY_PATH:-}"
 python - <<'EOF'

@@ -97,7 +97,17 @@ TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figure
   (siblings). **products NOT in B2** → regenerate from OGB (provision fallback);
   papers100M IS in B2 (matches memory). products provisioning running (bg, pod).
 
-## Step 1b sweep — RUNNING (products, NVLink pass)
+## SCOPE CORRECTION (user, 2026-10-31) — Section 1 trimmed
+User: the full 5-system × k-grid sweep is too aggressive (runtime). Section 1 =
+**split (k=0 only), dgl, quiver** — NO p3 (never in spec), NO gsplit_pipepar, NO k-sweep.
+The hybrid ablations (k for data-split, pipeline overlap) are chosen by the SIMULATOR
+(Section 3) and measured ONLY at the predicted config (Section 4). Ablation axes (user):
+hidden ∈ {256,512,1024} and depth ∈ {2,3,4}, run as two 1-D sweeps crossing at
+(depth3,hid256) = 5 configs (not the 9-way full cross). sweep.sh rewritten accordingly.
+Aggressive NVLink run was KILLED mid-flight; its partial CSV archived (.aggressive.bak);
+GPUs confirmed idle before relaunch.
+
+## Step 1b sweep — RELAUNCHING lean (products, NVLink pass)
 - Smoke cell PASSED (split/sage/products/nvlink/1ep): schema OK (hardware=nvlink,
   cache_frac=-1.0), real feat (width=100), 5.72s/epoch — pipeline works end-to-end.
 - quiver NOT built by bootstrap → running `install_quiver.sh` on pod (bg, PID 27080).
@@ -107,6 +117,16 @@ TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figure
 - Plan: on quiver-build DONE → run quiver nvlink cells (25%/10%) appending same CSV;
   then PCIe pass (NCCL_P2P_DISABLE=1, all systems) → scp CSVs back → consolidate
   sweep_all.csv. gsplit_pipepar on products is the Risk-5 "measure before concluding" cell.
+
+## Root-cause fix — torch-quiver missing from env setup (2026-10-31)
+Why quiver was missing: `environment_setup.sh` (which `bootstrap_pod.sh` calls) builds
+DGL via build.sh but never ran `install_quiver.sh`, so `torch_quiver` was never compiled
+on a fresh pod → quiver sweep cells would ModuleNotFoundError. Fix: added a best-effort
+torch-quiver build step to `environment_setup.sh` (new step 8, before verify; guarded so
+a baseline build failure can't abort core setup). Future pods now get quiver automatically.
+Live pod already has it (built by hand this run). NOTE: takes effect for future
+`curl|bash bootstrap_pod.sh` pods only after this commit is PUSHED to GitHub
+final_dissertation (bootstrap clones from GitHub) — push pending user ok.
 
 ## Email channel update (2026-10-31)
 User added the Gmail connector, but its MCP tools don't load into this already-running
