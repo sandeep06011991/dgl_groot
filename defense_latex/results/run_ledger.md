@@ -219,3 +219,9 @@ Fallback until resolved: progress is logged here (committed) as the durable trai
 Options surfaced to user: (a) authorize the Gmail connector; (b) drop a Gmail
 app password in ~/.config/groot/ so the POD can send via smtplib (pod may run
 Python; WSL may not). The run itself is NOT blocked on this.
+
+## FINAL (2026-11-01): pod killed, PDF built
+- Pod u99vfp5yn57bgc TERMINATED (deleted). Pre-existing EXITED pods groot-hybrid-dp,
+  parallel_azure_bug left as-is (not from this run).
+- defense_latex/main.pdf compiled (10 pages, all refs resolved) via latexmk on WSL.
+  Fixed ref tab:sweep-all -> tab:sweep_all in limitations.tex.
