@@ -118,9 +118,9 @@ def load_data(config: Config, is_pinned=False):
     feat = None
     label = None
     num_label = None
-    if config.graph_name in ["products", "arxiv", "papers100M"]: # real feat/label (proof-of-correctness)
+    if (not getattr(config, "random_feat", False)) and config.graph_name in ["products", "arxiv", "papers100M"]: # real feat/label (proof-of-correctness)
         feat, label, num_label = load_feat_label(os.path.join(config.data_dir, config.graph_name))
-    else:
+    else:  # random features: same width (get_feat_dim), timing-equivalent, skips the big feat disk-load
         v_num = graph.num_nodes()
         feat_dim = get_feat_dim(config)
         feat = gen_rand_feat(v_num, feat_dim)

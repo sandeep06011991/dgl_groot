@@ -40,6 +40,7 @@ if __name__ == "__main__":
                     sample_mode=sample_mode)
     cfg.num_redundant_layer = args.num_redundant_layer
     cfg.cache_frac = args.cache_frac
+    cfg.random_feat = args.random_feat
     assert 0 <= cfg.num_redundant_layer <= len(fanouts), \
         f"num_redundant_layer (k={cfg.num_redundant_layer}) must be in [0, {len(fanouts)}]"
     if cfg.system == "split":

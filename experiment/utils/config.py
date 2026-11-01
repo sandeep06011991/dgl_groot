@@ -26,6 +26,7 @@ class Config:
         self.sample_mode = sample_mode
         self.num_redundant_layer = 0
         self.cache_frac = -1.0   # quiver cache as a fraction of feat (<=0 = n/a; cache_size used instead)
+        self.random_feat = False # force random features (perf sweeps; correctness already verified)
         self.in_feat = -1
         self.num_classes = -1
         self.test_model_acc = False

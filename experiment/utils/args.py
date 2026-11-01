@@ -12,6 +12,7 @@ def get_args():
     parser.add_argument('--hid_size', default=256, type=int, help="Model hidden dimension")
     parser.add_argument('--cache_size', default="0GB", type=str, help="Feature data cache size")
     parser.add_argument('--cache_frac', default=-1.0, type=float, help="Cache size as a fraction of the full feature tensor (e.g. 0.25, 0.10); overrides --cache_size for quiver when > 0. <=0 = use --cache_size")
+    parser.add_argument('--random_feat', action='store_true', help="Use random (uninitialized) features instead of loading real feat.npy; same feature width so timing is equivalent. For perf sweeps where correctness is already verified; skips the big feat disk-load per run.")
     parser.add_argument('--sample_mode', default="uva", type=str, help="Sample mode", choices=["uva", "gpu"])
     parser.add_argument('--world_size', default=4, type=int, help='Number of GPUs')
     parser.add_argument('--num_partition', default=4, type=int, help='Number of partitions')

@@ -87,3 +87,12 @@ def oom_profiler():
     oom = "oom"
     profiler = Profiler(duration=oom, sampling_time=oom, feature_time=oom, forward_time=oom, backward_time=oom, test_acc=oom)
     return profiler
+
+def timeout_profiler():
+    # Marks a cell that exceeded the per-run wall-clock cap (see sweep.sh RUN_TIMEOUT).
+    # Mirrors oom_profiler so the row has the full schema with "timeout" sentinels.
+    t = "timeout"
+    profiler = Profiler(duration=t, sampling_time=t, feature_time=t, forward_time=t, backward_time=t, test_acc=t)
+    profiler.allocated_mb = t
+    profiler.reserved_mb = t
+    return profiler

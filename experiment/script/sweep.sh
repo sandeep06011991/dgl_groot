@@ -86,15 +86,28 @@ echo "        systems=[$SYSTEMS] configs(depth:hid)=[${CONFIGS[*]}]"
 echo "        log=logs/$LOG_FILE  NCCL_P2P_DISABLE=${NCCL_P2P_DISABLE:-unset}"
 echo "=============================================================="
 
+RUN_TIMEOUT="${RUN_TIMEOUT:-900}"   # per-cell wall-clock cap (s); 900 = 15 min
+# RANDOM_FEAT=1 -> pass --random_feat to every cell (perf sweeps; skip real feat load).
+RANDOM_FEAT_FLAG=""; [ "${RANDOM_FEAT:-0}" = "1" ] && RANDOM_FEAT_FLAG="--random_feat"
+
 run() {   # run <extra-pythonpath> <system> <cache_arg> <hid> <fanout>
   local pypath="$1" system="$2" cache_arg="$3" hid="$4" fanout="$5"
-  echo ">>> system=$system model=$MODEL depth=$(echo "$fanout" | tr ',' ' ' | wc -w) hid=$hid $cache_arg"
-  PYTHONPATH="$pypath" python3 "${python_dir}/train_main.py" \
-    --system="$system" --model="$MODEL" --fanouts="$fanout" --hid_size="$hid" \
-    --graph="$GRAPH" --data_dir="$data_dir" \
-    --batch_size=1024 --world_size="$WORLD_SIZE" --num_epoch="$NUM_EPOCH" \
-    --num_redundant_layer=0 $cache_arg $NVLINK_FLAG \
-    --log_file="$LOG_FILE"
+  local -a A=(--system="$system" --model="$MODEL" --fanouts="$fanout" --hid_size="$hid"
+    --graph="$GRAPH" --data_dir="$data_dir" --batch_size=1024 --world_size="$WORLD_SIZE"
+    --num_epoch="$NUM_EPOCH" --num_redundant_layer=0 $cache_arg $NVLINK_FLAG $RANDOM_FEAT_FLAG
+    --log_file="$LOG_FILE")
+  echo ">>> system=$system model=$MODEL depth=$(echo "$fanout" | tr ',' ' ' | wc -w) hid=$hid $cache_arg (cap ${RUN_TIMEOUT}s)"
+  # -k 30: SIGKILL 30s after SIGTERM if it ignores the term. 124=timeout,137=killed.
+  PYTHONPATH="$pypath" timeout -k 30 "$RUN_TIMEOUT" python3 "${python_dir}/train_main.py" "${A[@]}"
+  local rc=$?
+  if [ "$rc" -eq 124 ] || [ "$rc" -eq 137 ]; then
+    echo "!!! TIMEOUT after ${RUN_TIMEOUT}s (rc=$rc) -> recording timeout row + cleaning up, skipping"
+    # kill orphaned DDP workers from the timed-out run before the next cell (bracket
+    # patterns so this shell/record_timeout don't match themselves).
+    pkill -9 -f '[t]rain_main.py'; pkill -9 -f '[m]ultiprocessing.spawn'; sleep 3
+    PYTHONPATH="$pypath" python3 "${python_dir}/record_timeout.py" "${A[@]}" \
+      || echo "warn: could not record timeout row"
+  fi
 }
 
 for MODEL in $MODELS; do
