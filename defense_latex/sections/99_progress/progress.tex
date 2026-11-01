@@ -1,0 +1,200 @@
+% Working progress record — NOT part of the dissertation chapter. Added so the
+% whole run can be reviewed and planned from the PDF alone. Mirrors results/run_ledger.md.
+\chapter*{Evaluation Progress Record (working notes)}
+\addcontentsline{toc}{chapter}{Evaluation Progress Record (working notes)}
+\markboth{Evaluation Progress Record}{}
+
+\noindent\textbf{As of 2026-11-01.} This appendix is a working log, not chapter prose.
+It records what the evaluation run produced, the key findings, open risks, and a
+proposed next plan. All data is committed under \texttt{defense\_latex/results/}; the
+RunPod pod has been terminated (data preserved in git and Backblaze~B2).
+
+\section*{Status by section}
+\begin{table}[h]
+\centering\small
+\begin{tabular}{l l l}
+\toprule
+Section & Status & Primary artifacts \\
+\midrule
+1 — Where gsplit underperforms & \textbf{Complete} & \texttt{sweep\_all.csv} (154 rows), \texttt{sweep\_all.tex}, \texttt{losing\_cells.csv} (21) \\
+2 — Alternate hybrids (+diagrams) & \textbf{Complete} & \texttt{hybrids.tex}, \texttt{figures/data\_split}, \texttt{figures/pipeline\_split} \\
+3 — Simulator \& fidelity & \textbf{Partial} & step-1 writeup + microprofile; \texttt{sim\_*\_partial.csv} \\
+4 — Final eval (predicted configs) & \textbf{Not started} & scaffold only \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Key findings (Section 1)}
+\begin{itemize}
+\item \textbf{Interconnect decides the story.} On \textbf{NVLink} gsplit wins almost
+everywhere (cheap shuffle), and by \emph{growing} margins as depth/hidden increase---so
+the hybrids are a \textbf{PCIe-regime} fix, not an NVLink one. It loses on NVLink only in
+the shallow $L{=}2,h{=}256$ corner.
+\item \textbf{On PCIe, SAGE is the clear loser} and the gap grows monotonically with
+hidden size (products $L{=}3$: $+6.9\%\!\to\!+23.8\%\!\to\!+39.4\%$ at $h{=}256/512/1024$)
+and with depth, reaching $\mathbf{+55.6\%}$ at the deep$\times$wide $L{=}4,h{=}1024$ corner.
+\item \textbf{papers100M (PCIe) is worse at scale}: SAGE loses in \emph{every} measured
+cell; GAT loses in most, winning only at the largest hidden/depth where attention compute
+dominates.
+\item \textbf{GAT is more robust} than SAGE throughout---heavier per-layer compute
+amortizes the shuffle.
+\item 21 losing $(\textrm{graph},\textrm{hw},\textrm{model},\textrm{depth},\textrm{hidden})$
+cells are enumerated in \texttt{losing\_cells.csv}.
+\end{itemize}
+
+\section*{Open risk --- simulator is not yet calibrated (blocks Sections 3--4)}
+\begin{itemize}
+\item On the 3 cells simulated before stop, the simulator \textbf{under-predicts} the
+measured 4$\times$A100 split time by \textbf{44--66\%} and therefore picks $k{=}0$ (full
+split) as best \emph{even for losing cells}---i.e.\ it cannot yet recommend a fix.
+\item \textbf{Do not state any Section-3 prediction from the current simulator.} It needs
+the \textbf{Step~3a recalibration} first (see next plan).
+\item Evidence: \texttt{results/sim\_vs\_measured\_partial.csv},
+\texttt{results/sim\_all\_partial.csv}.
+\end{itemize}
+
+\section*{Key decisions taken}
+\begin{enumerate}
+\item \textbf{Ran as a single ``master'' inline} rather than spawning cold sub-agents per
+step---cheaper, and each step stayed reviewable as its own commit.
+\item \textbf{Trimmed Section~1 to \{split($k{=}0$), DGL, Quiver\}}---dropped P3,
+pipeline-split, and the $k$-grid. The hybrid knobs ($k$, pipeline overlap) become
+\emph{simulator-chosen} in Sections~3--4 instead of brute-forced (your directive; avoids a
+combinatorial blow-up).
+\item \textbf{Ablation = two 1-D sweeps} (hidden at $L{=}3$, depth at $h{=}256$)
+\textbf{plus explicit deep$\times$wide corner cells} ($L{=}4, h\in\{512,1024\}$)---gets the
+thesis-critical corner without the full $9$-way cross.
+\item \textbf{Random features} for all sweeps---timing-equivalent, skips the 57\,GB
+feature load per papers100M cell (your directive).
+\item \textbf{15-min per-cell cap} with recorded \texttt{timeout} rows---bounds worst-case
+runtime against the deadline.
+\item \textbf{PCIe emulated by \texttt{NCCL\_P2P\_DISABLE=1}} on the same NVLink pod (no
+second pod). Verified faithful: the split shuffle inflates $1.2$--$2.0\times$ and the
+inflation grows with shuffle volume, as a true PCIe bottleneck would.
+\item \textbf{Skipped the papers100M NVLink pass} and \textbf{did not escalate to
+$L{=}5/h{=}2048$}---the deep$\times$wide corner already produced a clear loss, and products
+already establishes the NVLink story; both choices were to protect the deadline.
+\item \textbf{Stopped at Section~3-partial} on the deadline, \textbf{terminated the pod}
+to halt cost, and kept all work as \textbf{local commits} (no GitHub push).
+\end{enumerate}
+
+\section*{Additional conclusions (beyond the original plan)}
+\begin{itemize}
+\item \textbf{The thesis needs qualifying by interconnect.} ``Deep/large hidden hurts
+gsplit'' holds on \textbf{PCIe}; on \textbf{NVLink the opposite is true}---gsplit wins by
+larger margins as the model grows. The hybrids are therefore a PCIe-regime remedy.
+\item \textbf{SAGE, not GAT, is the problem case.} gsplit's losses concentrate in SAGE
+(light compute $\Rightarrow$ shuffle-bound); GAT's attention compute amortizes the
+shuffle. The hybrid fix matters most for SAGE.
+\item \textbf{The crossover arrives earlier at scale}---papers100M loses across far more
+cells than products.
+\item \textbf{The ``simulator predicts the fix'' story is not yet substantiated.} The
+current cost model is miscalibrated (under-predicts), so this is a real open item, not a
+formality---hence Step~3a is blocking.
+\end{itemize}
+
+\section*{Proposed next plan}
+\begin{enumerate}
+\item \textbf{Step 3a — recalibrate the simulator (blocking).} Profile one failing cell
+with nsys / CUDA events (sample / feature-load / compute / shuffle stages); refit
+\texttt{PCIE\_BW} and the compute-cost model in \texttt{experiment/simulation/common.py};
+re-validate predicted-vs-measured to within tolerance (e.g.\ $\le 15\%$). Commit the
+constant change separately from prose.
+\item \textbf{Section 3 — validation + prediction.} Report sim-vs-measured on 2--5 cells
+per graph; then, for each of the 21 losing cells, predict the winning config (the
+data-split $k$ and/or whether pipeline-split overlap helps) $\rightarrow$
+\texttt{predicted\_configs.csv}.
+\item \textbf{Section 4 — measure the predicted configs.} Run split at the predicted $k$
+(and/or pipeline-split) on the matching hardware for the losing cells; append to
+\texttt{sweep\_all.csv}; regenerate the table; write the per-cell win/lose explanation.
+\item \textbf{Optional — papers100M NVLink pass} for completeness (products already shows
+split wins on NVLink).
+\item \textbf{Polish} — add the Section-1 grouped bar charts (currently an
+\texttt{\textbackslash expdiag} placeholder), fill the Section-3 fidelity table, and the
+Section-4 results table.
+\end{enumerate}
+
+\section*{Further information you need to analyze this correctly}
+\begin{itemize}
+\item \textbf{One run per cell---no repeats, no error bars.} Treat small gaps
+($\lesssim 10\%$) as within run-to-run noise; only the large gaps are robust (the
+$\ge 20\%$ SAGE/PCIe cells: $h{=}512$, $h{=}1024$, and the $L{=}4$ corner). The shallow
+$L{=}2$ ``losses'' are $1$--$3$\,s absolute and startup/noise-dominated---do not over-read
+them.
+\item \textbf{Epoch counts differ by graph:} products used \textbf{5} epochs, papers100M
+\textbf{3} (both reported as per-epoch averages). Comparable, but papers is noisier.
+\item \textbf{PCIe is \emph{emulated}} via \texttt{NCCL\_P2P\_DISABLE=1}, not a real PCIe
+machine. I confirmed it inflates the shuffle and that the inflation scales with volume,
+but I \emph{did not} microbenchmark the effective bandwidth against the simulator's
+\texttt{PCIE\_BW} constant (the Risk-3 preflight was deferred). So PCIe magnitudes are
+\textbf{directional}; the \emph{ordering} (gsplit vs DGL) is the trustworthy part.
+\item \textbf{Quiver coverage is asymmetric:} 25\% and 10\% cache on products, but only
+25\% on papers100M (time). Quiver is consistently the slowest of the three and never wins
+a cell.
+\item \textbf{Fixed setup:} $4\times$A100-SXM-80GB, world size 4, batch 1024, fanout 15
+per layer, partition map \texttt{ndst\_efreq\_xbal} at $w{=}4$ (deterministic,
+restored/regenerated). Absolute times are specific to this hardware.
+\item \textbf{Accuracy is NOT validated in this run} (random features). Cite correctness
+from the earlier real-feature runs, never from these tables.
+\item \textbf{Pipeline-split was never simulated or measured here}---only the data-split
+($k$) cost model exists in what ran. Any pipeline-split claim is future work.
+\item \textbf{Grid vs.\ scaffold wording:} \texttt{limitations.tex} was rewritten to the
+\emph{actual} grid (hidden $256/512/1024$, depth $2/3/4$). The chapter intro in
+\texttt{main.tex} and the Section 3--5 scaffolds may still mention the originally-planned
+axes (e.g.\ hidden $64$--$512$, $L{=}5$); reconcile that wording when finalizing.
+\item \textbf{Approximate spend:} one pod, $\sim$18\,h at \$7.16/hr $\approx$ \$130.
+\end{itemize}
+
+\section*{Environment \& caveats}
+\begin{itemize}
+\item \textbf{Random features} were used for the sweeps (correctness already verified):
+timing is equivalent (same feature width), but \emph{accuracy columns are meaningless}
+and baselines log $0\%$.
+\item \textbf{Per-cell 15-min cap} is active in \texttt{sweep.sh}; a capped cell writes a
+\texttt{timeout} row (none occurred in the runs kept).
+\item \textbf{Pod terminated.} Resume by acquiring a fresh pod
+(\texttt{experiment/script/acquire\_pod.sh}), \texttt{bootstrap\_pod.sh} (now builds the
+quiver baseline automatically), and \texttt{sync\_code.sh}; data restores from B2.
+\item \textbf{Nothing pushed to GitHub} --- all work is local commits on
+\texttt{final\_dissertation} ($\texttt{a0427e03}\ldots$); push is needed only for the
+\texttt{environment\_setup.sh} quiver fix to reach future \texttt{curl\,|\,bash} pods.
+\item \textbf{LaTeX} compiles cleanly on WSL (10 pp, all refs resolved).
+\end{itemize}
+
+\section*{File-wise changes this run}
+\textit{All local commits on \texttt{final\_dissertation} ($\texttt{a0427e03}\ldots\texttt{c65c4de1}$); nothing pushed.}
+\begin{itemize}
+\item \texttt{experiment/utils/config.py} --- added \texttt{hardware}, \texttt{cache\_frac},
+\texttt{random\_feat} fields and the matching CSV header/content columns.
+\item \texttt{experiment/utils/args.py} --- new flags \texttt{--cache\_frac}, \texttt{--random\_feat}.
+\item \texttt{experiment/train\_main.py} --- wire \texttt{nvlink=args.nvlink} (was hard-coded),
+\texttt{cache\_frac}, \texttt{random\_feat}.
+\item \texttt{experiment/nodepred/quiver\_trainer.py} --- honor \texttt{cache\_frac} (per-GPU
+replicated cache); documented \texttt{device\_replicate} as the PCIe-safe path.
+\item \texttt{experiment/utils/dataloading.py} --- \texttt{random\_feat} guard on the
+real-feature branch.
+\item \texttt{experiment/utils/profiler.py} --- \texttt{timeout\_profiler()} for capped cells.
+\item \texttt{experiment/record\_timeout.py} \textbf{(new)} --- writes a schema-correct
+\texttt{timeout} row when a cell exceeds the cap.
+\item \texttt{experiment/script/sweep.sh} \textbf{(new)} --- Section-1 sweep driver:
+systems, hidden/depth ablation + corner cells, per-cell \texttt{timeout} cap, random-feat flag,
+NVLink/PCIe pass.
+\item \texttt{experiment/script/env.sh} --- honor a preset \texttt{WORKSPACE\_DIR}/\texttt{data\_dir}
+so the sweep runs on a RunPod pod.
+\item \texttt{defense\_latex/gen\_results\_table.py} \textbf{(new)} --- CSV $\to$
+\texttt{\textbackslash input}-able LaTeX table, fastest system per cell highlighted.
+\item \texttt{defense\_latex/main.tex} --- added \texttt{tikz} + \texttt{xcolor[table]};
+\texttt{\textbackslash input} the two figures and this progress record.
+\item \texttt{defense\_latex/sections/01\_\ldots/limitations.tex} --- rewritten to the real data.
+\texttt{02\_\ldots/hybrids.tex} --- diagrams + cost-tradeoff prose. \texttt{03\_\ldots/simulator.tex}
+--- honest step-1 assumptions.
+\item \texttt{defense\_latex/figures/\{data\_split,pipeline\_split\}.tex} \textbf{(new)} --- the two hybrid diagrams.
+\item \texttt{environment\_setup.sh} --- now builds \texttt{torch-quiver} (best-effort) so fresh
+pods get the quiver baseline.
+\item \texttt{setup\_wsl\_local.sh} \textbf{(new)} --- installs the WSL local tooling
+(pandas/numpy/matplotlib + LaTeX extras).
+\item \texttt{results/\{sweep\_all,losing\_cells,sim\_*\_partial\}.csv}, \texttt{tables/sweep\_all.tex},
+\texttt{results/run\_ledger.md} --- data, tables, and the full run log.
+\item (outside the repo) \texttt{\textasciitilde/.claude/CLAUDE.md} --- relaxed to allow CPU-only
+data processing on WSL (your request).
+\end{itemize}
