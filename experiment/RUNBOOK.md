@@ -110,6 +110,19 @@ GPU arch is auto-detected by `build.sh` (A100 → sm_80); it needs `nvidia-smi` 
 
 ## 2. Partitioning the data
 
+> **ALWAYS pull the partition map from B2 — do NOT repartition each run.** METIS
+> is **not bit-identical across runs** (verified: a fresh `get_partition.py` for
+> `arxiv w2` produced a different md5 than the B2 copy), so regenerating silently
+> changes node→partition assignments and makes accuracy/timing non-comparable to
+> prior results. It is also slow and RAM-hungry on big graphs (papers100M peak
+> ~65 GB). The map in `gsplit-data/groot/partition_map/<graph>/` is the canonical
+> source of truth. On a **reused** pod, `rclone` may be installed but the
+> `gsplit-b2` remote is often **not configured** — configure it first (§3), then
+> restore (`RESTORE_B2=1 provision_data.sh ...`, or `rclone copyto` the single
+> map). Only run `get_partition.py` (below) to create a map that does **not yet
+> exist in B2** — then push it back (it is Tier-A2, auto-pushed by
+> `provision_data.sh`).
+
 `provision_data.sh` (Section 4) runs the whole prep pipeline. The individual steps,
 all reading/writing `$data_dir/<graph>/`:
 
