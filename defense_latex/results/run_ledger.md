@@ -97,6 +97,22 @@ TeX. Needs a `latexmk main.tex` pass in the user's TeX env to confirm the figure
   (siblings). **products NOT in B2** → regenerate from OGB (provision fallback);
   papers100M IS in B2 (matches memory). products provisioning running (bg, pod).
 
+## Step 1b sweep — RUNNING (products, NVLink pass)
+- Smoke cell PASSED (split/sage/products/nvlink/1ep): schema OK (hardware=nvlink,
+  cache_frac=-1.0), real feat (width=100), 5.72s/epoch — pipeline works end-to-end.
+- quiver NOT built by bootstrap → running `install_quiver.sh` on pod (bg, PID 27080).
+  Watcher bz0t595rz. (nvcc/CPU build — no GPU runtime, so safe to run concurrent with sweep.)
+- NVLink sweep (non-quiver: split k0/1/2, dgl, p3, gsplit_pipepar × sage/gat) running
+  concurrently (PID 27339) → logs/sweep_products_nvlink.csv. Watcher bxdkskhub.
+- Plan: on quiver-build DONE → run quiver nvlink cells (25%/10%) appending same CSV;
+  then PCIe pass (NCCL_P2P_DISABLE=1, all systems) → scp CSVs back → consolidate
+  sweep_all.csv. gsplit_pipepar on products is the Risk-5 "measure before concluding" cell.
+
+## Email channel update (2026-10-31)
+User added the Gmail connector, but its MCP tools don't load into this already-running
+session (connectors register for a NEW session). So still no email from here; ledger +
+in-session updates remain the trail; phone push available for milestones/blockers.
+
 ## Section 3 — simulator writeup (step 1 only; 2/4 await 1b data)  —  verdict: PARTIAL
 - simulator.tex scaffold was already accurate (compute measured per-layer NOT linear;
   PCIE_BW 16→25 documented; microprofile table with real numbers). Added the honesty
