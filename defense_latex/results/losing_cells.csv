@@ -7,3 +7,5 @@ products,pcie_emu,sage,2,256,dgl,1.5,1.68,12.0
 products,pcie_emu,sage,3,256,dgl,4.5,4.81,6.9
 products,pcie_emu,sage,3,512,dgl,5.08,6.29,23.8
 products,pcie_emu,sage,3,1024,dgl,6.75,9.41,39.4
+products,pcie_emu,sage,4,512,dgl,21.83,27.43,25.7
+products,pcie_emu,sage,4,1024,dgl,32.84,51.11,55.6
