@@ -105,13 +105,15 @@ more misses), not a fairness correction.
 
 - [x] **Push `final_dissertation` to GitHub** (user decision) so a fresh pod bootstraps with the 1a code + the quiver/torchmetrics env-setup fixes. (torchmetrics is already in `environment_setup.sh:136-139` — no change needed.)
 - [x] Acquire 4×A100-SXM pod, 500 GB disk — `mbkd71iymth7sa` (see Pod box). NVLink confirmed.
-- [~] Bootstrap running detached on pod (pid 148, log `/root/overnight_logs/setup.log`, watcher `bhwjwqi5p`) — clones `final_dissertation`, `environment_setup.sh` + `./build.sh release`. ~30 min.
-- [ ] Provision **both** graphs: papers100M from B2 (`RESTORE_B2=1 provision_data.sh papers100M "4"`); products regenerates from OGB (not in B2). Confirm `feat.npy` + the `_w4_ndst_efreq_xbal` maps.
+- [x] Bootstrap DONE (09:25 UTC, ~27 min): torch 2.4.0+cu124, CUDA ok, dgl built release. B2 `gsplit-b2` remote created; `dgl.dev` (Spara layer) imports under `PYTHONPATH=repo/python`. Pod RAM ~2.1 TB (ample for papers100M's 57 GB random feat).
+- [~] Provisioning both graphs detached (pid 24041, log `/root/overnight_logs/provision.log`, watcher `bezhb4pyu`). papers100M from B2 (no `feat.npy` needed — `--random_feat`, `get_feat_dim` hardcodes 128); products from OGB+METIS. Need only topology + idx + `_w4_ndst_efreq_xbal` map per graph.
 - [x] **Plumbing:** `cache_frac` branch added to `split_trainer.py` (config 4), pushed (`454bb565`).
-- [x] Write `experiment/script/sunday_sweep.sh` (§5) — pushed (`454bb565`). [ ] smoke-test one cheap cell (hidden=256, depth=2, gat) for all 4 systems → 4 rows land (needs pod).
-- **Done when:** 4-config smoke run produces 4 rows with sane `duration (s)`, on both graphs' data present.
+- [x] Write `experiment/script/sunday_sweep.sh` (§5) — pushed (`454bb565`).
+- [x] **Smoke test PASSED** (papers100M/NVLink/gat/h256/d2, 2ep): 4 distinct rows, cache_frac −1.0 vs 0.25, split@25% alloc 2060 MB > split@0% 1077 MB (cache_frac path works), GPUs cleaned to 0 MiB. First data point: gsplit loses to both baselines even here (split 19.4 vs dgl 15.1; split@25% 20.1 vs quiver@25% 17.4).
+- **Done when:** ✅ 4-config smoke produced 4 rows with sane `duration (s)`; both graphs provisioned. **PHASE 0 COMPLETE.**
 
-### Phase 1 — papers100M, **NVLink** (hidden then depth) (slave 1)  ▢
+### Phase 1 — papers100M, **NVLink** (hidden then depth) (slave 1)  🔄 RUNNING
+- [~] hidden ladder RUNNING (pid 35346, log `phase1_papers_nvlink.log`, watcher `b81jqbvw3`): `HID_LADDER="256 512 1024 2048 4096 8192"` @ depth=3, gat then sage, 5 ep, climb to OOM. CSV `logs/sunday_papers100M_nvlink_hidden.csv`.
 - [ ] **gat first, then sage.** `HARDWARE=nvlink MODE=hidden` → 4 configs at depth=3, hidden ladder ascending, 900 s cap, **climb until the gsplit cell OOMs/times out**. Then `MODE=depth FIXED_HID=H*/2` → depth ladder to OOM. Orphan cleanup after **every** cell (P3).
 - [ ] Record each curve + where gsplit crosses each baseline; set **H\*** = OOM-ceiling hidden (per model).
 - **Done when:** papers100M NVLink stressed to OOM on both axes, both models; crossover + ceiling recorded with one-line reasons.
