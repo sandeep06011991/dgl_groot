@@ -54,14 +54,23 @@ def train_split_ddp(rank: int, config: Config, unique_id,
 
     dataloader = SplitGraphLoader(graph, partition_map, train_idx, unique_id, sample_config)
     local_ids = torch.empty([], dtype=torch.int64)
-    
-    if "G" in config.cache_size:
+
+    cache_frac = getattr(config, "cache_frac", -1.0)
+    if cache_frac is not None and cache_frac > 0:
+        # cache_frac = fraction of the FULL feature tensor (same denominator quiver
+        # uses). On a W-GPU run each rank owns ~1/W of the nodes, so frac*total_nodes
+        # capped at the local partition keeps the comparison with quiver fair.
+        ids = torch.arange(0, partition_map.shape[0])
+        local_ids = ids[partition_map == rank]
+        num_ids_cached = min(int(cache_frac * partition_map.shape[0]), local_ids.shape[0])
+        local_ids = local_ids[:num_ids_cached].clone()
+    elif "G" in config.cache_size:
         ids = torch.arange(0, partition_map.shape[0])
         local_ids = ids[partition_map == rank]
         size = int(config.cache_size.removesuffix("G")) * (1024 ** 3)
         num_ids_cached = min(size // (feat.shape[1] * 4), local_ids.shape[0])
         local_ids = local_ids[:num_ids_cached].clone()
-    
+
     print(f"rank {rank} cached {local_ids.shape} nodes")
 
     dataloader.init_featloader(feat, local_ids)
