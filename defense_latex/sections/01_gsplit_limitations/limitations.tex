@@ -2,8 +2,9 @@
 \label{sec:limitations}
 
 \paraq{What this section establishes, and why it matters.}
-The starting point is not that gsplit is a poor design: across most of our grid its partition-aware
-sampling and feature placement still make it the fastest option. What this section maps is how
+The starting point is not that gsplit is a poor design: in our earlier results it was generally the
+fastest option across the grid, and we treat that as a prior to re-examine here, not a given. What
+this section maps is how
 gsplit's \emph{margin} over the baselines behaves as we vary the interconnect, the graph, the model,
 and the model's width and depth. The motivating observation for the rest of the thesis is that this
 margin is not uniform---in parts of the space it \emph{shrinks}, and in some it \emph{reverses}. A
@@ -136,8 +137,13 @@ Hidden & Quiver@25 & gsplit@25 & $\Delta_c$ \\
 \end{table}
 
 \paraq{Reading the one measured quadrant (observations, not conclusions).}
-Confined to papers100M / NVLink / hidden ladder, read \emph{within} each group and without
-extrapolating to the other quadrants. \textbf{Uncached group} (Table~\ref{tab:papers-nvlink-uncached},
+These are preliminary readings of a \emph{single} quadrant, offered with an explicit element of
+doubt: the per-epoch times are subject to interpretation (a few percent of noise from the warm-up
+epoch, cache-warming, and allocator effects), and GNN performance is strongly \emph{graph-dependent},
+so none of the shapes below should be read as holding beyond this graph, interconnect, and model
+until the rest of the matrix confirms it. With that caveat---confined to papers100M / NVLink / hidden
+ladder, read \emph{within} each group and without extrapolating. \textbf{Uncached group}
+(Table~\ref{tab:papers-nvlink-uncached},
 vs.\ DGL@0): for \textbf{SAGE}, gsplit \emph{underperforms} its baseline at every width, though the
 gap narrows as the model widens ($\Delta_u:+26.9\%\!\to\!+1.6\%$); for \textbf{GAT}, gsplit moves from
 just behind DGL to ahead of it as width grows ($+5.3\%\!\to\!-20.2\%$). \textbf{Cached group}
@@ -147,8 +153,24 @@ it holds ($\approx-23\%\!\to\!-29\%$). So even in this single quadrant both moti
 appear---an outright underperformance (SAGE, uncached) and a diminishing gain (SAGE, cached). Whether
 either carries to PCIe or to products is exactly what the remaining quadrants will decide.
 
-\paraq{Conclusions --- deferred until the matrix is complete.}
-To be written once all four quadrants (both ladders, both models) are measured under the protocol
-above. The diminishing-gain and losing cells will then be enumerated in
-\texttt{results/losing\_cells.csv} as the typed input to the simulator-driven configuration search
-of Section~\ref{sec:simulator}.
+\paraq{Conclusions --- deferred, and to be verified.}
+Nothing above is a settled result. Because the numbers admit interpretation and GNN behaviour is
+graph-dependent, we do not proceed from a trend seen in one quadrant; a claim is promoted to a
+conclusion only after the full matrix is in \emph{and} it has been re-checked rather than read off a
+single run. The verified conclusions of this section live in the box below.
+
+\begin{center}
+\fbox{\begin{minipage}{0.95\linewidth}
+\textbf{Verifier conclusions} \hfill \emph{status: none yet --- do not cite}\\[3pt]
+This box is the only place a claim counts as established for this section. A line is added here once
+it has (i)~survived the full $\{\text{NVLink},\text{PCIe}\}\times\{\text{products},\text{papers100M}\}$
+matrix on both ladders and both models, and (ii)~been re-measured or cross-checked, not inferred from
+a single run. Until then the readings above are provisional.
+\begin{itemize}\itemsep1pt
+  \item[$\square$] \emph{(pending the full matrix)}
+\end{itemize}
+Once verified, the diminishing-gain and losing cells are enumerated in
+\texttt{results/losing\_cells.csv} as the typed input to the simulator-driven configuration search of
+Section~\ref{sec:simulator}.
+\end{minipage}}
+\end{center}
