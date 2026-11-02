@@ -13,16 +13,25 @@ ahead, a configuration that mixes strategies may recover the headroom. We theref
 whole space before drawing any conclusion from it.
 
 \paraq{The two fair comparisons.}
-Every table below reports four situations and reads as \emph{two} matched head-to-heads, each holding
-the feature-cache budget equal so that only the parallelization strategy differs:
+A single three-way comparison of DGL, gsplit, and Quiver would be misleading, because the systems do
+not hold the same feature-cache budget and caching is itself a large, system-specific effect: gsplit
+can post apparent savings purely from caching its partition's features, while Quiver's device cache is
+not always managed efficiently. We therefore never rank the three together. Instead we form \emph{two}
+head-to-heads, each pairing gsplit with the baseline that holds the \emph{same} cache budget, so that
+only the parallelization strategy differs:
 \begin{itemize}\itemsep2pt
-  \item \textbf{uncached:} \textbf{gsplit@0} vs.\ \textbf{DGL@0} --- neither holds a feature cache.
-  \item \textbf{cached:} \textbf{gsplit@25} vs.\ \textbf{Quiver@25} --- both hold $4{\times}25\%$, i.e.\
-        the whole feature tensor partitioned across the $4$-GPU clique.
+  \item \textbf{uncached group:} \textbf{gsplit@0} vs.\ its baseline \textbf{DGL@0} --- neither holds a
+        feature cache.
+  \item \textbf{cached group:} \textbf{gsplit@25} vs.\ its baseline \textbf{Quiver@25} --- both hold
+        $4{\times}25\%$, i.e.\ the whole feature tensor partitioned across the $4$-GPU clique.
 \end{itemize}
-We do \emph{not} compare gsplit@0 against Quiver@25, or DGL against the cached systems: those would
-confound the cache budget with the strategy. Within a cell we read $\Delta$ as gsplit relative to its
-\emph{own} pair (negative $\Rightarrow$ gsplit faster, a gain; positive $\Rightarrow$ the gain is gone).
+Each group is a separate table. We do \emph{not} compare across groups (e.g.\ gsplit@0 against
+Quiver@25, or DGL against a cached system): that would confound the cache budget with the strategy.
+Within a group we read $\Delta$ as gsplit relative to its \emph{own} baseline (negative $\Rightarrow$
+gsplit faster---a gain; positive $\Rightarrow$ the gain is gone). Either outcome serves this section's
+purpose: a positive $\Delta$ says gsplit \emph{underperforms} its baseline, and a $\Delta$ that stays
+negative but \emph{shrinks} says its gain is \emph{diminishing}---and both are sufficient motivation
+for the hybrid-parallelism search of Section~\ref{sec:hybrids}.
 
 \paraq{Experimental setup.}
 All measurements run on a single node of $4{\times}$\textbf{A100-SXM-80GB} GPUs. NVLink is the
@@ -42,7 +51,7 @@ skipped). Each cell runs \textbf{3 epochs} and we report the mean per-epoch trai
 against a per-cell wall-clock cap of \textbf{1200\,s (20\,min)}, beyond which a cell is recorded as
 \textsc{timeout}. Each ladder is climbed until the gsplit cell OOMs or hits that cap. We stress
 both \textbf{products} and \textbf{papers100M}; arxiv is omitted as a correctness-only toy graph.%
-\footnote{The first papers100M-NVLink rows (Table~\ref{tab:papers-nvlink-hidden}) were collected
+\footnote{The first papers100M-NVLink rows (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}) were collected
 under an earlier $5$-epoch / $900$\,s protocol and will be refreshed to the $3$-epoch / $1200$\,s
 setup above.}
 
@@ -54,10 +63,10 @@ $H^{\star}$ the hidden size at which gsplit first reaches the ceiling), each adv
 OOMs or hits the time cap. Both ladders scale either the volume a shuffle moves or the number of
 shuffles, so they are the natural stress axes; we report the raw per-epoch times and leave the
 cross-quadrant pattern to the end. One quadrant is measured so far---papers100M on NVLink
-(Table~\ref{tab:papers-nvlink-hidden}); the other three, and the depth ladders, are in progress and
+(Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); the other three, and the depth ladders, are in progress and
 will be inserted here in the same fair-pairing format:
 \begin{itemize}\itemsep2pt
-  \item \textbf{papers100M, NVLink} --- hidden: measured (Table~\ref{tab:papers-nvlink-hidden}); depth: in progress.
+  \item \textbf{papers100M, NVLink} --- hidden: measured (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); depth: in progress.
   \item \textbf{papers100M, PCIe} --- in progress.
   \item \textbf{products, NVLink} --- in progress.
   \item \textbf{products, PCIe} --- in progress.
@@ -65,43 +74,78 @@ will be inserted here in the same fair-pairing format:
 
 \begin{table}[h]
 \centering
-\caption{\textbf{papers100M, NVLink, $L{=}3$, fanout~15}: each cell is \emph{per-epoch\,(total
-training)} time in seconds, with total $=$ per-epoch $\times\,5$ epochs. The two fair head-to-heads
-are gsplit@0 vs.\ DGL@0 (uncached) and gsplit@25 vs.\ Quiver@25 (cached); $\Delta_u$ = gsplit@0
-relative to DGL@0 (positive $\Rightarrow$ gsplit slower). \textsc{timeout} = cell hit the $900$\,s
-cap. Collected under the earlier $5$-epoch / $900$\,s protocol, pending refresh.}
-\label{tab:papers-nvlink-hidden}
+\caption{\textbf{papers100M, NVLink, $L{=}3$ --- uncached group ($0\%$ cache).} The only fair
+comparison here is gsplit@0 against its own baseline \textbf{DGL@0}. Cells are
+\emph{per-epoch\,(total over $5$ epochs)} seconds; $\Delta_u$ = gsplit@0 relative to DGL@0
+(positive $\Rightarrow$ gsplit slower). \textsc{timeout} = cell hit the $900$\,s cap. Earlier
+$5$-epoch / $900$\,s protocol, pending refresh.}
+\label{tab:papers-nvlink-uncached}
 \small
-\begin{tabular}{l r r r r r}
+\begin{tabular}{l r r r}
 \toprule
-Hidden & DGL@0 & gsplit@0 & Quiver@25 & gsplit@25 & $\Delta_u$ \\
-       & \multicolumn{4}{c}{\scriptsize epoch\,(total) s} & \\
+Hidden & DGL@0 & gsplit@0 & $\Delta_u$ \\
 \midrule
-\multicolumn{6}{l}{\emph{SAGE}}\\
-256  & 12.6 (63)  & 16.0 (80)  & 25.0 (125) & 13.7 (68)  & $+26.9\%$\\
-512  & 14.1 (71)  & 15.5 (77)  & 24.8 (124) & 13.9 (69)  & $+9.3\%$\\
-1024 & 15.0 (75)  & 18.5 (93)  & 25.7 (128) & 17.7 (89)  & $+23.5\%$\\
-2048 & 25.3 (127) & 29.3 (146) & 35.3 (176) & 27.9 (140) & $+15.6\%$\\
-4096 & 61.3 (306) & 62.2 (311) & 71.8 (359) & 61.4 (307) & $+1.6\%$\\
-8192 & \multicolumn{4}{c}{\textsc{timeout} (all four $>900$\,s)} & ---\\
+\multicolumn{4}{l}{\emph{SAGE}}\\
+256  & 12.6 (63)  & 16.0 (80)  & $+26.9\%$\\
+512  & 14.1 (71)  & 15.5 (77)  & $+9.3\%$\\
+1024 & 15.0 (75)  & 18.5 (93)  & $+23.5\%$\\
+2048 & 25.3 (127) & 29.3 (146) & $+15.6\%$\\
+4096 & 61.3 (306) & 62.2 (311) & $+1.6\%$\\
+8192 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
 \midrule
-\multicolumn{6}{l}{\emph{GAT}}\\
-256  & 26.1 (131) & 27.5 (138) & 32.7 (163) & 25.1 (125) & $+5.3\%$\\
-512  & 25.9 (129) & 27.4 (137) & 34.0 (170) & 26.0 (130) & $+6.0\%$\\
-1024 & 38.3 (191) & 35.0 (175) & 45.3 (227) & 32.0 (160) & $-8.4\%$\\
-2048 & 75.5 (377) & 60.3 (301) & 83.6 (418) & 59.2 (296) & $-20.2\%$\\
-4096 & \multicolumn{4}{c}{\textsc{timeout} (all four $>900$\,s)} & ---\\
+\multicolumn{4}{l}{\emph{GAT}}\\
+256  & 26.1 (131) & 27.5 (138) & $+5.3\%$\\
+512  & 25.9 (129) & 27.4 (137) & $+6.0\%$\\
+1024 & 38.3 (191) & 35.0 (175) & $-8.4\%$\\
+2048 & 75.5 (377) & 60.3 (301) & $-20.2\%$\\
+4096 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{\textbf{papers100M, NVLink, $L{=}3$ --- cached group ($25\%$ cache).} The only fair
+comparison here is gsplit@25 against its own baseline \textbf{Quiver@25} (both hold the whole
+feature tensor as $4{\times}25\%$ across the clique). Cells are \emph{per-epoch\,(total over $5$
+epochs)} seconds; $\Delta_c$ = gsplit@25 relative to Quiver@25 (negative $\Rightarrow$ gsplit
+faster). \textsc{timeout} = cell hit the $900$\,s cap. Earlier $5$-epoch / $900$\,s protocol,
+pending refresh.}
+\label{tab:papers-nvlink-cached}
+\small
+\begin{tabular}{l r r r}
+\toprule
+Hidden & Quiver@25 & gsplit@25 & $\Delta_c$ \\
+\midrule
+\multicolumn{4}{l}{\emph{SAGE}}\\
+256  & 25.0 (125) & 13.7 (68)  & $-45.3\%$\\
+512  & 24.8 (124) & 13.9 (69)  & $-44.1\%$\\
+1024 & 25.7 (128) & 17.7 (89)  & $-31.0\%$\\
+2048 & 35.3 (176) & 27.9 (140) & $-20.9\%$\\
+4096 & 71.8 (359) & 61.4 (307) & $-14.5\%$\\
+8192 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
+\midrule
+\multicolumn{4}{l}{\emph{GAT}}\\
+256  & 32.7 (163) & 25.1 (125) & $-23.3\%$\\
+512  & 34.0 (170) & 26.0 (130) & $-23.5\%$\\
+1024 & 45.3 (227) & 32.0 (160) & $-29.3\%$\\
+2048 & 83.6 (418) & 59.2 (296) & $-29.1\%$\\
+4096 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
 \bottomrule
 \end{tabular}
 \end{table}
 
 \paraq{Reading the one measured quadrant (observations, not conclusions).}
-Confined to papers100M / NVLink / hidden ladder, and stated without extrapolating to the other
-quadrants: for \textbf{SAGE} the uncached pairing favours DGL at every width, with the gap narrowing
-as the model widens ($\Delta_u:+26.9\%\!\to\!+1.6\%$); for \textbf{GAT} the uncached pairing moves
-from behind DGL to ahead of it as width grows ($+5.3\%\!\to\!-20.2\%$); the cached pairing
-(gsplit@25 vs.\ Quiver@25) favours gsplit throughout. Whether any of this carries to PCIe or to
-products is exactly what the remaining quadrants will decide.
+Confined to papers100M / NVLink / hidden ladder, read \emph{within} each group and without
+extrapolating to the other quadrants. \textbf{Uncached group} (Table~\ref{tab:papers-nvlink-uncached},
+vs.\ DGL@0): for \textbf{SAGE}, gsplit \emph{underperforms} its baseline at every width, though the
+gap narrows as the model widens ($\Delta_u:+26.9\%\!\to\!+1.6\%$); for \textbf{GAT}, gsplit moves from
+just behind DGL to ahead of it as width grows ($+5.3\%\!\to\!-20.2\%$). \textbf{Cached group}
+(Table~\ref{tab:papers-nvlink-cached}, vs.\ Quiver@25): gsplit is ahead throughout, but for SAGE the
+lead \emph{diminishes} monotonically as width grows ($\Delta_c:-45.3\%\!\to\!-14.5\%$), while for GAT
+it holds ($\approx-23\%\!\to\!-29\%$). So even in this single quadrant both motivating shapes already
+appear---an outright underperformance (SAGE, uncached) and a diminishing gain (SAGE, cached). Whether
+either carries to PCIe or to products is exactly what the remaining quadrants will decide.
 
 \paraq{Conclusions --- deferred until the matrix is complete.}
 To be written once all four quadrants (both ladders, both models) are measured under the protocol
