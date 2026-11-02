@@ -1,36 +1,28 @@
 \section{Where gsplit Underperforms}
 \label{sec:limitations}
 
-\paraq{In which settings does gsplit's gain over the baseline collapse?}
-Our ablation isolates the settings in which gsplit's advantage over a replicated-graph
-baseline shrinks or reverses. All of them act through one mechanism: they inflate the
-cross-partition \textbf{shuffle} cost until it overwhelms the redundant computation that
-partition-aware training was meant to save. Crucially, whether that crossover is reached
-depends on the \emph{interconnect}: on NVLink the shuffle is cheap, whereas on a PCIe-class
-interconnect (emulated here by disabling NCCL peer-to-peer) the same shuffles become expensive
-and gsplit falls behind. This PCIe regime is the common case, not a corner case: NVLink and
-NVSwitch are available only on premium SXM- and DGX-class modules, whereas the great majority of
-deployed multi-GPU hardware---PCIe add-in-card servers and workstations, most consumer GPUs, and
-prior-generation datacenter cards---has no high-bandwidth GPU-to-GPU link and must move inter-GPU
-data over PCIe or through host memory, at a fraction of NVLink bandwidth. Because that hardware is
-both cheaper and far more widely deployed, a system that wins only on NVLink leaves the typical
-real-world installation unserved. A second axis is the feature \emph{cache}: the fresh A100 measurements
-(Table~\ref{tab:papers-nvlink-hidden}) show that once the cache is removed, gsplit can trail a
-replicated DGL baseline \emph{even on NVLink} for the light-compute SAGE model.
+\paraq{What this section establishes, and why it matters.}
+The starting point is not that gsplit is a poor design: across most of our grid its partition-aware
+sampling and feature placement still make it the fastest option. What this section maps is how
+gsplit's \emph{margin} over the baselines behaves as we vary the interconnect, the graph, the model,
+and the model's width and depth. The motivating observation for the rest of the thesis is that this
+margin is not uniform---in parts of the space it \emph{shrinks}, and in some it \emph{reverses}. A
+shrinking advantage, even one that stays positive, is already enough to motivate the
+hybrid-parallelism search of Section~\ref{sec:hybrids}: wherever a single fixed strategy stops pulling
+ahead, a configuration that mixes strategies may recover the headroom. We therefore characterise the
+whole space before drawing any conclusion from it.
 
-\paraq{Why does increasing depth hurt gsplit?}
-Each GNN layer triggers one partition-aware all-to-all shuffle of boundary features, so
-the per-epoch shuffle cost grows (roughly) linearly in the number of layers. At shallow
-depth the shuffle is a small part of the epoch; by $L{=}4$ it is repeated enough times
-that, on PCIe, communication rather than compute paces the epoch.
-
-\paraq{Why does increasing hidden size hurt gsplit?}
-The volume moved in each shuffle is proportional to the hidden dimension (boundary nodes
-$\times$ hidden). Doubling the hidden size doubles the bytes shuffled per layer, while the
-replicated baseline never shuffles features and pays nothing extra for communication. The
-effect is strongest for \textbf{SAGE}, whose per-layer compute is light, so the shuffle is
-a large share of the epoch; \textbf{GAT}'s heavier attention compute amortizes the shuffle
-and keeps gsplit ahead in more cells.
+\paraq{The two fair comparisons.}
+Every table below reports four situations and reads as \emph{two} matched head-to-heads, each holding
+the feature-cache budget equal so that only the parallelization strategy differs:
+\begin{itemize}\itemsep2pt
+  \item \textbf{uncached:} \textbf{gsplit@0} vs.\ \textbf{DGL@0} --- neither holds a feature cache.
+  \item \textbf{cached:} \textbf{gsplit@25} vs.\ \textbf{Quiver@25} --- both hold $4{\times}25\%$, i.e.\
+        the whole feature tensor partitioned across the $4$-GPU clique.
+\end{itemize}
+We do \emph{not} compare gsplit@0 against Quiver@25, or DGL against the cached systems: those would
+confound the cache budget with the strategy. Within a cell we read $\Delta$ as gsplit relative to its
+\emph{own} pair (negative $\Rightarrow$ gsplit faster, a gain; positive $\Rightarrow$ the gain is gone).
 
 \paraq{Experimental setup.}
 All measurements run on a single node of $4{\times}$\textbf{A100-SXM-80GB} GPUs. NVLink is the
@@ -54,140 +46,65 @@ both \textbf{products} and \textbf{papers100M}; arxiv is omitted as a correctnes
 under an earlier $5$-epoch / $900$\,s protocol and will be refreshed to the $3$-epoch / $1200$\,s
 setup above.}
 
-\paraq{How do gsplit, DGL, and Quiver compare across the grid?}
-We report per-epoch training time for \textbf{DGL}, \textbf{Quiver} (25\% replicated
-cache), and \textbf{gsplit} on \textbf{products} and \textbf{papers100M} at the default
-$4\times$A100-SXM setting (fanout~15), sweeping hidden size $\in\{256,512,1024\}$ at
-$L{=}3$ and depth $\in\{2,3,4\}$ at hidden~256, plus the deep$\times$wide corner
-($L{=}4$, hidden $\{512,1024\}$), for both SAGE and GAT, under both NVLink and emulated
-PCIe. arxiv is omitted as a correctness-only toy graph. The full per-cell results are split
-by setting into one table per (graph, hardware, model), stacked from
-Table~\ref{tab:sweep_all} onward (each keyed by depth$\times$hidden, fastest system per cell
-in red); Table~\ref{tab:sage-pcie} highlights the SAGE/PCIe crossover that is the clearest
-symptom.
-
-\paraq{What do the fresh A100 measurements (this run) show first, on papers100M under NVLink?}
-Table~\ref{tab:papers-nvlink-hidden} reports the opening results of the A100 re-measurement:
-papers100M, NVLink, a hidden-size ladder at $L{=}3$ (fanout~15), per-epoch time for the four
-situations---DGL and gsplit both \emph{uncached} ($0\%$ cache), and Quiver and gsplit both at
-$25\%$ cache (on a $4{\times}$GPU clique, $4\times25\%$ partitions the whole feature tensor across
-the GPUs, matching gsplit's partition residency, so this is the fair cached comparison). Two
-head-to-heads matter: \emph{uncached} (gsplit@0 vs.\ DGL@0) and \emph{cached} (gsplit@25 vs.\
-Quiver@25).
+\paraq{The measurement matrix.}
+We sweep the full cross-product $\{\text{NVLink},\,\text{PCIe}\}\times\{\text{products},\,
+\text{papers100M}\}$. Within each quadrant we climb two ladders for both SAGE and GAT: a
+\textbf{hidden-size} ladder at $L{=}3$, and a \textbf{depth} ladder at $h{=}H^{\star}/2$ (with
+$H^{\star}$ the hidden size at which gsplit first reaches the ceiling), each advanced until gsplit
+OOMs or hits the time cap. Both ladders scale either the volume a shuffle moves or the number of
+shuffles, so they are the natural stress axes; we report the raw per-epoch times and leave the
+cross-quadrant pattern to the end. One quadrant is measured so far---papers100M on NVLink
+(Table~\ref{tab:papers-nvlink-hidden}); the other three, and the depth ladders, are in progress and
+will be inserted here in the same fair-pairing format:
+\begin{itemize}\itemsep2pt
+  \item \textbf{papers100M, NVLink} --- hidden: measured (Table~\ref{tab:papers-nvlink-hidden}); depth: in progress.
+  \item \textbf{papers100M, PCIe} --- in progress.
+  \item \textbf{products, NVLink} --- in progress.
+  \item \textbf{products, PCIe} --- in progress.
+\end{itemize}
 
 \begin{table}[h]
 \centering
-\caption{\textbf{papers100M, NVLink, $L{=}3$, fanout~15} (this run): per-epoch time (s). gsplit@0
-vs.\ DGL@0 is the uncached head-to-head; gsplit@25 vs.\ Quiver@25 the cached one. $\Delta_u$ =
-gsplit@0 relative to DGL@0 (positive $\Rightarrow$ gsplit slower). \textsc{timeout} = cell hit the
-$900$\,s (15-min) cap, not a true OOM.}
+\caption{\textbf{papers100M, NVLink, $L{=}3$, fanout~15}: each cell is \emph{per-epoch\,(total
+training)} time in seconds, with total $=$ per-epoch $\times\,5$ epochs. The two fair head-to-heads
+are gsplit@0 vs.\ DGL@0 (uncached) and gsplit@25 vs.\ Quiver@25 (cached); $\Delta_u$ = gsplit@0
+relative to DGL@0 (positive $\Rightarrow$ gsplit slower). \textsc{timeout} = cell hit the $900$\,s
+cap. Collected under the earlier $5$-epoch / $900$\,s protocol, pending refresh.}
 \label{tab:papers-nvlink-hidden}
+\small
 \begin{tabular}{l r r r r r}
 \toprule
 Hidden & DGL@0 & gsplit@0 & Quiver@25 & gsplit@25 & $\Delta_u$ \\
+       & \multicolumn{4}{c}{\scriptsize epoch\,(total) s} & \\
 \midrule
 \multicolumn{6}{l}{\emph{SAGE}}\\
-256  & 12.63 & 16.03 & 24.98 & 13.66 & $+26.9\%$\\
-512  & 14.14 & 15.46 & 24.79 & 13.87 & $+9.3\%$\\
-1024 & 15.00 & 18.53 & 25.65 & 17.71 & $+23.5\%$\\
-2048 & 25.33 & 29.29 & 35.28 & 27.90 & $+15.6\%$\\
-4096 & 61.26 & 62.21 & 71.79 & 61.41 & $+1.6\%$\\
+256  & 12.6 (63)  & 16.0 (80)  & 25.0 (125) & 13.7 (68)  & $+26.9\%$\\
+512  & 14.1 (71)  & 15.5 (77)  & 24.8 (124) & 13.9 (69)  & $+9.3\%$\\
+1024 & 15.0 (75)  & 18.5 (93)  & 25.7 (128) & 17.7 (89)  & $+23.5\%$\\
+2048 & 25.3 (127) & 29.3 (146) & 35.3 (176) & 27.9 (140) & $+15.6\%$\\
+4096 & 61.3 (306) & 62.2 (311) & 71.8 (359) & 61.4 (307) & $+1.6\%$\\
 8192 & \multicolumn{4}{c}{\textsc{timeout} (all four $>900$\,s)} & ---\\
 \midrule
 \multicolumn{6}{l}{\emph{GAT}}\\
-256  & 26.11 & 27.50 & 32.67 & 25.05 & $+5.3\%$\\
-512  & 25.85 & 27.40 & 33.96 & 25.99 & $+6.0\%$\\
-1024 & 38.26 & 35.03 & 45.30 & 32.03 & $-8.4\%$\\
-2048 & 75.49 & 60.26 & 83.59 & 59.24 & $-20.2\%$\\
+256  & 26.1 (131) & 27.5 (138) & 32.7 (163) & 25.1 (125) & $+5.3\%$\\
+512  & 25.9 (129) & 27.4 (137) & 34.0 (170) & 26.0 (130) & $+6.0\%$\\
+1024 & 38.3 (191) & 35.0 (175) & 45.3 (227) & 32.0 (160) & $-8.4\%$\\
+2048 & 75.5 (377) & 60.3 (301) & 83.6 (418) & 59.2 (296) & $-20.2\%$\\
 4096 & \multicolumn{4}{c}{\textsc{timeout} (all four $>900$\,s)} & ---\\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paraq{The headline: on papers100M+NVLink, uncached gsplit already trails DGL for SAGE.}
-For \textbf{SAGE}, gsplit@0 is slower than DGL@0 at \emph{every} hidden size
-($\Delta_u$ from $+26.9\%$ down to $+1.6\%$ as the model widens). Even on NVLink---where the
-shuffle is cheapest---gsplit's partition-aware sampling plus boundary shuffle cost more than the
-redundant computation a replicated DGL graph pays, once the feature cache is removed. gsplit
-recovers its advantage only in the \emph{cached} comparison: gsplit@25 beats Quiver@25 at every
-hidden size ($13.7$ vs.\ $25.0$, \dots, $61.4$ vs.\ $71.8$), because Quiver's per-GPU cache still
-pays a peer-to-peer gather that gsplit's partition-local residency avoids. For \textbf{GAT} the
-uncached gap closes and then \emph{reverses} as the model widens (gsplit@0 $60.3$ vs.\ DGL $75.5$
-at $h{=}2048$, $\Delta_u=-20.2\%$): attention's heavier compute amortizes the shuffle, exactly the
-model-sensitivity the shuffle-cost argument predicts.
+\paraq{Reading the one measured quadrant (observations, not conclusions).}
+Confined to papers100M / NVLink / hidden ladder, and stated without extrapolating to the other
+quadrants: for \textbf{SAGE} the uncached pairing favours DGL at every width, with the gap narrowing
+as the model widens ($\Delta_u:+26.9\%\!\to\!+1.6\%$); for \textbf{GAT} the uncached pairing moves
+from behind DGL to ahead of it as width grows ($+5.3\%\!\to\!-20.2\%$); the cached pairing
+(gsplit@25 vs.\ Quiver@25) favours gsplit throughout. Whether any of this carries to PCIe or to
+products is exactly what the remaining quadrants will decide.
 
-\paraq{The unifying mechanism: a (near-)fixed shuffle overhead raced against compute-dependent savings.}
-The SAGE and GAT trends are two faces of one mechanism. gsplit's overhead relative to
-DGL---partition-aware sampling plus the boundary shuffle---is, on NVLink, an approximately
-\emph{fixed} per-epoch cost: for SAGE the \emph{absolute} gsplit@0$-$DGL@0 gap stays $\approx1$--$4$\,s
-while the epoch itself grows from $12.6$ to $62.2$\,s, so the \emph{relative} loss diminishes toward
-parity ($+26.9\%\!\to\!+1.6\%$) without gsplit ever catching up. What gsplit \emph{saves} is the
-redundant boundary computation DGL repeats on its replicated graph, which scales with per-node model
-work (hidden~$\times$~compute-per-layer). For light-compute \textbf{SAGE} that saving never outgrows
-the fixed overhead, so gsplit stays marginally behind---\emph{diminishing returns}. For compute-heavy
-\textbf{GAT} the saving grows fast: DGL's own epoch balloons from $26.1$ to $75.5$\,s while gsplit's
-grows only $27.5\!\to\!60.3$\,s, so gsplit \emph{crosses over} near $h{=}1024$ and the margin
-\emph{widens} to $-20.2\%$---\emph{increasing returns}. The correct one-line reading is therefore not
-``wider models hurt gsplit'' but rather \textbf{gsplit's edge tracks how compute-heavy the model is}:
-its NVLink value comes from amortizing a fixed shuffle cost against saved computation, so it wins
-exactly where per-node compute is large (GAT, large hidden) and loses where it is small (SAGE,
-uncached). Whether that overhead instead becomes \emph{volume-scaling}---growing the SAGE
-\emph{absolute} gap, not just failing to shrink it---on a PCIe-class interconnect is the open question
-the PCIe pass must settle.
-
-\paraq{Caveat: these rows are partial and cap-limited, not yet an OOM-stressed conclusion.}
-Both models reached a ceiling at the $900$\,s per-cell cap rather than a true out-of-memory
-failure---GAT at $h{=}4096$, SAGE at $h{=}8192$ (\textsc{timeout} rows). The NVLink \emph{depth}
-ladder and the entire emulated-\emph{PCIe} pass are not yet measured, and the per-cell time cap is
-under review. Coverage is also uneven across the two graphs: the earlier sweep measured
-\textbf{products} under both NVLink and PCIe but \textbf{papers100M} under PCIe only---so
-Table~\ref{tab:papers-nvlink-hidden} is the \emph{first} papers100M-NVLink data, and the products
-rows and PCIe/SAGE crossover reported below are from that earlier sweep, pending the same A100
-re-measurement. Read the two together with that caveat.
-
-\begin{table}[h]
-\centering
-\caption{\textbf{products, SAGE, emulated PCIe}: per-epoch time (s). As hidden size and
-depth grow, gsplit's shuffle cost overtakes the redundant compute DGL pays, and gsplit
-goes from marginally behind to $1.5\times$ slower. $\Delta$ = gsplit vs.\ the best
-baseline.}
-\label{tab:sage-pcie}
-\begin{tabular}{l r r r r}
-\toprule
-Config & DGL & Quiver(25\%) & gsplit & $\Delta$ vs best \\
-\midrule
-$L{=}3$, $h{=}256$  &  4.50 &  7.38 &  4.81 & $+6.9\%$ \\
-$L{=}3$, $h{=}512$  &  5.08 &  7.90 &  6.29 & $+23.8\%$ \\
-$L{=}3$, $h{=}1024$ &  6.75 &  9.67 &  9.41 & $+39.4\%$ \\
-$L{=}4$, $h{=}512$  & 21.83 & 28.63 & 27.43 & $+25.7\%$ \\
-$L{=}4$, $h{=}1024$ & 32.84 & 41.58 & 51.11 & $+55.6\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\paraq{What do the measurements actually show?}
-Three findings stand out. (1)~\textbf{On NVLink, gsplit wins almost everywhere}, and by
-\emph{growing} margins as the model gets deeper/wider (e.g.\ products SAGE $L{=}4,h{=}1024$:
-gsplit 21.0\,s vs.\ DGL 31.1\,s), because the cheap NVLink shuffle is dwarfed by the
-redundant compute gsplit avoids; it loses only in the shallow $L{=}2,h{=}256$ corner where
-there is little compute to save. (2)~\textbf{On PCIe the picture flips for SAGE}: gsplit
-trails DGL and the gap grows monotonically with hidden size (Table~\ref{tab:sage-pcie},
-$+6.9\%\!\to\!+23.8\%\!\to\!+39.4\%$) and with depth, reaching $+55.6\%$ at the
-$L{=}4,h{=}1024$ corner---the deep$\times$wide regime where four wide shuffles dominate.
-(3)~\textbf{GAT is more robust}: its heavier attention compute amortizes the shuffle, so on
-PCIe gsplit still wins except at the shallow $L{=}2$ cell and marginally at $L{=}3,h{=}1024$.
-The losing $(\textrm{graph},\textrm{hardware},\textrm{model},\textrm{depth},\textrm{hidden})$
-cells are enumerated in \texttt{results/losing\_cells.csv}; they are the typed input to the
-simulator-driven configuration search of Section~\ref{sec:simulator}.
-
-% Full auto-generated per-cell table (gen_results_table.py): fastest system per cell in red.
-\input{tables/sweep_all}
-
-\paraq{Conclusion of this section.}
-There are concrete settings---chiefly \textbf{SAGE on a PCIe-class interconnect at large
-hidden size and/or depth}, worst at the deep$\times$wide corner---where gsplit is
-materially slower than a replicated-graph baseline (up to $1.56\times$ on products). The
-effect is interconnect-dependent: on NVLink gsplit remains the best choice, so the problem
-is specifically the expensive-shuffle regime. These losing cells are exactly what the
-hybrid schemes of Section~\ref{sec:hybrids} target and what the simulator of
-Section~\ref{sec:simulator} must learn to predict.
+\paraq{Conclusions --- deferred until the matrix is complete.}
+To be written once all four quadrants (both ladders, both models) are measured under the protocol
+above. The diminishing-gain and losing cells will then be enumerated in
+\texttt{results/losing\_cells.csv} as the typed input to the simulator-driven configuration search
+of Section~\ref{sec:simulator}.
