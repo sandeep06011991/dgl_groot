@@ -8,7 +8,13 @@ cross-partition \textbf{shuffle} cost until it overwhelms the redundant computat
 partition-aware training was meant to save. Crucially, whether that crossover is reached
 depends on the \emph{interconnect}: on NVLink the shuffle is cheap, whereas on a PCIe-class
 interconnect (emulated here by disabling NCCL peer-to-peer) the same shuffles become expensive
-and gsplit falls behind. A second axis is the feature \emph{cache}: the fresh A100 measurements
+and gsplit falls behind. This PCIe regime is the common case, not a corner case: NVLink and
+NVSwitch are confined to premium SXM- and DGX-class nodes, whereas the far larger installed base
+of PCIe-attached GPUs---commodity and cloud multi-GPU servers, spot and preemptible instances, and
+most consumer and prior-generation datacenter cards---moves inter-GPU data over PCIe or the host at
+a fraction of NVLink bandwidth, and such capacity is both cheaper and markedly easier to obtain. A
+system that wins only on NVLink therefore leaves the more widely available hardware unserved. A
+second axis is the feature \emph{cache}: the fresh A100 measurements
 (Table~\ref{tab:papers-nvlink-hidden}) show that once the cache is removed, gsplit can trail a
 replicated DGL baseline \emph{even on NVLink} for the light-compute SAGE model.
 
