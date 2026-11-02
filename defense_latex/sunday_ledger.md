@@ -16,16 +16,24 @@ this reproduces and characterizes it on a **larger (A100) GPU**.
 ## 1. Objective
 
 Characterize where **gsplit does not perform**, on **both papers100M and products**,
-**NVLink only**, comparing **training time only** (per-epoch `duration (s)`,
-lower = better). Both graphs are first-class — neither is optional.
+on **both hardware settings (NVLink, then PCIe)**, comparing **training time only**
+(per-epoch `duration (s)`, lower = better). Both graphs are first-class.
 
-Two axes per graph, each climbed **until OOM** (or the 900 s/cell time cap):
+Per graph, per hardware, two axes each climbed **until OOM** (or the 900 s/cell cap):
 1. **Hidden size** — exponentially increasing (`256→512→1024→2048→…`) until OOM.
-2. **Depth** — at `hidden = H*/2` (H* = the OOM-ceiling hidden from axis 1),
-   increasing (`2→3→4→…`) until OOM.
+2. **Depth** — at `hidden = H*/2` (H* = the OOM-ceiling hidden from axis 1, per
+   hardware/model), increasing (`2→3→4→…`) until OOM.
 
 Both axes run both models, **gat first, then sage** (gat's attention memory
 OOMs earlier → finds the ceiling fast; sage confirms the cheaper regime).
+
+**Hardware (user, 2026-11-02):** do **NVLink first, then PCIe** (`NCCL_P2P_DISABLE=1`
+emulation, drops `--nvlink`) for each graph. PCIe is the expensive-shuffle regime
+where gsplit is expected to lose hardest. No C++ rebuild needed between passes (split
+comm is runtime NCCL; `--nvlink` only flips quiver's cache policy + the label).
+
+**Order (user):** finish papers100M completely (NVLink + PCIe, both axes) and
+**write its results** before repeating the whole thing for products.
 
 **Stop = OOM (or 900 s cap), not "gsplit underperforms."** We keep climbing past
 the crossover and record it along the way — a conclusion needs the full stressed
@@ -80,8 +88,9 @@ more misses), not a fairness correction.
   Underperform crossovers are recorded, never a stop — we stress to OOM.
 - **H\*** = the OOM/time ceiling hidden on axis 1. Depth axis (axis 2) uses `H*/2`
   so the depth ladder has headroom to reach its own OOM.
-- Order: **papers100M (both axes) → products (both axes) → LaTeX writeup.** Both
-  graphs fully stressed before any conclusion.
+- Order: **papers100M {NVLink then PCIe, both axes} → write papers100M results →
+  products {NVLink then PCIe, both axes} → write products results.** NVLink before
+  PCIe within each graph; each hardware stressed to OOM before concluding.
 
 ---
 
@@ -92,30 +101,34 @@ more misses), not a fairness correction.
 - [ ] Acquire A100-SXM pod, **~500 GB container disk** (papers100M needs it — P1). `conda activate /home/groot_env`.
 - [ ] Bootstrap (clones pushed branch) → `./build.sh release` (+ `ln -sfn build-release build` before `pip install ./python`). Stage B2 creds first (avoid the silent "account not found" — P1).
 - [ ] Provision **both** graphs: papers100M from B2 (`RESTORE_B2=1 provision_data.sh papers100M "4"`); products regenerates from OGB (not in B2). Confirm `feat.npy` + the `_w4_ndst_efreq_xbal` maps.
-- [ ] **Plumbing:** add `cache_frac` branch to `split_trainer.py` (config 4). Commit separately (eval: plumbing).
-- [ ] Write `experiment/script/sunday_sweep.sh` (§5); smoke-test one cheap cell (hidden=256, depth=2, gat) for all 4 systems → 4 rows land.
+- [x] **Plumbing:** `cache_frac` branch added to `split_trainer.py` (config 4), pushed (`454bb565`).
+- [x] Write `experiment/script/sunday_sweep.sh` (§5) — pushed (`454bb565`). [ ] smoke-test one cheap cell (hidden=256, depth=2, gat) for all 4 systems → 4 rows land (needs pod).
 - **Done when:** 4-config smoke run produces 4 rows with sane `duration (s)`, on both graphs' data present.
 
-### Phase 1 — papers100M, hidden ladder (slave 1)  ▢
-- [ ] **gat first, then sage:** 4 configs at depth=3, hidden ladder ascending, 900 s cap, **climb until the gsplit cell OOMs/times out**. Orphan cleanup after **every** cell (P3).
-- [ ] Record the full curve + where gsplit crosses each baseline; set **H\*** = OOM-ceiling hidden, per model.
-- **Done when:** both models stressed to OOM on the hidden axis; crossover + ceiling recorded with one-line reasons.
+### Phase 1 — papers100M, **NVLink** (hidden then depth) (slave 1)  ▢
+- [ ] **gat first, then sage.** `HARDWARE=nvlink MODE=hidden` → 4 configs at depth=3, hidden ladder ascending, 900 s cap, **climb until the gsplit cell OOMs/times out**. Then `MODE=depth FIXED_HID=H*/2` → depth ladder to OOM. Orphan cleanup after **every** cell (P3).
+- [ ] Record each curve + where gsplit crosses each baseline; set **H\*** = OOM-ceiling hidden (per model).
+- **Done when:** papers100M NVLink stressed to OOM on both axes, both models; crossover + ceiling recorded with one-line reasons.
 
-### Phase 2 — papers100M, depth ladder at H*/2 (slave 2)  ▢
-- [ ] **gat first, then sage:** hidden = H*/2, depth ladder ascending, 900 s cap, climb until OOM. Orphan cleanup after every cell (P3).
-- [ ] Record the depth ceiling + crossovers.
-- **Done when:** both models stressed to OOM on the depth axis.
+### Phase 2 — papers100M, **PCIe** (hidden then depth) (slave 2)  ▢
+- [ ] Same as Phase 1 with `HARDWARE=pcie` (`NCCL_P2P_DISABLE=1`, drops `--nvlink`; no rebuild). Expensive-shuffle regime → expect gsplit to lose hardest here.
+- **Done when:** papers100M PCIe stressed to OOM on both axes, both models.
 
-### Phase 3 — products, both axes (slave 3)  ▢
-- [ ] Repeat Phases 1–2 for **products** (same 4 configs, NVLink, gat then sage, climb to OOM on each axis). products is a different graph → its own crossover/ceiling.
-- **Done when:** products stressed to OOM on both axes, both models.
+### Phase 3 — **write papers100M results** (writeup slave)  ▢
+- [ ] Consolidate papers100M rows (NVLink+PCIe) into `sweep_all.csv` (schema preserved, pandas sort before+after); back logs to B2.
+- [ ] Regenerate the table via `gen_results_table.py`; **update** `sections/01_gsplit_limitations/limitations.tex` with the papers100M 4-config training-time story, the hidden/depth stress-to-OOM curves, the losing cells **each with its one-line mechanistic reason**, and the V100→A100 framing. Refresh `losing_cells.csv`.
+- [ ] Compile the PDF (`latexmk` on WSL — CPU-only, allowed).
+- **Done when:** papers100M results are in the table + prose and the PDF builds. *Efficiency:* this writeup slave (WSL, no pod) can run **in parallel with Phase 4** so the pod never idles.
 
-### Phase 4 — consolidate + **update the LaTeX** (dedicated writeup slave)  ▢
-- [ ] Consolidate all rows into `defense_latex/results/sweep_all.csv` (schema preserved, pandas sort before+after append); back logs to B2.
-- [ ] Regenerate the table(s) via `gen_results_table.py` → `defense_latex/tables/`.
-- [ ] **Update the LaTeX prose** `sections/01_gsplit_limitations/limitations.tex`: the 4-config training-time story, the hidden/depth stress curves to OOM, the losing cells per graph **each with its one-line mechanistic reason** (shuffle vs redundant-compute), and the V100→A100 reproduction framing. Refresh `losing_cells.csv`.
-- [ ] Compile the PDF (`latexmk` on WSL — allowed, CPU-only) and confirm it renders.
-- **Done when:** both graphs' results are in the table + prose, the PDF builds, and the losing-cells list exists. Runs as its **own agent** (prose review ≠ compute review).
+### Phase 4 — products, **NVLink** (hidden then depth) (slave 3)  ▢
+- [ ] Repeat Phase 1 for **products** (different graph → its own crossover/ceiling).
+
+### Phase 5 — products, **PCIe** (hidden then depth) (slave 4)  ▢
+- [ ] Repeat Phase 2 for **products**.
+
+### Phase 6 — **write products results** + finalize (writeup slave)  ▢
+- [ ] Consolidate products rows; regenerate the table; extend `limitations.tex` with products; refresh `losing_cells.csv`; rebuild the PDF.
+- **Done when:** both graphs × both hardware are in the table + prose, the PDF builds, and the losing-cells list is complete. Writeup runs as its **own agent** (prose review ≠ compute review).
 
 ---
 
@@ -132,8 +145,9 @@ A focused driver (do **not** rewrite `sweep.sh`; new file). Contract:
   '[t]rain_main.py'; pkill -9 -f '[m]ultiprocessing.spawn'; sleep 3` then an
   `nvidia-smi` free-mem check before the next cell — a crashed/OOM'd cell's workers
   otherwise poison the next.
-- NVLink only (`--nvlink`, no `NCCL_P2P_DISABLE`). `--random_feat`, `batch_size=1024`,
-  `world_size=4`, `num_redundant_layer=0`, fanout `15`/layer.
+- `HARDWARE=nvlink` (default, `--nvlink`) or `HARDWARE=pcie` (`NCCL_P2P_DISABLE=1`,
+  drops `--nvlink`). `--random_feat`, `batch_size=1024`, `world_size=4`,
+  `num_redundant_layer=0`, fanout `15`/layer.
 - Writes `duration (s)` etc. to a per-pass CSV the master consolidates.
 
 ---
@@ -208,3 +222,11 @@ fixed at 4 configs / 2 axes / 2 graphs.
   **to OOM** — stop = OOM, not underperform; (5) torchmetrics already in env-setup; (6)
   LaTeX update is a **dedicated writeup slave** (Phase 4). Ready for the go to acquire
   the pod (Phase 0 starts billing).
+- 2026-11-02 — User: Go Ahead. Phase 0 started. Pushed branch (`454bb565`) with the
+  cache_frac plumbing + `sunday_sweep.sh`. Acquiring 4×A100-SXM / 500 GB pod
+  (`groot-sunday`, bg). Existing EXITED pods unfit (2-GPU / small disk). Plumbing +
+  script done; smoke test + provisioning pending pod allocation.
+- 2026-11-02 — User: add PCIe after NVLink per graph; write papers100M results before
+  products. Added `HARDWARE=nvlink|pcie` knob to `sunday_sweep.sh`; restructured phases
+  to 1–6 (papers NVLink → papers PCIe → write papers → products NVLink → products PCIe
+  → write products). Writeup slave can overlap next graph's compute to avoid pod idle.
