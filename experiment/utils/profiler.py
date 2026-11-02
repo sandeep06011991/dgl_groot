@@ -37,9 +37,12 @@ class Profiler:
         self.epoch_num = epoch_num
         
     def content(self):
-        assert(self.epoch_num != -1)
-        
         def avg(t):
+            # sentinel rows (timeout_profiler/oom_profiler) carry string markers
+            # like "timeout"/"oom" and never ran an epoch -> emit them verbatim.
+            if not isinstance(t, (int, float)):
+                return t
+            assert(self.epoch_num != -1)
             return round(t / self.epoch_num, 2)
         
         content = [avg(self.duration), 

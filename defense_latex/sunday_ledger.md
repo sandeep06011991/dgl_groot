@@ -112,11 +112,15 @@ more misses), not a fairness correction.
 - [x] **Smoke test PASSED** (papers100M/NVLink/gat/h256/d2, 2ep): 4 distinct rows, cache_frac −1.0 vs 0.25, split@25% alloc 2060 MB > split@0% 1077 MB (cache_frac path works), GPUs cleaned to 0 MiB. First data point: gsplit loses to both baselines even here (split 19.4 vs dgl 15.1; split@25% 20.1 vs quiver@25% 17.4).
 - **Done when:** ✅ 4-config smoke produced 4 rows with sane `duration (s)`; both graphs provisioned. **PHASE 0 COMPLETE.**
 
-### Phase 1 — papers100M, **NVLink** (hidden then depth) (slave 1)  🔄 RUNNING
-- [~] hidden ladder RUNNING (pid 35346, log `phase1_papers_nvlink.log`, watcher `b81jqbvw3`): `HID_LADDER="256 512 1024 2048 4096 8192"` @ depth=3, gat then sage, 5 ep, climb to OOM. CSV `logs/sunday_papers100M_nvlink_hidden.csv`.
-- [ ] **gat first, then sage.** `HARDWARE=nvlink MODE=hidden` → 4 configs at depth=3, hidden ladder ascending, 900 s cap, **climb until the gsplit cell OOMs/times out**. Then `MODE=depth FIXED_HID=H*/2` → depth ladder to OOM. Orphan cleanup after **every** cell (P3).
-- [ ] Record each curve + where gsplit crosses each baseline; set **H\*** = OOM-ceiling hidden (per model).
-- **Done when:** papers100M NVLink stressed to OOM on both axes, both models; crossover + ceiling recorded with one-line reasons.
+### Phase 1 — papers100M, **NVLink** (hidden then depth) (slave 1)  🔄 depth RUNNING
+- [x] **hidden ladder COMPLETE** (log `phase1_papers_nvlink.log`, CSV `sunday_papers100M_nvlink_hidden.csv`, 44 data rows incl. 8 `timeout` sentinels). Both ceilings were the **900 s cap** (not hard OOM): **gat H\*=4096, sage H\*=8192.** Per-epoch `duration (s)`, cols = split@0 / dgl@0 / quiver@25% / split@25%:
+  - **gat** @d3: 256→27.5/26.1/32.7/25.1 · 512→27.4/25.9/34.0/26.0 · 1024→35.0/38.3/45.3/32.0 · 2048→60.3/75.5/83.6/59.2 · **4096→timeout(all)**.
+  - **sage** @d3: 256→16.0/12.6/25.0/13.7 · 512→15.5/14.1/24.8/13.9 · 1024→18.5/15.0/25.7/17.7 · 2048→29.3/25.3/35.3/27.9 · 4096→62.2/61.3/71.8/61.4 · **8192→timeout(all)**.
+  - **Finding (clean):** on **sage**, `dgl@0` beats `split@0` at *every* hidden (12.6<16.0 … 61.3<62.2) → gsplit's uncached partition path is slower than replicated DGL. gsplit only wins the *cached* pair (split@25% < quiver@25% everywhere). On **gat** the uncached gap closes/reverses at large hidden (split 60.3 < dgl 75.5 @2048) — attention compute dominates, hiding the shuffle cost.
+- [x] **Fixed `record_timeout.py`**: `Profiler.content()`/`avg()` crashed on string sentinels (`"timeout"`/`"oom"`) → *no ceiling rows were written* during the run. Patched `profiler.py` (avg passes non-numeric through), synced, backfilled the 8 hidden-ceiling rows.
+- [~] **depth ladder RUNNING** (pid 101015, `run_depth_nvlink.sh`, log `phase1b_papers_nvlink_depth.log`, watcher `bhf19nb0h`): two chained invocations — gat@`FIXED_HID=2048`, sage@`FIXED_HID=4096` (=H\*/2), `DEPTH_LADDER="3 4 5 6 7 8"`, early-break on gsplit timeout. CSV `sunday_papers100M_nvlink_depth.csv`.
+- **NOTE:** launches must `export WORKSPACE_DIR=/root` (env.sh defaults to the missing Unity `/scratch3` path; data lives at `/root/graph`). First bad depth launch (pid 100493) crashed on the dead path, killed, relaunched clean.
+- **Done when:** papers100M NVLink stressed to the cap on both axes, both models; crossover + ceiling recorded with one-line reasons.
 
 ### Phase 2 — papers100M, **PCIe** (hidden then depth) (slave 2)  ▢
 - [ ] Same as Phase 1 with `HARDWARE=pcie` (`NCCL_P2P_DISABLE=1`, drops `--nvlink`; no rebuild). Expensive-shuffle regime → expect gsplit to lose hardest here.
@@ -238,3 +242,9 @@ fixed at 4 configs / 2 axes / 2 graphs.
   products. Added `HARDWARE=nvlink|pcie` knob to `sunday_sweep.sh`; restructured phases
   to 1–6 (papers NVLink → papers PCIe → write papers → products NVLink → products PCIe
   → write products). Writeup slave can overlap next graph's compute to avoid pod idle.
+- 2026-11-02 — **Phase 1 hidden ladder DONE** (papers100M/NVLink). Ceilings at the 900 s
+  cap: gat H\*=4096, sage H\*=8192. Headline reproduces the V100 loss on A100: sage
+  `dgl@0` < `split@0` at every hidden (uncached gsplit slower than replicated DGL); gsplit
+  wins only the cached pair. Fixed a `record_timeout.py`/`profiler.py` crash that had
+  dropped all ceiling rows; backfilled. Launched NVLink **depth** ladder at H\*/2
+  (gat@2048, sage@4096). Caught + fixed a data-path bug (must `export WORKSPACE_DIR=/root`).
