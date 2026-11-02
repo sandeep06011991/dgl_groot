@@ -10,8 +10,7 @@ depends on the \emph{interconnect}: on NVLink the shuffle is cheap, whereas on a
 interconnect (emulated here by disabling NCCL peer-to-peer) the same shuffles become expensive
 and gsplit falls behind. A second axis is the feature \emph{cache}: the fresh A100 measurements
 (Table~\ref{tab:papers-nvlink-hidden}) show that once the cache is removed, gsplit can trail a
-replicated DGL baseline \emph{even on NVLink} for the light-compute SAGE model---so the NVLink win
-is conditional on caching, not unconditional.
+replicated DGL baseline \emph{even on NVLink} for the light-compute SAGE model.
 
 \paraq{Why does increasing depth hurt gsplit?}
 Each GNN layer triggers one partition-aware all-to-all shuffle of boundary features, so
@@ -33,9 +32,11 @@ cache), and \textbf{gsplit} on \textbf{products} and \textbf{papers100M} at the 
 $4\times$A100-SXM setting (fanout~15), sweeping hidden size $\in\{256,512,1024\}$ at
 $L{=}3$ and depth $\in\{2,3,4\}$ at hidden~256, plus the deep$\times$wide corner
 ($L{=}4$, hidden $\{512,1024\}$), for both SAGE and GAT, under both NVLink and emulated
-PCIe. arxiv is omitted as a correctness-only toy graph. The full per-cell table (both
-hardware settings, all systems) is Table~\ref{tab:sweep_all}; Table~\ref{tab:sage-pcie}
-highlights the SAGE/PCIe crossover that is the clearest symptom.
+PCIe. arxiv is omitted as a correctness-only toy graph. The full per-cell results are split
+by setting into one table per (graph, hardware, model), stacked from
+Table~\ref{tab:sweep_all} onward (each keyed by depth$\times$hidden, fastest system per cell
+in red); Table~\ref{tab:sage-pcie} highlights the SAGE/PCIe crossover that is the clearest
+symptom.
 
 \paraq{What do the fresh A100 measurements (this run) show first, on papers100M under NVLink?}
 Table~\ref{tab:papers-nvlink-hidden} reports the opening results of the A100 re-measurement:

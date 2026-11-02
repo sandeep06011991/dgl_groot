@@ -32,7 +32,7 @@
 \maketitle
 \tableofcontents
 
-\chapter{Hybrid Parallelism for gsplit}
+\chapter{Hybrid Split Parallelism}
 
 \paraq{What has been established before this chapter, and what problem remains?}
 In the preceding chapters we built \textbf{gsplit} (Spara), a partition-aware distributed
@@ -45,9 +45,11 @@ across GPUs via NCCL. This chapter starts from a tension our ablation studies ex
 \paraq{Which settings erode gsplit's advantage, and why?}
 Two settings drive the cross-partition \textbf{shuffle} cost up until it dominates:
 \textbf{deeper models} (every additional layer adds another all-to-all shuffle), and
-\textbf{larger hidden sizes} (every shuffle moves a larger feature volume). In these
-regimes the communication gsplit was designed to minimize instead becomes its bottleneck,
-and a simpler baseline can win.
+\textbf{larger hidden sizes} (every shuffle moves a larger feature volume).
+In these settings potential savings in data loading and computation are lost due to the increasing cost of splitting. 
+%  In these
+% regimes the communication gsplit was designed to minimize instead becomes its bottleneck,
+% and a simpler baseline can win.
 
 \paraq{What does this chapter do about it, and in what order?}
 This chapter (i)~\emph{quantifies} where gsplit underperforms against the DGL and Quiver
