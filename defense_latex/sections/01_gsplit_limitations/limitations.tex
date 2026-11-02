@@ -87,12 +87,34 @@ uncached gap closes and then \emph{reverses} as the model widens (gsplit@0 $60.3
 at $h{=}2048$, $\Delta_u=-20.2\%$): attention's heavier compute amortizes the shuffle, exactly the
 model-sensitivity the shuffle-cost argument predicts.
 
+\paraq{The unifying mechanism: a (near-)fixed shuffle overhead raced against compute-dependent savings.}
+The SAGE and GAT trends are two faces of one mechanism. gsplit's overhead relative to
+DGL---partition-aware sampling plus the boundary shuffle---is, on NVLink, an approximately
+\emph{fixed} per-epoch cost: for SAGE the \emph{absolute} gsplit@0$-$DGL@0 gap stays $\approx1$--$4$\,s
+while the epoch itself grows from $12.6$ to $62.2$\,s, so the \emph{relative} loss diminishes toward
+parity ($+26.9\%\!\to\!+1.6\%$) without gsplit ever catching up. What gsplit \emph{saves} is the
+redundant boundary computation DGL repeats on its replicated graph, which scales with per-node model
+work (hidden~$\times$~compute-per-layer). For light-compute \textbf{SAGE} that saving never outgrows
+the fixed overhead, so gsplit stays marginally behind---\emph{diminishing returns}. For compute-heavy
+\textbf{GAT} the saving grows fast: DGL's own epoch balloons from $26.1$ to $75.5$\,s while gsplit's
+grows only $27.5\!\to\!60.3$\,s, so gsplit \emph{crosses over} near $h{=}1024$ and the margin
+\emph{widens} to $-20.2\%$---\emph{increasing returns}. The correct one-line reading is therefore not
+``wider models hurt gsplit'' but rather \textbf{gsplit's edge tracks how compute-heavy the model is}:
+its NVLink value comes from amortizing a fixed shuffle cost against saved computation, so it wins
+exactly where per-node compute is large (GAT, large hidden) and loses where it is small (SAGE,
+uncached). Whether that overhead instead becomes \emph{volume-scaling}---growing the SAGE
+\emph{absolute} gap, not just failing to shrink it---on a PCIe-class interconnect is the open question
+the PCIe pass must settle.
+
 \paraq{Caveat: these rows are partial and cap-limited, not yet an OOM-stressed conclusion.}
 Both models reached a ceiling at the $900$\,s per-cell cap rather than a true out-of-memory
 failure---GAT at $h{=}4096$, SAGE at $h{=}8192$ (\textsc{timeout} rows). The NVLink \emph{depth}
 ladder and the entire emulated-\emph{PCIe} pass are not yet measured, and the per-cell time cap is
-under review. The products rows and the PCIe/SAGE crossover reported below are from the earlier
-sweep and are pending the same A100 re-measurement; read the two together with that caveat.
+under review. Coverage is also uneven across the two graphs: the earlier sweep measured
+\textbf{products} under both NVLink and PCIe but \textbf{papers100M} under PCIe only---so
+Table~\ref{tab:papers-nvlink-hidden} is the \emph{first} papers100M-NVLink data, and the products
+rows and PCIe/SAGE crossover reported below are from that earlier sweep, pending the same A100
+re-measurement. Read the two together with that caveat.
 
 \begin{table}[h]
 \centering
