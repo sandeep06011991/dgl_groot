@@ -97,9 +97,15 @@ more misses), not a fairness correction.
 ## 4. Phases
 
 ### Phase 0 — prereqs + plumbing (slave 0)  ▢
+
+**Pod (live):** `mbkd71iymth7sa` / `groot-sunday` — 4×A100-SXM-80GB, 500 GB disk,
+**$7.16/hr**, created 2026-11-02 08:58 UTC. SSH `root@154.54.102.40 -p 18294`
+(key `~/.runpod/ssh/runpodctl-ssh-key`). NVLink confirmed (NV12 all pairs). B2 creds:
+`~/.config/groot/b2.env` → `rclone config create gsplit-b2 b2 account $B2_KEY_ID key $B2_APP_KEY`.
+
 - [x] **Push `final_dissertation` to GitHub** (user decision) so a fresh pod bootstraps with the 1a code + the quiver/torchmetrics env-setup fixes. (torchmetrics is already in `environment_setup.sh:136-139` — no change needed.)
-- [ ] Acquire A100-SXM pod, **~500 GB container disk** (papers100M needs it — P1). `conda activate /home/groot_env`.
-- [ ] Bootstrap (clones pushed branch) → `./build.sh release` (+ `ln -sfn build-release build` before `pip install ./python`). Stage B2 creds first (avoid the silent "account not found" — P1).
+- [x] Acquire 4×A100-SXM pod, 500 GB disk — `mbkd71iymth7sa` (see Pod box). NVLink confirmed.
+- [~] Bootstrap running detached on pod (pid 148, log `/root/overnight_logs/setup.log`, watcher `bhwjwqi5p`) — clones `final_dissertation`, `environment_setup.sh` + `./build.sh release`. ~30 min.
 - [ ] Provision **both** graphs: papers100M from B2 (`RESTORE_B2=1 provision_data.sh papers100M "4"`); products regenerates from OGB (not in B2). Confirm `feat.npy` + the `_w4_ndst_efreq_xbal` maps.
 - [x] **Plumbing:** `cache_frac` branch added to `split_trainer.py` (config 4), pushed (`454bb565`).
 - [x] Write `experiment/script/sunday_sweep.sh` (§5) — pushed (`454bb565`). [ ] smoke-test one cheap cell (hidden=256, depth=2, gat) for all 4 systems → 4 rows land (needs pod).
