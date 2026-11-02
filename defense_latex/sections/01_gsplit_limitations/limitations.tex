@@ -63,15 +63,19 @@ We sweep the full cross-product $\{\text{NVLink},\,\text{PCIe}\}\times\{\text{pr
 $H^{\star}$ the hidden size at which gsplit first reaches the ceiling), each advanced until gsplit
 OOMs or hits the time cap. Both ladders scale either the volume a shuffle moves or the number of
 shuffles, so they are the natural stress axes; we report the raw per-epoch times and leave the
-cross-quadrant pattern to the end. One quadrant is measured so far---papers100M on NVLink
-(Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); the other three, and the depth ladders, are in progress and
-will be inserted here in the same fair-pairing format:
+cross-quadrant pattern to the end. Coverage of the matrix (all raw tables are included below):
 \begin{itemize}\itemsep2pt
-  \item \textbf{papers100M, NVLink} --- hidden: measured (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); depth: in progress.
-  \item \textbf{papers100M, PCIe} --- in progress.
-  \item \textbf{products, NVLink} --- in progress.
-  \item \textbf{products, PCIe} --- in progress.
+  \item \textbf{products, NVLink} --- measured, earlier sweep (Tables~\ref{tab:sweep-products-nvlink-sage},~\ref{tab:sweep-products-nvlink-gat}).
+  \item \textbf{products, PCIe} --- measured, earlier sweep (Tables~\ref{tab:sweep-products-pcie-emu-sage},~\ref{tab:sweep-products-pcie-emu-gat}).
+  \item \textbf{papers100M, PCIe} --- measured, earlier sweep (Tables~\ref{tab:sweep-papers100m-pcie-emu-sage},~\ref{tab:sweep-papers100m-pcie-emu-gat}).
+  \item \textbf{papers100M, NVLink} --- measured this session, hidden ladder (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); depth ladder in progress.
 \end{itemize}
+\textbf{Flag (kept, not reconciled):} the earlier sweep ran gsplit with a $10$\,GB cache ($=$ the
+full feature set on products, $\approx$17.5\% on papers100M) and Quiver at $25\%$---all systems near
+full residency---whereas this session's papers100M-NVLink split gsplit into $0\%$ and $25\%$. The two
+therefore use different gsplit cache configs; both are kept side by side for you to reconcile, not
+merged or dropped. The raw rows are in \texttt{results/sweep\_all.csv} (earlier sweep) and
+\texttt{results/sunday/} (this session).
 
 \begin{table}[h]
 \centering
@@ -152,6 +156,14 @@ lead \emph{diminishes} monotonically as width grows ($\Delta_c:-45.3\%\!\to\!-14
 it holds ($\approx-23\%\!\to\!-29\%$). So even in this single quadrant both motivating shapes already
 appear---an outright underperformance (SAGE, uncached) and a diminishing gain (SAGE, cached). Whether
 either carries to PCIe or to products is exactly what the remaining quadrants will decide.
+
+\paraq{The earlier-sweep tables (products + papers100M), shown raw.}
+The tables below are the earlier sweep's raw per-cell times for \textbf{products} (NVLink and PCIe)
+and \textbf{papers100M} (PCIe), one per (graph, hardware, model), fastest system per cell in red.
+Read them with the \textbf{Flag} above: gsplit here is at the $10$\,GB (near-full) cache, not the
+$0\%/25\%$ split used in the papers100M-NVLink tables, so gsplit is not directly comparable across the
+two blocks. They are included unedited for trend-spotting.
+\input{tables/sweep_all}
 
 \paraq{Conclusions --- deferred, and to be verified.}
 Nothing above is a settled result. Because the numbers admit interpretation and GNN behaviour is
