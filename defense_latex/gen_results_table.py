@@ -118,6 +118,11 @@ def _cell_rows(grp, win_idx):
             frac = -1.0
         if frac > 0:
             cache = f"{int(round(frac * 100))}\\%"   # already LaTeX-escaped
+        # DGL has no feature cache: it replicates the graph and gathers features over
+        # UVA from host-pinned memory (dgl_trainer ignores --cache_size). Don't echo a
+        # meaningless cache size for it.
+        if str(row.get("system", "")) == "dgl":
+            cache = "--"
         cells = [syslabel, cache]
         for col, _ in METRIC_COLS:
             val = row.get(col, "")

@@ -252,6 +252,13 @@ fixed at 4 configs / 2 axes / 2 graphs.
   wins only the cached pair. Fixed a `record_timeout.py`/`profiler.py` crash that had
   dropped all ceiling rows; backfilled. Launched NVLink **depth** ladder at H\*/2
   (gat@2048, sage@4096). Caught + fixed a data-path bug (must `export WORKSPACE_DIR=/root`).
+- 2026-11-02 — **Protocol change for future runs (user):** `NUM_EPOCH=3` (was 5) and
+  `RUN_TIMEOUT=1200`\,s (was 900) — updated `sunday_sweep.sh` defaults. Added an
+  **Experimental setup** paragraph to `limitations.tex`. Fixed the table generator: DGL has
+  no feature cache (replication + UVA host-pinned gather; `dgl_trainer` ignores
+  `--cache_size`), so its cache column now shows `--` not the stale `10G`. Note the prior
+  `sweep_all.csv` used split@10G / quiver@{25,10}% — a different cache convention from the new
+  4-config design; the first papers100M-NVLink rows predate the 3-epoch/1200\,s protocol.
 - 2026-11-02 ~18:15 UTC — **User: stop spending, stabilize, interpret before continuing**
   ("we might have to replace the time caps"). Killed the depth sweep (gat depth=3 recorded,
   depth=4 was in progress; SSH went unresponsive under 15⁴-fanout memory pressure, so

@@ -26,6 +26,28 @@ effect is strongest for \textbf{SAGE}, whose per-layer compute is light, so the 
 a large share of the epoch; \textbf{GAT}'s heavier attention compute amortizes the shuffle
 and keeps gsplit ahead in more cells.
 
+\paraq{Experimental setup.}
+All measurements run on a single node of $4{\times}$\textbf{A100-SXM-80GB} GPUs. NVLink is the
+native interconnect (NV12, all pairs); the PCIe-class setting is \emph{emulated} on the same node
+by disabling NCCL peer-to-peer (\texttt{NCCL\_P2P\_DISABLE=1}), which forces the same shuffles onto
+the slower path without a hardware change. We compare \textbf{four situations}, chosen so each
+head-to-head is fair: \textbf{DGL} (full-graph replication, features gathered over UVA from
+host-pinned memory---\emph{no} feature cache) and \textbf{gsplit} (\(k{=}0\)) both \emph{uncached};
+and \textbf{Quiver} and \textbf{gsplit} both at \textbf{25\% cache} (on a $4$-GPU clique
+$4{\times}25\%$ holds the whole feature tensor partitioned across the GPUs, matching gsplit's
+partition residency). Training uses the \texttt{sage} and \texttt{gat} models, neighbour fanout
+\textbf{15} per layer, batch size \textbf{1024}, and $\text{world size}{=}4$. Because we measure
+\emph{time}, not accuracy, features are synthetic (\texttt{--random\_feat}: a full-size pinned
+tensor, so feature movement and cache sizing stay realistic while the $57$\,GB real feature load is
+skipped). Each cell runs \textbf{3 epochs} and we report the mean per-epoch training time
+(\texttt{duration (s)}); data loading and feature pinning are excluded from this figure but count
+against a per-cell wall-clock cap of \textbf{1200\,s (20\,min)}, beyond which a cell is recorded as
+\textsc{timeout}. Each ladder is climbed until the gsplit cell OOMs or hits that cap. We stress
+both \textbf{products} and \textbf{papers100M}; arxiv is omitted as a correctness-only toy graph.%
+\footnote{The first papers100M-NVLink rows (Table~\ref{tab:papers-nvlink-hidden}) were collected
+under an earlier $5$-epoch / $900$\,s protocol and will be refreshed to the $3$-epoch / $1200$\,s
+setup above.}
+
 \paraq{How do gsplit, DGL, and Quiver compare across the grid?}
 We report per-epoch training time for \textbf{DGL}, \textbf{Quiver} (25\% replicated
 cache), and \textbf{gsplit} on \textbf{products} and \textbf{papers100M} at the default

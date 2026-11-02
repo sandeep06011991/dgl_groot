@@ -27,7 +27,7 @@
 #   DEPTH_LADDER ("2 3 4 5 6")                      depth axis (MODE=depth)
 #   FIXED_HID    (512)                              hidden held fixed (MODE=depth; set H*/2)
 #   MODELS       ("gat sage")   WORLD_SIZE (4)   FPL (15)   BATCH (1024)
-#   CACHE_FRAC   (0.25)         NUM_EPOCH (5)    RUN_TIMEOUT (900)
+#   CACHE_FRAC   (0.25)         NUM_EPOCH (3)    RUN_TIMEOUT (1200)
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" &>/dev/null && pwd)"
@@ -45,8 +45,8 @@ WORLD_SIZE="${WORLD_SIZE:-4}"
 FPL="${FPL:-15}"
 BATCH="${BATCH:-1024}"
 CACHE_FRAC="${CACHE_FRAC:-0.25}"
-NUM_EPOCH="${NUM_EPOCH:-5}"
-RUN_TIMEOUT="${RUN_TIMEOUT:-900}"   # per-cell wall-clock cap (s); 900 = 15 min
+NUM_EPOCH="${NUM_EPOCH:-3}"
+RUN_TIMEOUT="${RUN_TIMEOUT:-1200}"  # per-cell wall-clock cap (s); 1200 = 20 min
 
 # hardware pass: NVLink as-is; PCIe emulated by disabling NCCL P2P (forces comm onto
 # PCIe). No C++ rebuild needed between passes -- split comm is runtime NCCL and respects
