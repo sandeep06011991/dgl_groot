@@ -9,12 +9,12 @@ partition-aware training was meant to save. Crucially, whether that crossover is
 depends on the \emph{interconnect}: on NVLink the shuffle is cheap, whereas on a PCIe-class
 interconnect (emulated here by disabling NCCL peer-to-peer) the same shuffles become expensive
 and gsplit falls behind. This PCIe regime is the common case, not a corner case: NVLink and
-NVSwitch are confined to premium SXM- and DGX-class nodes, whereas the far larger installed base
-of PCIe-attached GPUs---commodity and cloud multi-GPU servers, spot and preemptible instances, and
-most consumer and prior-generation datacenter cards---moves inter-GPU data over PCIe or the host at
-a fraction of NVLink bandwidth, and such capacity is both cheaper and markedly easier to obtain. A
-system that wins only on NVLink therefore leaves the more widely available hardware unserved. A
-second axis is the feature \emph{cache}: the fresh A100 measurements
+NVSwitch are available only on premium SXM- and DGX-class modules, whereas the great majority of
+deployed multi-GPU hardware---PCIe add-in-card servers and workstations, most consumer GPUs, and
+prior-generation datacenter cards---has no high-bandwidth GPU-to-GPU link and must move inter-GPU
+data over PCIe or through host memory, at a fraction of NVLink bandwidth. Because that hardware is
+both cheaper and far more widely deployed, a system that wins only on NVLink leaves the typical
+real-world installation unserved. A second axis is the feature \emph{cache}: the fresh A100 measurements
 (Table~\ref{tab:papers-nvlink-hidden}) show that once the cache is removed, gsplit can trail a
 replicated DGL baseline \emph{even on NVLink} for the light-compute SAGE model.
 
