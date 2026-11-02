@@ -1,8 +1,12 @@
 # Sunday ledger — finish Section 1 (where does gsplit underperform?)
 
-**Status:** PLANNING → code pushed, pod not yet up. Master/slave run. The
-**master** owns this file (sole writer) and `sweep_all.csv`; each phase runs in a
-fresh **slave**.
+**Status:** ⏸ **PAUSED for interpretation (2026-11-02 ~18:15 UTC).** Pod `mbkd71iymth7sa`
+**STOPPED/EXITED** (GPU billing halted, ~$66 spent over ~9h15m) at the user's request —
+they want to interpret the papers100M NVLink hidden results and reconsider the 900 s caps
+before spending more. papers100M NVLink **hidden** ladder is complete + written into
+`limitations.tex` (Table `tab:papers-nvlink-hidden`, PDF builds, 16 pp). Depth ladder was
+killed mid gat-depth=4 (only gat depth=3 recorded). PCIe + products + depth all pending a
+restart decision. Master/slave run; the **master** owns this file + `sweep_all.csv`.
 
 Supersedes the broad Section-1 scope in `long_running.md` for this job. Goal is
 narrow and defensible: a minimal 4-config comparison on **training time** that
@@ -248,3 +252,11 @@ fixed at 4 configs / 2 axes / 2 graphs.
   wins only the cached pair. Fixed a `record_timeout.py`/`profiler.py` crash that had
   dropped all ceiling rows; backfilled. Launched NVLink **depth** ladder at H\*/2
   (gat@2048, sage@4096). Caught + fixed a data-path bug (must `export WORKSPACE_DIR=/root`).
+- 2026-11-02 ~18:15 UTC — **User: stop spending, stabilize, interpret before continuing**
+  ("we might have to replace the time caps"). Killed the depth sweep (gat depth=3 recorded,
+  depth=4 was in progress; SSH went unresponsive under 15⁴-fanout memory pressure, so
+  stopped via `runpodctl pod stop`). Pod **EXITED** — GPU billing halted. Pulled both CSVs
+  → `defense_latex/results/sunday/`. **Updated `limitations.tex`** with the papers100M
+  NVLink hidden table + the uncached-SAGE-loses-to-DGL finding + a partial/cap-limited
+  caveat; qualified the too-strong "NVLink gsplit wins everywhere" opening claim. PDF builds
+  (16 pp). **Awaiting user:** cap policy + whether to resume (restart pod) or re-provision.
