@@ -38,10 +38,11 @@ GRAPHS = ["products", "papers100M"]
 MODELS = ["sage", "gat"]
 INTERCONNECTS = ["nvlink", "pcie"]          # pcie is emulated (NCCL_P2P_DISABLE=1)
 SYSTEMS = ["dgl", "split"]                   # gsplit@0 vs DGL@0 only -- no quiver, no k>0
-HID_SWEEP = [256, 512, 1024, 2048]           # at DEPTH_ANCHOR
-DEPTH_SWEEP = [2, 3, 4, 5, 6]                # at HID_ANCHOR
-DEPTH_ANCHOR = 3
-HID_ANCHOR = 512
+HID_SWEEP = [256, 1024, 4096]                # at DEPTH_ANCHOR (coarsened grid)
+DEPTH_SWEEP = [2, 4, 6]                       # at HID_ANCHOR
+DEPTH_ANCHOR = 4                              # depth at which the hidden sweep runs
+HID_ANCHOR = 1024                             # hidden at which the depth sweep runs
+                                             # -> shared pivot is (L=4, h=1024)
 FPL = 15                                     # fanout per layer
 
 # fixed run knobs (match the Section-1 protocol: 3 epochs, 0% cache, random feats)
