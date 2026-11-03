@@ -10,11 +10,11 @@ results and partition maps**.
 
 ```bash
 # A. CONTROL MACHINE: get a pod (retries through the A100-SXM capacity shortage)
-bash experiment/script/acquire_pod.sh groot-run        # prints POD_SSH + an ssh command
+bash experiment/script/cloud/runpod/acquire_pod.sh groot-run        # prints POD_SSH + an ssh command
 ssh -i ~/.runpod/ssh/runpodctl-ssh-key root@<ip> -p <port>
 
 # B. ON THE POD: build everything (Miniconda, env, clone, DGL release, torchmetrics)
-curl -fsSL https://raw.githubusercontent.com/sandeep06011991/dgl_groot/final_dissertation/experiment/script/bootstrap_pod.sh | bash
+curl -fsSL https://raw.githubusercontent.com/sandeep06011991/dgl_groot/final_dissertation/experiment/script/cloud/runpod/bootstrap_pod.sh | bash
 source /home/miniconda3/etc/profile.d/conda.sh && conda activate /home/groot_env && cd /home/dgl_groot
 
 # C. ON THE POD: partition/prep (regenerate from OGB) then run
@@ -51,7 +51,7 @@ Then acquire a pod — A100-SXM is often "Low"/empty, so **use the retry script*
 than a single `pod create`:
 
 ```bash
-bash experiment/script/acquire_pod.sh groot-run
+bash experiment/script/cloud/runpod/acquire_pod.sh groot-run
 # knobs: GPU_COUNT (default 2), DISK_GB (200), DCS (US-MD-1,US-MO-1,US-KS-2,US-WA-1,EUR-IS-1),
 #        MAX_ATTEMPTS (30), RETRY_SECONDS (60). Prints POD_ID, POD_SSH, and an ssh command.
 ```
@@ -67,7 +67,7 @@ Supported OGB graphs: `arxiv`, `products`, `papers100M`.
 
 ## 1. Software setup (one-time per pod)
 
-**Fastest path: `bash experiment/script/bootstrap_pod.sh`** (or the `curl | bash` one-liner
+**Fastest path: `bash experiment/script/cloud/runpod/bootstrap_pod.sh`** (or the `curl | bash` one-liner
 in the TL;DR) does everything in this section automatically on a fresh pod. The manual
 steps below are what it runs, for reference / debugging.
 
@@ -274,4 +274,4 @@ $data_dir/
   succeeded on retry) — `provision_data.sh` retries once.
 - No US A100-SXM datacenter supports network volumes; persistence uses B2, not NFS.
 - `--cache_size` must be like `10G` (the trainer strips a trailing `G`); do not pass `10GB`.
-- A100-SXM capacity is frequently empty — use `acquire_pod.sh` (retries), not a single `pod create`.
+- A100-SXM capacity is frequently empty — use `cloud/runpod/acquire_pod.sh` (retries), not a single `pod create`.

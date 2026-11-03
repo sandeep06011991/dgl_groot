@@ -2,7 +2,7 @@
 # sync_code.sh  —  RUN ON THE CONTROL MACHINE (laptop/WSL), not on a pod.
 #
 # Fast dev loop WITHOUT a git push/pull: rsync the local working tree straight to a
-# live pod. Cold-start a pod with bootstrap_pod.sh (which git-clones once); after
+# live pod. Cold-start a pod with cloud/runpod/bootstrap_pod.sh (which git-clones once); after
 # that, iterate with this. Python-only edits need no rebuild (just rerun); for
 # C++/CUDA edits add --build to rebuild on the pod.
 #
@@ -43,7 +43,7 @@ done
 : "${B2_ENV:=$HOME/.config/groot/b2.env}"
 : "${DELETE:=0}"
 
-[ -n "$POD_SSH" ] || { echo "ERROR: POD_SSH not set. Pass <ip:port> or export POD_SSH (acquire_pod.sh prints it)." >&2; exit 2; }
+[ -n "$POD_SSH" ] || { echo "ERROR: POD_SSH not set. Pass <ip:port> or export POD_SSH (cloud/runpod/acquire_pod.sh prints it)." >&2; exit 2; }
 [ -f "$SSH_KEY" ] || { echo "ERROR: SSH key '$SSH_KEY' not found. Run 'runpodctl ssh add-key' (RUNBOOK §Prerequisites)." >&2; exit 2; }
 
 IP="${POD_SSH%%:*}"; PORT="${POD_SSH##*:}"
