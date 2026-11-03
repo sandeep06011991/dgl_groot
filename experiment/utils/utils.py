@@ -11,7 +11,10 @@ def get_tensor_size(intensor: torch.Tensor):
 
 def ddp_setup(rank, world_size, backend="nccl"):
     os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
+    # Overridable so multiple independent world_size=N jobs can run concurrently on one
+    # node (e.g. two 4-GPU jobs on an 8-GPU box via CUDA_VISIBLE_DEVICES): give each a
+    # distinct TRAIN_MASTER_PORT so their rendezvous don't collide on one port.
+    os.environ["MASTER_PORT"] = os.environ.get("TRAIN_MASTER_PORT", "12355")
     dist.init_process_group(backend=backend, rank=rank, world_size=world_size)
     torch.cuda.set_device(rank)
 

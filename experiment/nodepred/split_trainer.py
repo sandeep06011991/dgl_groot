@@ -125,8 +125,10 @@ def train_split_ddp(rank: int, config: Config, unique_id,
     backward_time = get_duration(backward_timers)
 
     acc = 0
-    if config.graph_name in ["products", "arxiv", "papers100M"]:
+    if config.graph_name in ["products", "arxiv", "papers100M"] and not config.random_feat:
         # proof-of-correctness: per-rank local test accuracy on real labels.
+        # Skipped under --random_feat: accuracy is meaningless on random features, and
+        # the ~100s/cell test pass only burns wall-clock in a timing-only perf sweep.
         # collective-free (no all_reduce/barrier) and guarded so a failure here
         # can never lose the timing row written below.
         try:
