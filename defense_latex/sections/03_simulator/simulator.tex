@@ -107,6 +107,61 @@ hop$\rightarrow$layer pairing ($L{-}1{-}j$ instead of $-j$), the per-layer estim
 matches the fused step within $\sim$2--5\% for SAGE at hidden $\ge 256$---the large-hidden
 regime where the hybrid decision actually matters.
 
+\subsection{Calibration (Step~3a): what it actually required}
+\label{sec:sim-calibration}
+
+\paraq{Was calibration just fitting bandwidth constants?}
+No---it required \emph{structural} corrections to the cost model as well as fitting
+constants, because the uncalibrated simulator under-predicted the measured 4$\times$A100
+split time by \textbf{44--66\%} and so always selected $k^\star{=}0$. The ground truth was
+obtained \emph{by subtraction} from the measured sweep, with no extra multi-GPU benchmark:
+the all-to-all shuffle is not a separate measured column---it is embedded inside the
+measured \texttt{forward}/\texttt{backward} (the shuffle autograd runs inside the layer)---so
+holding compute fixed, $t^{\text{pcie}}_{\text{fwd+bwd}}-t^{\text{nvlink}}_{\text{fwd+bwd}}$
+isolates the real shuffle cost per cell, and the measured NVLink $\text{fwd}{+}\text{bwd}$
+gives the per-GPU compute. Both grow with depth/hidden and, on PCIe, the shuffle reaches
+$54$--$60\%$ of split time on the deep/large-hidden cells.
+
+\paraq{What were the three corrections?}
+(1)~\textbf{A separate all-to-all bandwidth.} The shuffle previously reused the feature-load
+\texttt{PCIE\_BW}/\texttt{NVLINK\_BW} (near line rate), but the GPU$\leftrightarrow$GPU
+all-to-all pays NCCL and (under PCIe emulation) host-staging overhead, so its \emph{effective}
+bandwidth is far lower; fit to the measured shuffle, $\texttt{ALLTOALL\_PCIE\_BW}{\approx}1.95$\,GB/s
+(vs.\ the $25$\,GB/s feature-load rate). (2)~\textbf{A missing sampling term.} The model had
+\emph{no} neighbour-sampling cost though measured sampling is $1$--$4$\,s; it is now timed on
+the real sampler. (3)~\textbf{A per-GPU compute model.} Compute was timed on the \emph{full}
+global batch on one GPU, but the real system partitions it across the GPUs; split-layer
+compute is now divided by an empirical parallel-efficiency factor
+($\texttt{COMPUTE\_PARALLEL\_FACTOR}{\approx}1.7$, fit to the measured per-GPU
+$\text{fwd}{+}\text{bwd}$---\emph{not} $\text{num\_devices}{=}4$, because small batches
+underutilise the GPU and partition boundaries replicate halo nodes), and DP-layer compute by
+$\text{num\_devices}$ (genuinely parallel redundant work).
+
+\begin{table}[h]
+\centering
+\caption{Calibration fidelity on \textbf{products}, 4$\times$A100, SAGE: the calibrated
+simulator's full-split ($k{=}0$) prediction vs.\ the measured split per-epoch time (s).
+\emph{Preliminary}: constants fit to these four cells; single measured run; PCIe emulated
+(magnitudes directional). The uncalibrated model gave ratios $0.33$--$0.56$.}
+\label{tab:sim-calib-products}
+\begin{tabular}{l r r r r}
+\toprule
+Cell (hw, $L$, hid) & Sim $k{=}0$ (s) & Measured split (s) & ratio \\
+\midrule
+pcie, $L{=}3$, 256  & 4.31  & 4.81  & 0.90 \\
+pcie, $L{=}3$, 1024 & 9.84  & 9.41  & 1.05 \\
+pcie, $L{=}4$, 256  & 14.27 & 17.74 & 0.80 \\
+pcie, $L{=}4$, 1024 & 49.49 & 51.11 & 0.97 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paraq{How honest is this fit?}
+The three constants were fit to the four products/SAGE cells above and are not claimed to
+transfer unchanged to GAT or other graphs; $\texttt{COMPUTE\_PARALLEL\_FACTOR}$ is a single
+compromise value (the true ratio ranges $\sim$1--1.8 across cell sizes). These are therefore
+\emph{directional, preliminary} calibrations pending a per-cell refit and the final sweep.
+
 \paraq{Conclusion of this section.}
 The simulator predicts a configuration's performance from cheap single-GPU measurements,
 and---validated against the DGL baseline and demonstrated within 10\% on papers100M at the

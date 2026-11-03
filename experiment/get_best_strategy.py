@@ -21,7 +21,7 @@ import time
 import torch
 from utils import get_args, get_partition_type, Config, write_to_csv
 from utils.dataloading import get_feat_dim, load_partition_map, load_topo
-from simulation import simulate_optimal_k
+from simulation import simulate_optimal_k, get_costs_for_pipeline_parallelism
 from nodepred import Sage, Gat
 
 # OGB node-classification class counts (output dim for the last layer).
@@ -60,6 +60,28 @@ def run_simulation_hybrid_dp_split(cfg: Config, device: int = 0):
         print(f"simulated k={k} ok", flush=True)
 
 
+def run_simulation_pipeline(cfg: Config, device: int = 0):
+    """Predict the pipeline+split (gsplit_pipepar) per-epoch cost (one row, k=-1)."""
+    graph, train_idx, _, _ = load_topo(cfg, is_pinned=False)
+    input_feat_size = get_feat_dim(cfg)
+    partition_map = load_partition_map(cfg)
+    if cfg.model == "sage":
+        model = Sage(cfg.in_feat, cfg.hid_size, len(cfg.fanouts), cfg.num_classes).to(device)
+    elif cfg.model == "gat":
+        model = Gat(cfg.in_feat, cfg.hid_size, len(cfg.fanouts), cfg.num_classes).to(device)
+    else:
+        raise ValueError(f"unsupported model {cfg.model}")
+    model_layers = list(model.layers)
+    num_nvlinks = 4 if cfg.nvlink else 0
+    graph = graph.to(device)
+    train_idx = train_idx.to(device)
+    partition_map = partition_map.to(device)
+    get_costs_for_pipeline_parallelism(graph, train_idx, partition_map, device,
+                                       cfg.batch_size, cfg.fanouts, model_layers,
+                                       cfg.world_size, num_nvlinks, input_feat_size, cfg)
+    print("pipeline cost estimated ok", flush=True)
+
+
 if __name__ == "__main__":
     args = get_args()
     fanouts = [int(f) for f in args.fanouts.split(",")]
@@ -90,5 +112,10 @@ if __name__ == "__main__":
     cfg.num_classes = NUM_CLASSES.get(cfg.graph_name, 172)
     assert cfg.in_feat > 0
 
-    run_simulation_hybrid_dp_split(cfg)
+    # --cost-estimation-mode: "pipeline" runs the pipeline+split cost model;
+    # "hybriddata" (or unset, the default) runs the DP-hybrid split-point k sweep.
+    if args.cost_estimation_mode == "pipeline":
+        run_simulation_pipeline(cfg)
+    else:
+        run_simulation_hybrid_dp_split(cfg)
     print("simulation done ->", log_path)

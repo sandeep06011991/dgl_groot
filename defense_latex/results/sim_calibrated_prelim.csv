@@ -1,0 +1,11 @@
+# PRELIMINARY calibrated-simulator predictions vs measured, products 4xA100 SAGE PCIe-emu.
+# Derived by rescaling captured sim components (core.csv) with the Step-3a calibration:
+#   split-layer compute /= COMPUTE_PARALLEL_FACTOR=1.7 ; comm uses ALLTOALL_PCIE_BW=1.95e9.
+# Ground truth from sweep_all.csv (single run each). Shuffle isolated as pcie_fwdbwd - nvlink_fwdbwd.
+# Pipeline total is the per-layer max(compute,comm) overlap (approx: max-of-totals offline; exact per-layer rerun pending).
+# dgl/quiver/measured_split are MEASURED; sim_split_k0 is CALIBRATED; pipeline is PREDICTED.
+graph,hw,model,depth,hid,dgl_meas,quiver_meas,measured_split,sim_split_k0,sim_pipeline,pipeline_gain_pct,dp_kstar,notes
+products,pcie_emu,sage,3,256,4.50,7.38,4.81,4.31,3.53,18,0,split marginally loses to dgl; pipeline wins
+products,pcie_emu,sage,3,1024,6.75,9.67,9.41,9.84,7.02,29,0,split loses to dgl; pipeline recovers
+products,pcie_emu,sage,4,256,18.07,24.33,17.74,14.27,11.41,20,0,comm-bound; pipeline wins
+products,pcie_emu,sage,4,1024,32.84,41.58,51.11,49.49,31.93,35,2,biggest loss; pipeline best; dp k*=2 only 1.3%

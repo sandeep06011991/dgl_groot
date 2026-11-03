@@ -41,6 +41,46 @@ $k^\star$ (more data-parallel layers) as depth and hidden size grow.} If instead
 keeps selecting $k^\star{=}0$, the hybrids would offer no predicted benefit and the premise
 of this chapter would be in question---so this is the key prediction to check.
 
+\paraq{What does the calibrated simulator actually predict? (preliminary)}
+The answer is more specific than the expectation above, and it splits by \emph{which}
+hybrid. For the \textbf{DP split-point} hybrid the sweep selects $k^\star{=}0$ on these
+products cells (the lone exception, $L{=}4,h{=}1024$, picks $k^\star{=}2$ by a noise-level
+$1.3\%$): the shuffle is concentrated in the \emph{outer}, large-frontier hops, which the
+$k$-hybrid only removes by going (near-)full data-parallel, where redundant compute
+dominates---so the $k$-sweep does \emph{not} recover these cells. The \textbf{pipeline}
+hybrid, however, does: once compute is modelled per-GPU (Section~\ref{sec:sim-calibration}),
+the deep/large-hidden PCIe cells are \emph{communication-bound}, and overlapping the shuffle
+under compute is predicted to beat full-split by \textbf{18--35\%} and to beat the DGL
+baseline (Table~\ref{tab:predicted-prelim}).
+
+\begin{table}[h]
+\centering
+\caption{\emph{Preliminary} simulator predictions, products, 4$\times$A100, SAGE, PCIe
+(emulated). DGL/Quiver are measured; Split is the calibrated full-split ($k{=}0$); Pipeline
+is the overlap hybrid. ``gain'' is Pipeline vs.\ Split. Derived by rescaling the captured sim
+components with the Section~\ref{sec:sim-calibration} calibration; exact per-layer pipeline
+numbers and the $L{=}5$ cases await the final sweep. Single measured run; PCIe emulated.}
+\label{tab:predicted-prelim}
+\begin{tabular}{l r r r r r}
+\toprule
+Cell ($L$, hid) & DGL & Quiver & Split ($k{=}0$) & Pipeline & gain \\
+\midrule
+$L{=}3$, 256  & 4.50  & 7.38  & 4.31  & 3.53  & 18\% \\
+$L{=}3$, 1024 & 6.75  & 9.67  & 9.84  & 7.02  & 29\% \\
+$L{=}4$, 256  & 18.07 & 24.33 & 14.27 & 11.41 & 20\% \\
+$L{=}4$, 1024 & 32.84 & 41.58 & 49.49 & 31.93 & 35\% \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paraq{What this means for the premise.}
+The chapter's premise survives, but with a sharper claim than first expected: the fix is the
+\textbf{pipeline/overlap} hybrid rather than the DP split-point sweep. Pipeline is predicted
+to turn two of gsplit's clear losses (the $L{=}4$ cells, where split trails DGL) back into
+wins or near-ties, and to improve the others. \emph{Caveat}: these are preliminary,
+directional predictions (calibration fit to four cells; PCIe emulated; single-run ground
+truth); the final results of Section~\ref{sec:results} must confirm them with real runs.
+
 \paraq{Conclusion of this section.}
 The simulator yields, for each problematic setting, a concrete best-predicted Split/hybrid
 configuration and its expected standing against Quiver and DGL. These predicted

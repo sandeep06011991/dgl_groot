@@ -12,30 +12,31 @@ def get_memory_info(device=None, rd=0):
     return allocated_mb, reserved_mb
 
 class Profiler:
-    def __init__(self, computation_cost: float, communication_cost : float, epoch_num: int, dataloading_cost: float):
+    def __init__(self, computation_cost: float, communication_cost : float, epoch_num: int, dataloading_cost: float, sampling_cost: float = 0.0):
         self.computation_cost = computation_cost
         self.communication_cost = communication_cost
         # self.edge_skew = 0
         # self.run_time = 0
         self.dataloading_cost = dataloading_cost
-        self.epoch_num = epoch_num 
-        
+        self.sampling_cost = sampling_cost
+        self.epoch_num = epoch_num
+
     def set_epoch_num(self, epoch_num):
         self.epoch_num = epoch_num
 
     def header(self):
-        header = ["computation_cost (s)", "communication_cost (s)", "dataloading_cost(s)"]
+        header = ["sampling_cost (s)", "computation_cost (s)", "communication_cost (s)", "dataloading_cost(s)"]
         return header
-    
 
-        
+
+
     def content(self):
         assert(self.epoch_num != -1)
-        
+
         def avg(t):
             return round(t / self.epoch_num, 2)
-        
-        content = [avg(self.computation_cost), 
+
+        content = [avg(self.sampling_cost), avg(self.computation_cost),
                    avg(self.communication_cost), avg(self.dataloading_cost)]
         return content
     
@@ -50,8 +51,8 @@ class Profiler:
 
 
 class KProfiler(Profiler):
-    def __init__(self, k = -1, num_nvlinks = -1, computation_cost= -1, communication_cost = -1, epoch_num = -1, dataloading_cost = -1):
-        super().__init__(computation_cost, communication_cost, epoch_num, dataloading_cost)
+    def __init__(self, k = -1, num_nvlinks = -1, computation_cost= -1, communication_cost = -1, epoch_num = -1, dataloading_cost = -1, sampling_cost = 0.0):
+        super().__init__(computation_cost, communication_cost, epoch_num, dataloading_cost, sampling_cost)
         self.k = k
         self.num_nvlinks = num_nvlinks
 
