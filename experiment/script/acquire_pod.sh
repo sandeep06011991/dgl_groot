@@ -25,7 +25,9 @@ NAME="${1:-groot-$(date +%s)}"
 GPU_ID="${GPU_ID:-NVIDIA A100-SXM4-80GB}"
 GPU_COUNT="${GPU_COUNT:-2}"
 DISK_GB="${DISK_GB:-200}"
-DCS="${DCS:-US-MD-1,US-MO-1,US-KS-2,US-WA-1,EUR-IS-1}"
+# '-' (not ':-') so an explicit empty DCS="" is honored (-> search ALL datacenters),
+# while an unset DCS still falls back to the known-good default list.
+DCS="${DCS-US-MD-1,US-MO-1,US-KS-2,US-WA-1,EUR-IS-1}"
 IMAGE="${IMAGE:-runpod/pytorch:2.4.0-py3.11-cuda12.4.1-devel-ubuntu22.04}"
 MAX_ATTEMPTS="${MAX_ATTEMPTS:-30}"
 RETRY_SECONDS="${RETRY_SECONDS:-60}"
@@ -41,10 +43,17 @@ if [ ! -f "$HOME/.runpod/config.toml" ] && [ -z "${RUNPOD_API_KEY:-}" ]; then
 fi
 
 echo "Acquiring ${GPU_COUNT}x '${GPU_ID}' across [$DCS] (<= $MAX_ATTEMPTS tries, ${RETRY_SECONDS}s apart)"
+# Empty DCS => omit --data-center-ids so RunPod allocates from ANY datacenter with
+# capacity (the hardcoded 5-DC list is just a default; set DCS="" to search all).
+DC_ARG=(); [ -n "$DCS" ] && DC_ARG=(--data-center-ids "$DCS")
+# CLOUD_TYPE defaults to SECURE; set CLOUD_TYPE=COMMUNITY to tap the (larger, cheaper,
+# less-reliable) community pool when secure capacity is dry.
+CLOUD_TYPE="${CLOUD_TYPE:-SECURE}"
+
 for i in $(seq 1 "$MAX_ATTEMPTS"); do
-  out=$(runpodctl pod create --name "$NAME" --cloud-type SECURE \
+  out=$(runpodctl pod create --name "$NAME" --cloud-type "$CLOUD_TYPE" \
     --gpu-id "$GPU_ID" --gpu-count "$GPU_COUNT" \
-    --data-center-ids "$DCS" --container-disk-in-gb "$DISK_GB" \
+    "${DC_ARG[@]}" --container-disk-in-gb "$DISK_GB" \
     --image "$IMAGE" --ports "22/tcp" --wait --wait-timeout "$WAIT_TIMEOUT" 2>&1)
   if echo "$out" | grep -q '"id"'; then
     echo "$out" | python3 -c '
