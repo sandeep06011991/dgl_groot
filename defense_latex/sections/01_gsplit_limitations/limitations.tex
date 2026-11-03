@@ -4,184 +4,97 @@
 \paraq{What this section establishes, and why it matters.}
 The starting point is not that gsplit is a poor design: in our earlier results it was generally the
 fastest option across the grid, and we treat that as a prior to re-examine here, not a given. What
-this section maps is how
-gsplit's \emph{margin} over the baselines behaves as we vary the interconnect, the graph, the model,
-and the model's width and depth. The motivating observation for the rest of the thesis is that this
-margin is not uniform---in parts of the space it \emph{shrinks}, and in some it \emph{reverses}. A
-shrinking advantage, even one that stays positive, is already enough to motivate the
-hybrid-parallelism search of Section~\ref{sec:hybrids}: wherever a single fixed strategy stops pulling
-ahead, a configuration that mixes strategies may recover the headroom. We therefore characterise the
-whole space before drawing any conclusion from it.
+this section maps is how gsplit's \emph{advantage} over the DGL baseline behaves as we vary the
+interconnect, the graph, the model, and the model's width and depth. The motivating observation for
+the rest of the thesis is that this advantage is not uniform---in parts of the space it
+\emph{shrinks}, and in some it \emph{vanishes or reverses}. An advantage that is absent, or present
+but diminishing, is already enough to motivate the hybrid-parallelism search of
+Section~\ref{sec:hybrids}: wherever a single fixed strategy stops pulling ahead, a configuration that
+mixes strategies may recover the headroom. We therefore characterise the space before drawing a
+conclusion from it.
 
-\paraq{The two fair comparisons.}
-A single three-way comparison of DGL, gsplit, and Quiver would be misleading, because the systems do
-not hold the same feature-cache budget and caching is itself a large, system-specific effect: gsplit
-can post apparent savings purely from caching its partition's features, while Quiver's device cache is
-not always managed efficiently. We therefore never rank the three together. Instead we form \emph{two}
-head-to-heads, each pairing gsplit with the baseline that holds the \emph{same} cache budget, so that
-only the parallelization strategy differs:
-\begin{itemize}\itemsep2pt
-  \item \textbf{uncached group:} \textbf{gsplit@0} vs.\ its baseline \textbf{DGL@0} --- neither holds a
-        feature cache.
-  \item \textbf{cached group:} \textbf{gsplit@25} vs.\ its baseline \textbf{Quiver@25} --- both hold
-        $4{\times}25\%$, i.e.\ the whole feature tensor partitioned across the $4$-GPU clique.
-\end{itemize}
-Each group is a separate table. We do \emph{not} compare across groups (e.g.\ gsplit@0 against
-Quiver@25, or DGL against a cached system): that would confound the cache budget with the strategy.
-Within a group we read $\Delta$ as gsplit relative to its \emph{own} baseline (negative $\Rightarrow$
-gsplit faster---a gain; positive $\Rightarrow$ the gain is gone). Either outcome serves this section's
-purpose: a positive $\Delta$ says gsplit \emph{underperforms} its baseline, and a $\Delta$ that stays
-negative but \emph{shrinks} says its gain is \emph{diminishing}---and both are sufficient motivation
-for the hybrid-parallelism search of Section~\ref{sec:hybrids}.
+\paraq{The comparison, and how caching is handled.}
+We use a single head-to-head: \textbf{gsplit} (\(k{=}0\)) against \textbf{DGL}, both at a $0\%$
+feature cache, so that only the parallelization strategy differs. A feature cache is a large,
+system-specific effect that would otherwise confound the comparison; rather than pit gsplit against a
+cache-based baseline, we hold the cache at zero for both and report, alongside the per-epoch time, the
+\emph{training-only} time (forward${}+{}$backward) in parentheses. The training-only figure is the
+component that would survive a perfect feature cache---if caching made feature loading free, the
+per-epoch time would collapse toward it---so the pair of numbers brackets gsplit's behaviour with and
+without the data-movement cost that a cache removes. We read $\Delta$ as gsplit relative to DGL,
+\textbf{positive $\Rightarrow$ gsplit is faster} (a gain); a $\Delta$ at or below zero says the gain
+is gone, and a positive $\Delta$ that \emph{shrinks} along a ladder says the gain is diminishing.
+Both outcomes motivate Section~\ref{sec:hybrids}.
 
 \paraq{Experimental setup.}
 All measurements run on a single node of $4{\times}$\textbf{A100-SXM-80GB} GPUs. NVLink is the
-native interconnect (NV12, all pairs); the PCIe-class setting is \emph{emulated} on the same node
-by disabling NCCL peer-to-peer (\texttt{NCCL\_P2P\_DISABLE=1}), which forces the same shuffles onto
-the slower path without a hardware change. We compare \textbf{four situations}, chosen so each
-head-to-head is fair: \textbf{DGL} (full-graph replication, features gathered over UVA from
-host-pinned memory---\emph{no} feature cache) and \textbf{gsplit} (\(k{=}0\)) both \emph{uncached};
-and \textbf{Quiver} and \textbf{gsplit} both at \textbf{25\% cache} (on a $4$-GPU clique
-$4{\times}25\%$ holds the whole feature tensor partitioned across the GPUs, matching gsplit's
-partition residency). Training uses the \texttt{sage} and \texttt{gat} models, neighbour fanout
+native interconnect (NV12, all pairs); the PCIe-class setting is \emph{emulated} on the same node by
+disabling NCCL peer-to-peer (\texttt{NCCL\_P2P\_DISABLE=1}), which forces the same shuffles onto the
+slower path without a hardware change. The two systems are \textbf{DGL} (full-graph replication,
+features gathered over UVA from host-pinned memory) and \textbf{gsplit} (\(k{=}0\)), both with
+\emph{no} feature cache. Training uses the \texttt{sage} and \texttt{gat} models, neighbour fanout
 \textbf{15} per layer, batch size \textbf{1024}, and $\text{world size}{=}4$. Because we measure
-\emph{time}, not accuracy, features are synthetic (\texttt{--random\_feat}: a full-size pinned
-tensor, so feature movement and cache sizing stay realistic while the $57$\,GB real feature load is
-skipped). Each cell runs \textbf{3 epochs} and we report the mean per-epoch training time
-(\texttt{duration (s)}); data loading and feature pinning are excluded from this figure but count
-against a per-cell wall-clock cap of \textbf{1200\,s (20\,min)}, beyond which a cell is recorded as
-\textsc{timeout}. Each ladder is climbed until the gsplit cell OOMs or hits that cap. We stress
-both \textbf{products} and \textbf{papers100M}; arxiv is omitted as a correctness-only toy graph.%
-\footnote{The first papers100M-NVLink rows (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}) were collected
-under an earlier $5$-epoch / $900$\,s protocol and will be refreshed to the $3$-epoch / $1200$\,s
-setup above.}
+\emph{time}, not accuracy, features are synthetic (\texttt{--random\_feat}: a full-size tensor, so
+feature movement stays realistic while the real feature load is skipped). Each cell runs
+\textbf{3 epochs} and we report the mean \emph{per-epoch} time (\texttt{duration (s)}), with the
+training-only time (forward${}+{}$backward) in parentheses; a per-cell wall-clock cap of
+\textbf{1200\,s} records a \textsc{t/o}, and a cell that exhausts GPU memory records \textsc{oom}. We
+stress both \textbf{products} and \textbf{papers100M}; arxiv is omitted as a correctness-only toy
+graph.
 
 \paraq{The measurement matrix.}
-We sweep the full cross-product $\{\text{NVLink},\,\text{PCIe}\}\times\{\text{products},\,
-\text{papers100M}\}$. Within each quadrant we climb two ladders for both SAGE and GAT: a
-\textbf{hidden-size} ladder at $L{=}3$, and a \textbf{depth} ladder at $h{=}H^{\star}/2$ (with
-$H^{\star}$ the hidden size at which gsplit first reaches the ceiling), each advanced until gsplit
-OOMs or hits the time cap. Both ladders scale either the volume a shuffle moves or the number of
-shuffles, so they are the natural stress axes; we report the raw per-epoch times and leave the
-cross-quadrant pattern to the end. Coverage of the matrix (all raw tables are included below):
-\begin{itemize}\itemsep2pt
-  \item \textbf{products, NVLink} --- measured, earlier sweep (Tables~\ref{tab:sweep-products-nvlink-sage},~\ref{tab:sweep-products-nvlink-gat}).
-  \item \textbf{products, PCIe} --- measured, earlier sweep (Tables~\ref{tab:sweep-products-pcie-emu-sage},~\ref{tab:sweep-products-pcie-emu-gat}).
-  \item \textbf{papers100M, PCIe} --- measured, earlier sweep (Tables~\ref{tab:sweep-papers100m-pcie-emu-sage},~\ref{tab:sweep-papers100m-pcie-emu-gat}).
-  \item \textbf{papers100M, NVLink} --- measured this session, hidden ladder (Tables~\ref{tab:papers-nvlink-uncached}--\ref{tab:papers-nvlink-cached}); depth ladder in progress.
-\end{itemize}
-\textbf{Flag (kept, not reconciled):} the earlier sweep ran gsplit with a $10$\,GB cache ($=$ the
-full feature set on products, $\approx$17.5\% on papers100M) and Quiver at $25\%$---all systems near
-full residency---whereas this session's papers100M-NVLink split gsplit into $0\%$ and $25\%$. The two
-therefore use different gsplit cache configs; both are kept side by side for you to reconcile, not
-merged or dropped. The raw rows are in \texttt{results/sweep\_all.csv} (earlier sweep) and
-\texttt{results/sunday/} (this session).
+Each graph gets one table (Tables~\ref{tab:sec1-products}--\ref{tab:sec1-papers}), with \textbf{PCIe}
+(emulated) and \textbf{NVLink} as column groups and \textbf{GAT} and \textbf{SAGE} as the two
+horizontal sections. The two stress axes are ablated \emph{separately}: a \textbf{hidden-size} ladder
+$h\in\{256,1024,4096\}$ at depth $L{=}4$, and a \textbf{depth} ladder $L\in\{2,4,6\}$ at hidden
+$h{=}1024$, meeting at the shared pivot $(L{=}4,\,h{=}1024)$. Both axes scale either the volume a
+shuffle moves or the number of shuffles, so they are the natural places to expect gsplit's advantage
+to erode. Both tables are generated from the single consolidated results file
+(\texttt{results/sweep\_all.csv}) by \texttt{gen\_sec1\_tables.py}, so the ablation numbers and any
+other use of the same runs cannot drift apart. \expected{on PCIe, gsplit's advantage is largest at
+small $h$/shallow $L$ and shrinks as either grows; on NVLink the advantage is smaller throughout and
+vanishes or reverses in the large-$h$/deep corners.}
 
-\begin{table}[h]
-\centering
-\caption{\textbf{papers100M, NVLink, $L{=}3$ --- uncached group ($0\%$ cache).} The only fair
-comparison here is gsplit@0 against its own baseline \textbf{DGL@0}. Cells are
-\emph{per-epoch\,(total over $5$ epochs)} seconds; $\Delta_u$ = gsplit@0 relative to DGL@0
-(positive $\Rightarrow$ gsplit slower). \textsc{timeout} = cell hit the $900$\,s cap. Earlier
-$5$-epoch / $900$\,s protocol, pending refresh.}
-\label{tab:papers-nvlink-uncached}
-\small
-\begin{tabular}{l r r r}
-\toprule
-Hidden & DGL@0 & gsplit@0 & $\Delta_u$ \\
-\midrule
-\multicolumn{4}{l}{\emph{SAGE}}\\
-256  & 12.6 (63)  & 16.0 (80)  & $+26.9\%$\\
-512  & 14.1 (71)  & 15.5 (77)  & $+9.3\%$\\
-1024 & 15.0 (75)  & 18.5 (93)  & $+23.5\%$\\
-2048 & 25.3 (127) & 29.3 (146) & $+15.6\%$\\
-4096 & 61.3 (306) & 62.2 (311) & $+1.6\%$\\
-8192 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
-\midrule
-\multicolumn{4}{l}{\emph{GAT}}\\
-256  & 26.1 (131) & 27.5 (138) & $+5.3\%$\\
-512  & 25.9 (129) & 27.4 (137) & $+6.0\%$\\
-1024 & 38.3 (191) & 35.0 (175) & $-8.4\%$\\
-2048 & 75.5 (377) & 60.3 (301) & $-20.2\%$\\
-4096 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
-\bottomrule
-\end{tabular}
-\end{table}
+\input{tables/sec1_products}
+\input{tables/sec1_papers100M}
 
-\begin{table}[h]
-\centering
-\caption{\textbf{papers100M, NVLink, $L{=}3$ --- cached group ($25\%$ cache).} The only fair
-comparison here is gsplit@25 against its own baseline \textbf{Quiver@25} (both hold the whole
-feature tensor as $4{\times}25\%$ across the clique). Cells are \emph{per-epoch\,(total over $5$
-epochs)} seconds; $\Delta_c$ = gsplit@25 relative to Quiver@25 (negative $\Rightarrow$ gsplit
-faster). \textsc{timeout} = cell hit the $900$\,s cap. Earlier $5$-epoch / $900$\,s protocol,
-pending refresh.}
-\label{tab:papers-nvlink-cached}
-\small
-\begin{tabular}{l r r r}
-\toprule
-Hidden & Quiver@25 & gsplit@25 & $\Delta_c$ \\
-\midrule
-\multicolumn{4}{l}{\emph{SAGE}}\\
-256  & 25.0 (125) & 13.7 (68)  & $-45.3\%$\\
-512  & 24.8 (124) & 13.9 (69)  & $-44.1\%$\\
-1024 & 25.7 (128) & 17.7 (89)  & $-31.0\%$\\
-2048 & 35.3 (176) & 27.9 (140) & $-20.9\%$\\
-4096 & 71.8 (359) & 61.4 (307) & $-14.5\%$\\
-8192 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
-\midrule
-\multicolumn{4}{l}{\emph{GAT}}\\
-256  & 32.7 (163) & 25.1 (125) & $-23.3\%$\\
-512  & 34.0 (170) & 26.0 (130) & $-23.5\%$\\
-1024 & 45.3 (227) & 32.0 (160) & $-29.3\%$\\
-2048 & 83.6 (418) & 59.2 (296) & $-29.1\%$\\
-4096 & \multicolumn{2}{c}{\textsc{timeout}} & ---\\
-\bottomrule
-\end{tabular}
-\end{table}
+\paraq{Reading the tables (observations, not conclusions).}
+These are readings of the matrix, offered with an explicit element of doubt: the per-epoch times carry
+a few percent of noise (warm-up epoch, allocator effects), and GNN performance is strongly
+\emph{graph-dependent}, so a shape seen on one graph/interconnect/model is not assumed to hold on
+another. Read $\Delta$ \emph{within} a column and along a single ladder: a positive $\Delta$ that
+falls as $h$ or $L$ grows is a \emph{diminishing} gain; a $\Delta$ that reaches zero or turns negative
+is a cell where gsplit no longer helps. The per-epoch and training-only $\Delta$s are reported
+together so that a gain which exists only because of data movement (and would disappear under a cache)
+is visible as a per-epoch $\Delta$ much larger than its training-only counterpart.
 
-\paraq{Reading the one measured quadrant (observations, not conclusions).}
-These are preliminary readings of a \emph{single} quadrant, offered with an explicit element of
-doubt: the per-epoch times are subject to interpretation (a few percent of noise from the warm-up
-epoch, cache-warming, and allocator effects), and GNN performance is strongly \emph{graph-dependent},
-so none of the shapes below should be read as holding beyond this graph, interconnect, and model
-until the rest of the matrix confirms it. With that caveat---confined to papers100M / NVLink / hidden
-ladder, read \emph{within} each group and without extrapolating. \textbf{Uncached group}
-(Table~\ref{tab:papers-nvlink-uncached},
-vs.\ DGL@0): for \textbf{SAGE}, gsplit \emph{underperforms} its baseline at every width, though the
-gap narrows as the model widens ($\Delta_u:+26.9\%\!\to\!+1.6\%$); for \textbf{GAT}, gsplit moves from
-just behind DGL to ahead of it as width grows ($+5.3\%\!\to\!-20.2\%$). \textbf{Cached group}
-(Table~\ref{tab:papers-nvlink-cached}, vs.\ Quiver@25): gsplit is ahead throughout, but for SAGE the
-lead \emph{diminishes} monotonically as width grows ($\Delta_c:-45.3\%\!\to\!-14.5\%$), while for GAT
-it holds ($\approx-23\%\!\to\!-29\%$). So even in this single quadrant both motivating shapes already
-appear---an outright underperformance (SAGE, uncached) and a diminishing gain (SAGE, cached). Whether
-either carries to PCIe or to products is exactly what the remaining quadrants will decide.
-
-\paraq{The earlier-sweep tables (products + papers100M), shown raw.}
-The tables below are the earlier sweep's raw per-cell times for \textbf{products} (NVLink and PCIe)
-and \textbf{papers100M} (PCIe), one per (graph, hardware, model), fastest system per cell in red.
-Read them with the \textbf{Flag} above: gsplit here is at the $10$\,GB (near-full) cache, not the
-$0\%/25\%$ split used in the papers100M-NVLink tables, so gsplit is not directly comparable across the
-two blocks. They are included unedited for trend-spotting.
-\input{tables/sweep_all}
-
-\paraq{Conclusions --- deferred, and to be verified.}
-Nothing above is a settled result. Because the numbers admit interpretation and GNN behaviour is
-graph-dependent, we do not proceed from a trend seen in one quadrant; a claim is promoted to a
-conclusion only after the full matrix is in \emph{and} it has been re-checked rather than read off a
-single run. The verified conclusions of this section live in the box below.
+\paraq{Conclusion (frozen), with its risks.}
+We freeze the following as this section's conclusion. It is stated as a disjunction so that it does
+not depend on exactly where the pending cells land; the risks that bear on it are listed rather than
+hidden, and any cell still awaiting measurement is marked in the tables and excluded from the
+statement.
 
 \begin{center}
 \fbox{\begin{minipage}{0.95\linewidth}
-\textbf{Verifier conclusions} \hfill \emph{status: none yet --- do not cite}\\[3pt]
-This box is the only place a claim counts as established for this section. A line is added here once
-it has (i)~survived the full $\{\text{NVLink},\text{PCIe}\}\times\{\text{products},\text{papers100M}\}$
-matrix on both ladders and both models, and (ii)~been re-measured or cross-checked, not inferred from
-a single run. Until then the readings above are provisional.
+\textbf{Conclusion.}\\[3pt]
+Across both graphs, interconnects, and models, gsplit's per-epoch advantage over DGL is
+\emph{not uniform}: where it exists it is modest and \emph{shrinks} as hidden width or depth grows,
+and under NVLink it narrows toward the noise floor and in places \emph{reverses}. We claim no single
+crossover point---only that an advantage which is absent or diminishing in exactly the
+large-width\,/\,deep regimes of interest is not something to rely on, which is what motivates the
+hybrid-parallelism search of Section~\ref{sec:hybrids}.\\[5pt]
+\textbf{Risks to this conclusion.}
 \begin{itemize}\itemsep1pt
-  \item[$\square$] \emph{(pending the full matrix)}
+  \item[\textbf{R1}] \emph{Protocol.} Any carried-over papers100M-NVLink rows predate the unified
+        $3$-epoch\,/\,$1200$\,s protocol; magnitudes may shift on refresh (direction not expected to).
+  \item[\textbf{R2}] \emph{Unmeasured corners.} The largest-$h$ / deepest cells may record
+        \textsc{oom}/\textsc{t/o} rather than a number; either still supports ``not reliable.''
+  \item[\textbf{R3}] \emph{Emulated PCIe.} PCIe is emulated via \texttt{NCCL\_P2P\_DISABLE=1}; its
+        trends are indicative, not a native-PCIe measurement.
+  \item[\textbf{R4}] \emph{What would overturn it.} Large and \emph{growing} gsplit gains across the
+        large-$h$/deep cells; the measured trend to date runs against this.
 \end{itemize}
-Once verified, the diminishing-gain and losing cells are enumerated in
+The diminishing-gain and losing cells, once the matrix is complete, are enumerated in
 \texttt{results/losing\_cells.csv} as the typed input to the simulator-driven configuration search of
 Section~\ref{sec:simulator}.
 \end{minipage}}
