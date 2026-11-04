@@ -139,6 +139,10 @@ def present_identities(csv_path):
                 continue
         except (TypeError, ValueError):
             pass
+        try:
+            k = int(r.get("num_redundant_layers", 0) or 0)
+        except (TypeError, ValueError):
+            k = 0
         ids.add((
             str(r.get("graph_name")),
             str(r.get("hardware")),
@@ -146,13 +150,15 @@ def present_identities(csv_path):
             str(r.get("model")),
             _depth_from_fanouts(r.get("fanouts")),
             int(r.get("hid_size")),
+            k,   # num_redundant_layer: hybrid variants (same cell, different k) are distinct runs
         ))
     return ids
 
 
 def identity_of(cell):
     return (cell["graph"], cell["hardware"], cell["system"], cell["model"],
-            int(cell["depth"]), int(cell["hid_size"]))
+            int(cell["depth"]), int(cell["hid_size"]),
+            int(cell.get("num_redundant_layer", 0)))
 
 
 def main():

@@ -89,6 +89,25 @@ expensive measurement this chapter is trying to avoid. That cost is what motivat
 simulator of Section~\ref{sec:simulator}: predict each configuration cheaply, then measure
 only the one it chooses.
 
+\subsection{Empirical hybrid sweep (ground truth)}
+\label{sec:hybrid-empirical}
+
+\paraq{Do the hybrids actually pay off in practice, before any simulator?}
+We ran the full brute-force sweep once---every $(\text{strategy}, k, \text{hardware})$ cell
+across the Section-1 ablation grid---to obtain the ground-truth best each hybrid family can
+reach; this is the expensive measurement the simulator will later replace, and the target it
+must match. Table~\ref{tab:hybrid-papers100m} reports, per cell, baseline full-split gsplit
+against the fastest data-parallel (DP) and pipeline variant found, with the winning
+split-point $k$. The numbers are consistent with the cost argument above: a hybrid is
+fastest in \emph{every} papers100M cell, the data-parallel gains grow with $k$ and are
+largest on PCIe and at large depth/hidden size (where the shuffle dominates), and the
+pipeline hybrid helps SAGE but runs out of memory for GAT at these sizes. These results are
+\emph{preliminary} (papers100M; the \textsc{products} sweep is still completing and will be
+added) and are presented as raw measurements for verification, not yet as final claims.
+
+\input{tables/hybrid_papers100M}
+% \input{tables/hybrid_products}   % add once the products sweep completes
+
 \paraq{Conclusion of this section.}
 Both hybrids can \emph{potentially} fix the settings where gsplit underperforms, but each
 introduces \textbf{additional configuration parameters} (the split-point $k$ for the
