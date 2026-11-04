@@ -3,8 +3,8 @@
 consolidated sweep CSV.
 
 Section 1 compares **gsplit (``split``, k=0) vs DGL, both at a 0% feature cache**.
-Each table has GAT and SAGE horizontal sections; within each, a hidden sweep (at L=4)
-and a depth sweep (at h=1024), with (L=4, h=1024) the shared pivot. Columns are
+Each table has GAT and SAGE horizontal sections; within each, a hidden sweep (at L=3)
+and a depth sweep (at h=1024), with (L=3, h=1024) the shared pivot. Columns are
 PCIe (emulated) and NVLink, each showing DGL, gsplit, and Delta. Every system cell is
 ``epoch (train)`` seconds where ``train = forward + backward`` (the compute that survives
 a perfect feature cache). Delta is gsplit's improvement over DGL, ``+% (+%)`` for
@@ -34,8 +34,8 @@ DEFAULT_OUTDIR = os.path.join(HERE, "tables")
 GRAPHS = ["products", "papers100M"]
 MODELS = ["sage", "gat"]
 HID_SWEEP = [256, 1024, 4096]
-DEPTH_SWEEP = [2, 4, 6]
-DEPTH_ANCHOR = 4       # hidden sweep runs at this depth
+DEPTH_SWEEP = [2, 3, 4]
+DEPTH_ANCHOR = 3       # hidden sweep runs at this depth
 HID_ANCHOR = 1024      # depth sweep runs at this hidden
 HARDWARES = ["pcie_emu", "nvlink"]   # table column order: PCIe (emul.) then NVLink
 

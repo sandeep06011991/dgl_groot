@@ -6,8 +6,9 @@ Section 1 of the dissertation compares gsplit (``--system=split``, k=0) against 
 both at a 0% feature cache, on two graphs. The grid is two single-axis ablations per
 (graph, model, interconnect, system):
 
-  * hidden sweep: h in {256, 512, 1024, 2048} at depth L=3
-  * depth sweep:  L in {2, 3, 4, 5, 6}        at hidden h=512
+  * hidden sweep: h in {256, 1024, 4096} at depth L=3
+  * depth sweep:  L in {2, 3, 4}         at hidden h=1024
+  (shared pivot: L=3, h=1024)
 
 Rather than a bash for-loop (which re-runs cells already measured), we enumerate the
 grid here, read the master CSV, and write a settings file (one JSON object per line)
@@ -34,15 +35,15 @@ DEFAULT_CSV = os.path.normpath(os.path.join(HERE, "..", "..", "defense_latex", "
 DEFAULT_OUT = os.path.join(HERE, "sec1_settings.jsonl")
 
 # --- the Section-1 grid (prompt_monday.md) -----------------------------------
-GRAPHS = ["products", "papers100M"]
+GRAPHS = ["papers100M", "products"]          # papers100M first (products already collected)
 MODELS = ["sage", "gat"]
 INTERCONNECTS = ["nvlink", "pcie"]          # pcie is emulated (NCCL_P2P_DISABLE=1)
 SYSTEMS = ["dgl", "split"]                   # gsplit@0 vs DGL@0 only -- no quiver, no k>0
 HID_SWEEP = [256, 1024, 4096]                # at DEPTH_ANCHOR (coarsened grid)
-DEPTH_SWEEP = [2, 4, 6]                       # at HID_ANCHOR
-DEPTH_ANCHOR = 4                              # depth at which the hidden sweep runs
+DEPTH_SWEEP = [2, 3, 4]                       # at HID_ANCHOR
+DEPTH_ANCHOR = 3                              # depth at which the hidden sweep runs
 HID_ANCHOR = 1024                             # hidden at which the depth sweep runs
-                                             # -> shared pivot is (L=4, h=1024)
+                                             # -> shared pivot is (L=3, h=1024)
 FPL = 15                                     # fanout per layer
 
 # fixed run knobs (match the Section-1 protocol: 3 epochs, 0% cache, random feats)

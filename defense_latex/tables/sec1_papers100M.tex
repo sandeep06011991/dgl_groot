@@ -5,8 +5,8 @@
 (forward+backward) in parentheses --- the compute that survives a perfect feature
 cache. $\Delta$ is gsplit's improvement over DGL (\textbf{positive $=$ gsplit faster}),
 shown as per-epoch $(\text{training})$. Two single-axis ablations per model crossing at
-the \textbf{default} $(L{=}4,\,h{=}1024)$ --- the value \emph{spanned} (multirow) in each
-block: a hidden sweep at $L{=}4$, then a depth sweep at $h{=}1024$. gsplit runs at a
+the \textbf{default} $(L{=}3,\,h{=}1024)$ --- the value \emph{spanned} (multirow) in each
+block: a hidden sweep at $L{=}3$, then a depth sweep at $h{=}1024$. gsplit runs at a
 $0\%$ feature cache; PCIe is emulated via \texttt{NCCL\_P2P\_DISABLE=1}. Features random.}
 \label{tab:sec1-papers}
 \setlength{\tabcolsep}{4pt}
@@ -17,21 +17,21 @@ $0\%$ feature cache; PCIe is emulated via \texttt{NCCL\_P2P\_DISABLE=1}. Feature
 \cline{4-9}
 \textbf{Model} & $\mathbf{h}$ & $\mathbf{L}$ & DGL & gsplit & $\Delta$ & DGL & gsplit & $\Delta$ \\
 \hline
-\multirow{6}{*}{\textbf{SAGE}} & $256$ & \multirow{3}{*}{$4$} & 30.87 (10.96) & 37.08 (20.54) & $-20\%\,(-87\%)$ & 28.90 (9.47) & 27.99 (11.70) & $+3\%\,(-24\%)$ \\
- & $1024$ &  & 59.78 (39.95) & \placeholder & -- & 57.93 (38.24) & 51.12 (34.66) & $+12\%\,(+9\%)$ \\
- & $4096$ &  & \textsc{t/o} & \textsc{t/o} & -- & \textsc{t/o} & 302.22 (282.57) & -- \\
+\multirow{6}{*}{\textbf{SAGE}} & $256$ & \multirow{3}{*}{$3$} & 12.47 (5.41) & 13.86 (6.59) & $-11\%\,(-22\%)$ & 11.66 (5.05) & 13.36 (5.76) & $-15\%\,(-14\%)$ \\
+ & $1024$ &  & 14.96 (8.27) & 21.37 (14.69) & $-43\%\,(-78\%)$ & 14.23 (7.46) & 16.90 (9.34) & $-19\%\,(-25\%)$ \\
+ & $4096$ &  & 67.54 (60.34) & 78.83 (70.24) & $-17\%\,(-16\%)$ & 61.22 (53.98) & 62.59 (53.21) & $-2\%\,(+1\%)$ \\
 \cline{2-9}
- & \multirow{3}{*}{$1024$} & $2$ & 6.80 (3.34) & \placeholder & -- & 6.72 (3.10) & 7.89 (4.29) & $-17\%\,(-38\%)$ \\
- &  & $4$ & 59.78 (39.95) & \placeholder & -- & 57.93 (38.24) & 51.12 (34.66) & $+12\%\,(+9\%)$ \\
- &  & $6$ & \placeholder & \placeholder & -- & \textsc{t/o} & \textsc{t/o} & -- \\
+ & \multirow{3}{*}{$1024$} & $2$ & 6.80 (3.34) & 8.40 (4.60) & $-24\%\,(-38\%)$ & 6.72 (3.10) & 7.89 (4.29) & $-17\%\,(-38\%)$ \\
+ &  & $3$ & 14.96 (8.27) & 21.37 (14.69) & $-43\%\,(-78\%)$ & 14.23 (7.46) & 16.90 (9.34) & $-19\%\,(-25\%)$ \\
+ &  & $4$ & 59.78 (39.95) & 76.93 (59.20) & $-29\%\,(-48\%)$ & 57.93 (38.24) & 51.12 (34.66) & $+12\%\,(+9\%)$ \\
 \hline
-\multirow{6}{*}{\textbf{GAT}} & $256$ & \multirow{3}{*}{$4$} & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
- & $1024$ &  & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
- & $4096$ &  & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+\multirow{6}{*}{\textbf{GAT}} & $256$ & \multirow{3}{*}{$3$} & 19.69 (13.03) & 22.05 (14.77) & $-12\%\,(-13\%)$ & 19.39 (12.61) & 21.21 (13.52) & $-9\%\,(-7\%)$ \\
+ & $1024$ &  & 35.91 (28.84) & 34.89 (28.24) & $+3\%\,(+2\%)$ & 35.16 (28.13) & 30.24 (23.15) & $+14\%\,(+18\%)$ \\
+ & $4096$ &  & 197.87 (190.38) & 166.23 (158.05) & $+16\%\,(+17\%)$ & 197.67 (190.24) & 147.96 (139.93) & $+25\%\,(+26\%)$ \\
 \cline{2-9}
- & \multirow{3}{*}{$1024$} & $2$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
- &  & $4$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
- &  & $6$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+ & \multirow{3}{*}{$1024$} & $2$ & 11.30 (7.92) & 12.66 (8.83) & $-12\%\,(-11\%)$ & 11.33 (7.75) & 13.27 (9.08) & $-17\%\,(-17\%)$ \\
+ &  & $3$ & 35.91 (28.84) & 34.89 (28.24) & $+3\%\,(+2\%)$ & 35.16 (28.13) & 30.24 (23.15) & $+14\%\,(+18\%)$ \\
+ &  & $4$ & 135.80 (115.33) & 120.49 (104.27) & $+11\%\,(+10\%)$ & 134.65 (114.33) & 101.44 (83.82) & $+25\%\,(+27\%)$ \\
 \hline
 \end{tabular}%
 }

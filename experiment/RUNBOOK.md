@@ -357,8 +357,8 @@ Section-1 grid** is driven by a dedicated, idempotent pair — do not hand-loop 
   consolidated results (`defense_latex/results/sweep_all.csv`), writing
   `sec1_settings.jsonl` with **only the cells not already measured**. The grid is
   two *separate* single-axis ablations per (graph, model, interconnect, system),
-  meeting at the pivot (L=4, h=1024): a hidden sweep `h∈{256,1024,4096}` at L=4 and a
-  depth sweep `L∈{2,4,6}` at h=1024. Systems are **`dgl` and `split` (gsplit, k=0),
+  meeting at the pivot (L=3, h=1024): a hidden sweep `h∈{256,1024,4096}` at L=3 and a
+  depth sweep `L∈{2,3,4}` at h=1024. Systems are **`dgl` and `split` (gsplit, k=0),
   both at `--cache_size=0G`** — no quiver, no k>0. Protocol: 3 epochs, world_size 4,
   `--random_feat`, 1200 s/cell cap. (Edit the grid constants there, kept in sync with
   `defense_latex/gen_sec1_tables.py`.)
