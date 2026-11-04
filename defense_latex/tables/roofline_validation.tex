@@ -9,31 +9,61 @@
 \toprule
 graph & hw & model & $L$ & $h$ & split train & DGL train & split epoch & DGL epoch & win (train) & win (epoch) & pred & $T^{\mathrm{net}}/T^{\mathrm{cmp}}$ \\
 \midrule
-papers100M & NVLink & sage & 2 & 1024 & 4.3 & 3.1 & 7.9 & 6.7 & dgl & dgl & $\times$ split & 0.21 \\
+papers100M & NVLink & gat & 2 & 1024 & 9.6 & 7.8 & 13.6 & 11.3 & dgl & dgl & $\times$ split & 0.071 \\
+papers100M & NVLink & gat & 3 & 256 & 13.5 & 12.6 & 21.2 & 19.4 & dgl & dgl & $\times$ split & 0.22 \\
+papers100M & NVLink & gat & 3 & 1024 & 22.9 & 28.1 & 29.8 & 35.2 & split & split & \checkmark split & 0.071 \\
+papers100M & NVLink & gat & 3 & 4096 & 138.0 & 190.2 & 146.1 & 197.7 & split & split & \checkmark split & 0.019 \\
+papers100M & NVLink & gat & 4 & 1024 & 80.6 & 114.3 & 97.6 & 134.7 & split & split & \checkmark split & 0.071 \\
+papers100M & NVLink & sage & 2 & 1024 & 3.8 & 3.1 & 7.6 & 6.7 & dgl & dgl & $\times$ split & 0.21 \\
+papers100M & NVLink & sage & 3 & 256 & 5.5 & 5.1 & 12.9 & 11.7 & dgl & dgl & $\times$ split & 0.61 \\
+papers100M & NVLink & sage & 3 & 1024 & 8.3 & 7.5 & 15.7 & 14.2 & dgl & dgl & $\times$ split & 0.21 \\
+papers100M & NVLink & sage & 3 & 4096 & 49.8 & 54.0 & 58.6 & 61.2 & split & split & \checkmark split & 0.057 \\
 papers100M & NVLink & sage & 4 & 256 & 11.7 & 9.5 & 28.0 & 28.9 & dgl & split & $\times$ split & 0.61 \\
-papers100M & NVLink & sage & 4 & 1024 & 34.7 & 38.2 & 51.1 & 57.9 & split & split & \checkmark split & 0.21 \\
+papers100M & NVLink & sage & 4 & 1024 & 31.4 & 38.2 & 48.4 & 57.9 & split & split & \checkmark split & 0.21 \\
 \midrule
+papers100M & PCIe-emu & gat & 2 & 1024 & 9.0 & 7.9 & 12.6 & 11.3 & dgl & dgl & \checkmark dgl & 3.8 \\
+papers100M & PCIe-emu & gat & 3 & 256 & 15.4 & 13.0 & 22.9 & 19.7 & dgl & dgl & \checkmark dgl & 12 \\
+papers100M & PCIe-emu & gat & 3 & 1024 & 26.9 & 28.8 & 33.6 & 35.9 & split & split & $\times$ dgl & 3.8 \\
+papers100M & PCIe-emu & gat & 3 & 4096 & 149.8 & 190.4 & 157.5 & 197.9 & split & split & $\times$ dgl & 1 \\
+papers100M & PCIe-emu & gat & 4 & 1024 & 97.9 & 115.3 & 114.8 & 135.8 & split & split & $\times$ dgl & 3.8 \\
+papers100M & PCIe-emu & sage & 2 & 1024 & 4.1 & 3.3 & 7.7 & 6.8 & dgl & dgl & \checkmark dgl & 11 \\
+papers100M & PCIe-emu & sage & 3 & 256 & 6.0 & 5.4 & 13.0 & 12.5 & dgl & dgl & \checkmark dgl & 33 \\
+papers100M & PCIe-emu & sage & 3 & 1024 & 12.3 & 8.3 & 19.3 & 15.0 & dgl & dgl & \checkmark dgl & 11 \\
+papers100M & PCIe-emu & sage & 3 & 4096 & 64.1 & 60.3 & 72.7 & 67.5 & dgl & dgl & \checkmark dgl & 3.1 \\
 papers100M & PCIe-emu & sage & 4 & 256 & 20.5 & 11.0 & 37.1 & 30.9 & dgl & dgl & \checkmark dgl & 33 \\
+papers100M & PCIe-emu & sage & 4 & 1024 & 50.5 & 40.0 & 67.7 & 59.8 & dgl & dgl & \checkmark dgl & 11 \\
 \midrule
-products & NVLink & gat & 2 & 1024 & 2.0 & 1.9 & 3.2 & 2.5 & dgl & dgl & $\times$ split & 0.071 \\
+products & NVLink & gat & 2 & 1024 & 2.1 & 1.9 & 3.3 & 2.5 & dgl & dgl & $\times$ split & 0.071 \\
+products & NVLink & gat & 3 & 256 & 3.6 & 3.9 & 6.4 & 6.2 & split & dgl & \checkmark split & 0.22 \\
+products & NVLink & gat & 3 & 1024 & 11.0 & 13.3 & 13.9 & 15.5 & split & split & \checkmark split & 0.071 \\
+products & NVLink & gat & 3 & 4096 & 75.8 & 88.5 & 78.8 & 90.8 & split & split & \checkmark split & 0.019 \\
 products & NVLink & gat & 4 & 256 & 11.2 & 15.1 & 17.5 & 23.4 & split & split & \checkmark split & 0.22 \\
-products & NVLink & gat & 4 & 1024 & 49.0 & 71.6 & 55.3 & 79.5 & split & split & \checkmark split & 0.071 \\
+products & NVLink & gat & 4 & 1024 & 50.7 & 71.6 & 57.2 & 79.5 & split & split & \checkmark split & 0.071 \\
 products & NVLink & sage & 2 & 1024 & 0.8 & 0.6 & 2.0 & 1.3 & dgl & dgl & $\times$ split & 0.21 \\
+products & NVLink & sage & 3 & 256 & 1.3 & 1.1 & 4.2 & 3.5 & dgl & dgl & $\times$ split & 0.61 \\
+products & NVLink & sage & 3 & 1024 & 2.6 & 2.5 & 5.5 & 4.8 & dgl & dgl & $\times$ split & 0.21 \\
+products & NVLink & sage & 3 & 4096 & 14.7 & 14.3 & 18.0 & 16.7 & dgl & dgl & $\times$ split & 0.057 \\
 products & NVLink & sage & 4 & 256 & 4.7 & 4.8 & 11.0 & 13.2 & split & split & \checkmark split & 0.61 \\
-products & NVLink & sage & 4 & 1024 & 16.6 & 17.9 & 23.0 & 26.0 & split & split & \checkmark split & 0.21 \\
+products & NVLink & sage & 4 & 1024 & 16.1 & 17.9 & 22.8 & 26.0 & split & split & \checkmark split & 0.21 \\
 products & NVLink & sage & 4 & 4096 & 140.4 & 155.1 & 147.2 & 163.4 & split & split & \checkmark split & 0.057 \\
 products & NVLink & sage & 6 & 1024 & 163.3 & 332.4 & 177.5 & 364.8 & split & split & \checkmark split & 0.21 \\
 \midrule
-products & PCIe-emu & gat & 2 & 1024 & 2.5 & 1.9 & 3.4 & 2.6 & dgl & dgl & \checkmark dgl & 3.8 \\
+products & PCIe-emu & gat & 2 & 1024 & 2.3 & 1.9 & 3.1 & 2.6 & dgl & dgl & \checkmark dgl & 3.8 \\
+products & PCIe-emu & gat & 3 & 256 & 4.6 & 3.9 & 7.1 & 6.2 & dgl & dgl & \checkmark dgl & 12 \\
+products & PCIe-emu & gat & 3 & 1024 & 13.1 & 13.0 & 15.6 & 15.2 & dgl & dgl & \checkmark dgl & 3.8 \\
+products & PCIe-emu & gat & 3 & 4096 & 82.5 & 88.7 & 85.1 & 91.0 & split & split & $\times$ dgl & 1 \\
 products & PCIe-emu & gat & 4 & 256 & 16.0 & 15.1 & 22.0 & 23.3 & dgl & split & \checkmark dgl & 12 \\
-products & PCIe-emu & gat & 4 & 1024 & 64.7 & 71.6 & 70.8 & 79.5 & split & split & $\times$ dgl & 3.8 \\
-products & PCIe-emu & sage & 2 & 1024 & 0.9 & 0.6 & 1.8 & 1.4 & dgl & dgl & \checkmark dgl & 11 \\
+products & PCIe-emu & gat & 4 & 1024 & 63.7 & 71.6 & 70.1 & 79.5 & split & split & $\times$ dgl & 3.8 \\
+products & PCIe-emu & sage & 2 & 1024 & 0.8 & 0.6 & 1.6 & 1.4 & dgl & dgl & \checkmark dgl & 11 \\
+products & PCIe-emu & sage & 3 & 256 & 2.2 & 1.1 & 4.8 & 3.5 & dgl & dgl & \checkmark dgl & 33 \\
+products & PCIe-emu & sage & 3 & 1024 & 4.6 & 2.6 & 7.2 & 4.8 & dgl & dgl & \checkmark dgl & 11 \\
+products & PCIe-emu & sage & 3 & 4096 & 21.3 & 14.1 & 24.1 & 16.5 & dgl & dgl & \checkmark dgl & 3.1 \\
 products & PCIe-emu & sage & 4 & 256 & 9.5 & 4.8 & 15.5 & 13.2 & dgl & dgl & \checkmark dgl & 33 \\
-products & PCIe-emu & sage & 4 & 1024 & 32.6 & 18.1 & 38.8 & 26.1 & dgl & dgl & \checkmark dgl & 11 \\
+products & PCIe-emu & sage & 4 & 1024 & 29.5 & 18.1 & 36.0 & 26.1 & dgl & dgl & \checkmark dgl & 11 \\
 products & PCIe-emu & sage & 4 & 4096 & 196.1 & 154.0 & 202.7 & 162.3 & dgl & dgl & \checkmark dgl & 3.1 \\
 products & PCIe-emu & sage & 6 & 1024 & 246.7 & 331.2 & 260.8 & 363.7 & split & split & $\times$ dgl & 11 \\
 \midrule
-\multicolumn{13}{l}{agreement with the train-only winner: 14/20 cells (NVLink 7/11; PCIe-emu 7/9)} \\
+\multicolumn{13}{l}{agreement with the train-only winner: 33/50 cells (NVLink 14/25; PCIe-emu 19/25)} \\
 \bottomrule
 \end{tabular}}
 \end{table}
