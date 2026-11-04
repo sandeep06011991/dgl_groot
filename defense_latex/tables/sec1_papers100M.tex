@@ -4,34 +4,35 @@
 \caption{\textbf{papers100M.} Per-epoch time (s); \emph{training-only} time
 (forward+backward) in parentheses --- the compute that survives a perfect feature
 cache. $\Delta$ is gsplit's improvement over DGL (\textbf{positive $=$ gsplit faster}),
-shown as per-epoch $(\text{training})$. gsplit runs with a $0\%$ feature cache; PCIe is
-emulated via \texttt{NCCL\_P2P\_DISABLE=1}. Features are random (perf sweep).}
+shown as per-epoch $(\text{training})$. Two single-axis ablations per model crossing at
+the \textbf{default} $(L{=}4,\,h{=}1024)$ --- the value \emph{spanned} (multirow) in each
+block: a hidden sweep at $L{=}4$, then a depth sweep at $h{=}1024$. gsplit runs at a
+$0\%$ feature cache; PCIe is emulated via \texttt{NCCL\_P2P\_DISABLE=1}. Features random.}
 \label{tab:sec1-papers}
-\small
 \setlength{\tabcolsep}{4pt}
-\begin{tabular}{@{}l rrr @{\hskip 10pt} rrr@{}}
-\toprule
- & \multicolumn{3}{c}{\textbf{PCIe (emul.)}} & \multicolumn{3}{c}{\textbf{NVLink}} \\
-\cmidrule(lr){2-4}\cmidrule(lr){5-7}
-Config & DGL & gsplit & $\Delta$ & DGL & gsplit & $\Delta$ \\
-\midrule
-\multicolumn{7}{@{}l}{\textbf{SAGE} --- hidden sweep ($L{=}4$)}\\
-$h{=}256$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}4,h{=}1024$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$h{=}4096$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-\multicolumn{7}{@{}l}{\textbf{SAGE} --- depth sweep ($h{=}1024$)}\\
-$L{=}2$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}4,h{=}1024$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}6$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-\midrule
-\multicolumn{7}{@{}l}{\textbf{GAT} --- hidden sweep ($L{=}4$)}\\
-$h{=}256$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}4,h{=}1024$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$h{=}4096$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-\multicolumn{7}{@{}l}{\textbf{GAT} --- depth sweep ($h{=}1024$)}\\
-$L{=}2$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}4,h{=}1024$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-$L{=}6$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
-\bottomrule
-\end{tabular}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{|l|c|c|r|r|r|r|r|r|}
+\hline
+\multicolumn{3}{|c|}{} & \multicolumn{3}{c|}{\textbf{PCIe (emul.)}} & \multicolumn{3}{c|}{\textbf{NVLink}} \\
+\cline{4-9}
+\textbf{Model} & $\mathbf{h}$ & $\mathbf{L}$ & DGL & gsplit & $\Delta$ & DGL & gsplit & $\Delta$ \\
+\hline
+\multirow{6}{*}{\textbf{SAGE}} & $256$ & \multirow{3}{*}{$4$} & 30.87 (10.96) & 37.08 (20.54) & $-20\%\,(-87\%)$ & 28.90 (9.47) & 27.99 (11.70) & $+3\%\,(-24\%)$ \\
+ & $1024$ &  & 59.78 (39.95) & \placeholder & -- & 57.93 (38.24) & 51.12 (34.66) & $+12\%\,(+9\%)$ \\
+ & $4096$ &  & \textsc{t/o} & \textsc{t/o} & -- & \textsc{t/o} & 302.22 (282.57) & -- \\
+\cline{2-9}
+ & \multirow{3}{*}{$1024$} & $2$ & 6.80 (3.34) & \placeholder & -- & 6.72 (3.10) & 7.89 (4.29) & $-17\%\,(-38\%)$ \\
+ &  & $4$ & 59.78 (39.95) & \placeholder & -- & 57.93 (38.24) & 51.12 (34.66) & $+12\%\,(+9\%)$ \\
+ &  & $6$ & \placeholder & \placeholder & -- & \textsc{t/o} & \textsc{t/o} & -- \\
+\hline
+\multirow{6}{*}{\textbf{GAT}} & $256$ & \multirow{3}{*}{$4$} & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+ & $1024$ &  & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+ & $4096$ &  & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+\cline{2-9}
+ & \multirow{3}{*}{$1024$} & $2$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+ &  & $4$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+ &  & $6$ & \placeholder & \placeholder & -- & \placeholder & \placeholder & -- \\
+\hline
+\end{tabular}%
+}
 \end{table}
