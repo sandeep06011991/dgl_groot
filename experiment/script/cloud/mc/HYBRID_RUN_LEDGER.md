@@ -76,6 +76,26 @@ measured best first, then tune the simulator to match). One exploratory table:
   independent of (L,h,k) -- matching the uniform all-30 pattern. SAGE's 2x~24 GB mostly fits.
 - Recorded as OOM sentinels and KEPT in place (no-data-removal rule); GAT pipeline simply not
   viable at these sizes without memory relief (e.g. not double-buffering features, or fewer heads).
-- TODO products: on box completion, append ONLY graph==products rows from final shards (avoid
-  dup of the 100 papers rows already in master), uncomment \input{tables/hybrid_products},
-  re-run gen_hybrid_table.py, rebuild PDF.
+- 2026-11-04 01:22 PST (09:22 UTC): box 545a9e81 SELF-TERMINATED on completion; confirmed
+  "(no instances)" => billing stopped. Full run 200/200 cells done.
+- 2026-11-04 ~01:25 PST: pulled final shards from B2 (local has no rclone; used B2 native API
+  over HTTP via scratchpad/b2_pull.py). Appended ONLY products rows (100) -> master 368->468.
+  Raw products shards saved to defense_latex/results/hybrid/hyb_products_shard{0,1}.csv.
+  Regenerated both tables; uncommented \input{tables/hybrid_products}; PDF rebuilt clean
+  (tab:hybrid-papers100m + tab:hybrid-products, 0 overfull, 0 errors).
+
+### products preliminary results (raw; user to verify)
+- A hybrid beats baseline gsplit in 18/20 cells (DP fastest in 15, pipe in 3). Same shape as
+  papers100M: DP gain grows with k, biggest on PCIe+deep/wide (SAGE PCIe L=3 h=4096 DP k2
+  +38.9%, L=4 DP k3 +33.4%, L=3 h=1024 +32.8%).
+- 2 non-wins: small GAT on NVLink (L=2 h=1024 -6.0%; L=4 h=1024 -1.1%) -- cheap NVLink leaves
+  little shuffle to recover, baseline split already near-best (matches sec:hybrid-tradeoff).
+- GAT pipeline OOM on 12/30 products cells (only the larger: h=4096 + some h=1024), NOT all 30
+  as on papers100M -- products' smaller footprint lets the pipeline's 2 live micro-batches fit
+  for the smaller GAT cells. Same structural cause, graph-size-dependent threshold.
+
+### RUN COMPLETE -- all expensive computation done.
+- Total hybrid rows in master: 200 (100 papers + 100 products). 42 OOM sentinels (30 papers +
+  12 products, all GAT pipeline), kept in place. 0 timeouts.
+- Simulator calibration target (cost-model branch): the measured best per cell is in
+  defense_latex/results/hybrid_ablation.csv (every variant) and tables/hybrid_<graph>.tex.

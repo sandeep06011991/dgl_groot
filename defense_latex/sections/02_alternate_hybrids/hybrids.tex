@@ -101,12 +101,15 @@ against the fastest data-parallel (DP) and pipeline variant found, with the winn
 split-point $k$. The numbers are consistent with the cost argument above: a hybrid is
 fastest in \emph{every} papers100M cell, the data-parallel gains grow with $k$ and are
 largest on PCIe and at large depth/hidden size (where the shuffle dominates), and the
-pipeline hybrid helps SAGE but runs out of memory for GAT at these sizes. These results are
-\emph{preliminary} (papers100M; the \textsc{products} sweep is still completing and will be
-added) and are presented as raw measurements for verification, not yet as final claims.
+pipeline hybrid helps SAGE but runs out of memory for GAT at these sizes.
+Table~\ref{tab:hybrid-products} shows the same pattern on the smaller \textsc{products}
+graph (a hybrid wins in 18 of 20 cells; the two exceptions are small GAT on NVLink, where
+the cheap interconnect leaves little shuffle to recover). These results are
+\emph{preliminary} and are presented as raw measurements for verification, not yet as final
+claims.
 
 \input{tables/hybrid_papers100M}
-% \input{tables/hybrid_products}   % add once the products sweep completes
+\input{tables/hybrid_products}
 
 \paraq{Conclusion of this section.}
 Both hybrids can \emph{potentially} fix the settings where gsplit underperforms, but each

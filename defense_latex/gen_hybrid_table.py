@@ -59,6 +59,20 @@ OBSERVATIONS = {
         r"deeper/wider $>$ shallow, i.e. the hybrids help most exactly where the "
         r"shuffle/all-to-all dominates. (Preliminary; to verify.)",
     ],
+    "products": [
+        r"\textbf{Same pattern as papers100M, smaller graph.} A hybrid beats baseline "
+        r"gsplit in 18 of 20 cells; the DP hybrid is the fastest in 15 of them and its "
+        r"gain again grows with $k$, peaking on \textbf{PCIe + deep/wide} (SAGE PCIe "
+        r"$L{=}3,h{=}4096$: $+39\%$; $L{=}4$: $+33\%$).",
+        r"\textbf{The two non-wins are small GAT on NVLink} ($L{=}2$ and $L{=}4,h{=}1024$), "
+        r"where the cheap NVLink all-to-all leaves little shuffle for a hybrid to recover "
+        r"and baseline split is already near-best --- consistent with the "
+        r"interconnect argument of \S\ref{sec:hybrid-tradeoff}.",
+        r"\textbf{GAT pipeline OOMs only on the larger configs} (12 of 30 cells: $h{=}4096$ "
+        r"and the deeper/shallower $h{=}1024$), not all of them as on papers100M --- "
+        r"products' smaller footprint lets the pipeline's two live micro-batches fit for the "
+        r"smaller GAT cells. (Preliminary; to verify.)",
+    ],
 }
 
 
