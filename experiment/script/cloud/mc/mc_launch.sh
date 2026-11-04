@@ -10,7 +10,11 @@
 #   PRODUCT     (gpu_8x_A100_SXM4)   product from GET /gpu-inventory (8x A100 SXM4 80GB)
 #   IMAGE_ID    (84)                 "Ubuntu Server 22.04 w/ drivers" (GET /images)
 #   SSH_KEY_ID  (auto)               uuid of a registered key (GET /ssh-keys); auto = first
-#   VOLUME_IDS  ()                   comma list of persistent-storage volume ids (beta)
+#   VOLUME_IDS  ()                   comma list of persistent-storage volume ids (beta,
+#                                    max 8). API field is `volumeIds` (volume_ids -> 422).
+#                                    Each attaches at LAUNCH ONLY and mounts on the VM at
+#                                    /persistent/<volume-name>. List ids via GET
+#                                    /storage-volumes (also: experiment/script/cloud/mc/mc_volume.sh).
 #   REGION      (any)                regionName; MC has no datacenter concept
 #   POLL_SECS   (15)  MAX_POLLS (40) how long to wait for the VM to get an IP
 #
@@ -50,7 +54,14 @@ SSH_KEY_NAME="${SSH_KEY_NAME:-$(curl -s --max-time 20 "${AUTH[@]}" "$API/ssh-key
 [ -n "${SSH_KEY_NAME:-}" ] || { echo "ERROR: no registered SSH key (GET /ssh-keys empty)"; exit 2; }
 
 # 4) build + send launch
-vol_json=""; [ -n "${VOLUME_IDS:-}" ] && vol_json=",\"volumeIds\":[$(echo "\"$VOLUME_IDS\"" | sed 's/,/","/g')]"
+#    volumeIds (camelCase) attaches persistent-storage volumes AT LAUNCH; they mount at
+#    /persistent/<name> on the VM. Strip whitespace so "id1, id2" -> ["id1","id2"].
+vol_json=""
+if [ -n "${VOLUME_IDS:-}" ]; then
+  ids_clean=$(echo "$VOLUME_IDS" | tr -d '[:space:]')
+  vol_json=",\"volumeIds\":[\"$(echo "$ids_clean" | sed 's/,/","/g')\"]"
+  echo ">>> attaching persistent volume(s): $ids_clean  (mount at /persistent/<name>, launch-time only)"
+fi
 body="{\"imageId\":$IMAGE_ID,\"productName\":\"$PRODUCT\",\"regionName\":\"$REGION\",\"instanceName\":\"$NAME\",\"sshKeys\":[\"$SSH_KEY_NAME\"]$vol_json}"
 echo ">>> launching: $body"
 resp=$(curl -s --max-time 40 -w $'\n%{http_code}' -X POST "${AUTH[@]}" -H "Content-Type: application/json" -d "$body" "$API/instance/launch")
@@ -68,7 +79,7 @@ for i in $(seq 1 "$MAX_POLLS"); do
   line=$(echo "$all" | python3 -c "
 import json,sys,re
 d=json.load(sys.stdin)
-items=d.get('instances') or d.get('data') or (d if isinstance(d,list) else [])
+items=d.get('runningInstances') or d.get('instances') or d.get('data') or (d if isinstance(d,list) else [])
 def find(o,keys):
     if isinstance(o,dict):
         for k,v in o.items():

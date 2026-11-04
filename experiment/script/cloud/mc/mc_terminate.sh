@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # mc_terminate.sh — RUN ON THE CONTROL MACHINE. Terminate Massed Compute instance(s) to
-# STOP BILLING. WARNING: terminate destroys the instance disk (a plain Stop keeps billing).
-# Back up / scp / commit any results off the node first. Persistent-storage volumes (if any)
-# survive termination.
+# STOP BILLING. WARNING: terminate destroys the instance disk. There is NO "Stop" on MC
+# (no pause/hibernate; only restart + terminate), so terminating is the ONLY way to stop
+# instance billing — an idle VM bills the full hourly rate until terminated.
+# Back up / scp / commit any results off the node first. Persistent-storage volumes survive
+# termination (and keep billing storage-only until DELETEd via /storage-volumes/{id}).
 #
 # Prereqs: export MC_API_TOKEN=<token>
 #   Usage:  mc_terminate.sh <instance-uuid> [<instance-uuid> ...]

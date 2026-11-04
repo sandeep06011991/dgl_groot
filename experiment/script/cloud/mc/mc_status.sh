@@ -8,7 +8,7 @@ API="https://vm.massedcompute.com/api/v1"
 curl -s --max-time 25 -H "Authorization: Bearer $MC_API_TOKEN" "$API/instance" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-items=d.get('instances') or d.get('data') or (d if isinstance(d,list) else [])
+items=d.get('runningInstances') or d.get('instances') or d.get('data') or (d if isinstance(d,list) else [])
 def find(o,keys):
     if isinstance(o,dict):
         for k,v in o.items():
