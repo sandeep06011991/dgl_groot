@@ -194,3 +194,4 @@ partition_map/
 # Result CSVs (experiment/logs/*.csv) ARE tracked on purpose — keep them out of the
 # broad ignores above; only the *.err/*.out runtime logs are ignored.
 !experiment/logs/*.csv
+.claude/settings.local.json
