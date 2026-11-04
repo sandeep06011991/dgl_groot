@@ -65,6 +65,143 @@ Supported OGB graphs: `arxiv`, `products`, `papers100M`.
 
 ---
 
+## 0b. Massed Compute (alternative to RunPod)
+
+Use Massed Compute (MC) when A100-SXM capacity on RunPod is dry. MC is a **VM**
+provider (not containers), so the image is a bare Ubuntu with only the NVIDIA
+**kernel driver** — the CUDA toolkit, torch, and the DGL/Spara build all come from
+the conda env (`environment_setup.sh`), exactly as on RunPod.
+
+**Prereq — the API token must be *exported*.** Scripts read `MC_API_TOKEN` from the
+environment. If it lives in `~/.profile` as a bare assignment (no `export`), a child
+process (the scripts) won't inherit it — you'll get `ERROR: export MC_API_TOKEN first`
+even though `echo ${#MC_API_TOKEN}` is nonzero. Fix:
+
+```bash
+source ~/.profile && export MC_API_TOKEN     # ensure children inherit it
+```
+
+**Which path are you on — COLD or WARM?** Check whether a prebuilt env snapshot already exists:
+
+```bash
+source ~/.config/groot/b2.env && rclone config create gsplit-b2 b2 account "$B2_KEY_ID" key "$B2_APP_KEY" >/dev/null 2>&1
+rclone lsf gsplit-b2:gsplit-data/groot/env/     # prints mc_a100_sm80.tar.zst if a B2 snapshot exists
+curl -s -H "Authorization: Bearer $MC_API_TOKEN" https://vm.massedcompute.com/api/v1/storage-volumes  # volume id/status
+```
+
+- **COLD (first time):** no `mc_a100_sm80.tar.zst` in B2 **and** no seeded volume → **Path A**
+  (build once ~30–45 min, then seed persistence so you never build again).
+- **WARM (persistence exists):** the snapshot is in B2 and/or on the `groot-sec1` volume
+  (id `12cd1bbd-5fc8-4f74-86fe-7b106a5ad02f`) → **Path B** (restore, skip the build, minutes).
+
+VM facts common to both: user `Ubuntu` (sudo), image = bare Ubuntu, paths `repo /home/dgl_groot`,
+`env /home/groot_env`, `data /home/data` (match `run_worker2.sh`). Only `gpu_8x_A100_SXM4`
+($11.04/hr, 8×A100-80GB, 800 GB RAM, 5 TB disk) can host a 4-GPU (`w4`) run — MC has NO 4× product
+(1× is $1.38/hr but can't do `world_size=4`; it IS enough to seed/validate a volume cheaply).
+
+#### Path A — first time / COLD (no persistence yet)
+
+```bash
+# 1. CONTROL: create a volume once (POST /storage-volumes or the web console), or reuse
+#    groot-sec1's id; launch WITH it so it mounts at /persistent/<name> (attach is launch-only).
+VOLUME_IDS=<volume-id> bash experiment/script/cloud/mc/mc_launch.sh groot-run
+# 2. ON THE VM: FULL build ~30–45 min (no snapshot yet -> mc_bootstrap builds). Logs to ~/boot.out.
+curl -fsSL https://raw.githubusercontent.com/sandeep06011991/dgl_groot/final_dissertation/experiment/script/cloud/mc/mc_bootstrap.sh | bash
+# 3. provision data, then SEED persistence so every later launch is WARM:
+export data_dir=/home/data && bash experiment/script/provision_data.sh papers100M "4"
+bash experiment/script/cloud/mc/mc_volume.sh snapshot-env            # env  -> volume
+bash experiment/script/cloud/mc/mc_snapshot_env.sh                   # env  -> B2 (offsite backup)
+bash experiment/script/cloud/mc/mc_volume.sh snapshot-data papers100M  # data -> volume (optional)
+# 4. run (see the sweep block below); terminate when idle — volume + B2 survive.
+```
+
+#### Path B — subsequent / WARM (snapshot exists → skip the build)
+
+```bash
+# 1. CONTROL: relaunch WITH the volume (mounts at /persistent/<name>).
+VOLUME_IDS=12cd1bbd-5fc8-4f74-86fe-7b106a5ad02f bash experiment/script/cloud/mc/mc_launch.sh groot-run
+# 2. ON THE VM: mc_bootstrap takes the FAST-PATH — finds the volume tarball (then B2), untars to
+#    local /home, verifies import dgl, and SKIPS the ~40-min build (minutes, validated 2026-11-03).
+curl -fsSL https://raw.githubusercontent.com/sandeep06011991/dgl_groot/final_dissertation/experiment/script/cloud/mc/mc_bootstrap.sh | bash
+#    - B2 restore (empty/no volume) needs the gsplit-b2 remote configured first; the volume path doesn't.
+#    - SKIP_RESTORE=1 forces a clean rebuild; if C++/CUDA sources changed since the snapshot,
+#      ./build.sh release + re-run snapshot-env (a plain git pull leaves the .so stale).
+# 3. restore data from the volume (fast) or B2, run, terminate when idle:
+export data_dir=/home/data && bash experiment/script/cloud/mc/mc_volume.sh restore-data papers100M
+```
+
+**Always confirm billing state with `mc_status.sh`** (its `runningInstances` parsing is fixed) — if it
+ever prints "(no instances)" while a VM is live you have a stale copy, so re-check before assuming
+nothing bills. **Terminate** (not just "stop" — see below) when done: `mc_terminate.sh <uuid>`.
+
+**Running the Section-1 perf sweep on the VM** (the gsplit-vs-DGL @0%-cache grid —
+see §5.1), across the 8 GPUs as two concurrent 4-GPU shards:
+
+```bash
+export data_dir=/home/data
+bash experiment/script/provision_data.sh papers100M "4"      # B2 restore; no feat (random_feat)
+cd experiment/script && python3 gen_settings.py              # writes sec1_settings.jsonl (missing cells only)
+# shard 0 -> GPUs 0-3, shard 1 -> GPUs 4-7, distinct TRAIN_MASTER_PORT so DDP rendezvous don't collide
+bash run_worker2.sh 0 0,1,2,3 29500 sec1_settings.jsonl papers_shard0.csv papers
+bash run_worker2.sh 1 4,5,6,7 29600 sec1_settings.jsonl papers_shard1.csv papers
+```
+
+### Billing: there is NO "Stop" on MC — idle = full rate until you terminate
+
+MC bills per-minute and has **no pause/hibernate state**: the only instance actions are
+`restart` and `terminate` (`GET /api/v1` lists no stop endpoint; MC's own docs say
+"stop effectively means terminate — there is no pause-and-resume, no hibernation").
+So "stop the box to save the build and restart later" is **not possible** — an idle
+`gpu_8x_A100_SXM4` keeps billing the full **$11.04/hr** until `instance/terminate`,
+which **destroys the VM disk**. The only way to stop GPU billing is to terminate.
+=> The right pattern is **snapshot → terminate-when-idle → fast-restore-on-next-launch**
+(below), never "leave it stopped."
+
+### Persistent-storage volume (beta): what it is and how it attaches
+
+A **Persistent Storage volume** survives termination and can hold the build tarball +
+datasets so the next VM comes up fast without a B2 round-trip. Confirmed mechanics
+(VM API + live pod, Nov 2026):
+
+- **List/create/delete via API:** `GET/POST /storage-volumes`, `DELETE /storage-volumes/{id}`
+  (all accept the bearer token). `GET /storage-volumes` shows `id`, `name`, `status`,
+  `mountPath`, and `attachedTo`. (Note: `/storage`, `/volumes`, `/account` only exist in
+  the web console and 307-redirect to `/login` with the API token.)
+- **Mounts at `/persistent/<volume-name>`** on the VM (object-storage backed; the image
+  ships `/usr/local/bin/geesefs`).
+- **Attach is LAUNCH-ONLY.** The launch field is `volumeIds` (camelCase, array, **max 8**;
+  `volume_ids` → 422). Attaching to an **already-running** VM only updates the volume's
+  metadata (`attachedTo` fills in) — it does **NOT** hot-mount: `/persistent/<name>` stays
+  empty and is not a mountpoint until the VM is **relaunched** with that id in `volumeIds`.
+  (This is exactly why a volume attached to a live box is invisible there — `lsblk` shows
+  only `sda`, `/persistent` is empty. Detach is web-console-only.)
+- **Survives terminate; billed (storage only) until DELETEd.** A volume still attached to
+  any instance can't be deleted (409).
+- **The env/`.so` can't run off the geesefs mount** (not relocatable) — use the volume as a
+  *tarball store*: snapshot env → volume, and on a fresh VM copy the tarball OFF the volume
+  to local `/home` and untar. Dataset `.npy` MAY be read straight off the mount.
+
+Helper (on the VM): `experiment/script/cloud/mc/mc_volume.sh {detect|snapshot-env|restore-env|snapshot-data <g>|restore-data <g>|seed-from-b2}`.
+
+### Snapshot / restore reference (the mechanics Paths A & B use)
+
+The env is persisted as a **tarball** (`mc_a100_sm80.tar.zst`) keyed to the exact paths + GPU
+arch, kept on the **volume** (primary fast path) and in **B2** (offsite). Validated 2026-11-03.
+
+- **Create a snapshot** (Path A, on a built VM): `mc_volume.sh snapshot-env` (→ volume) and
+  `mc_snapshot_env.sh` (→ B2). Both verify `import dgl` before trusting the build.
+- **Seed a fresh volume straight from B2** (no local build): `mc_volume.sh seed-from-b2`.
+- **Restore** (Path B) is automatic inside `mc_bootstrap.sh` (volume → B2 → build);
+  `SKIP_RESTORE=1` forces a clean build.
+- **Restore is MC→MC only** — A100 sm_80 + image 84. A different arch/image must rebuild.
+- **Point-in-time:** if the C++/CUDA sources changed since the snapshot, `./build.sh release`
+  and re-run `snapshot-env` (a plain `git pull` leaves the `.so` stale).
+- **geesefs gotchas** (encoded in `seed-from-b2`): never `rclone copyto B2 → the geesefs mount`
+  (it rejects `chtimes`); stage the download under `$HOME` (fresh `/home` is root-owned until
+  `mc_bootstrap` chowns it), then plain `cp` onto the volume.
+
+---
+
 ## 1. Software setup (one-time per pod)
 
 **Fastest path: `bash experiment/script/cloud/runpod/bootstrap_pod.sh`** (or the `curl | bash` one-liner
@@ -161,20 +298,26 @@ Bucket layout: `gsplit-data/groot/{graph/<g>/, partition_map/<g>/, logs/}`. Back
   regenerates from OGB, and B2 free tier has a storage cap). Push with `PUSH_B2=1`:
   `PUSH_B2=1 bash experiment/script/provision_data.sh papers100M "2 4"`.
 
-## 4. Getting the data back (default: regenerate from OGB)
+## 4. Getting the data back (default: restore from B2)
 
 ```bash
 export data_dir=/root/graph
 bash experiment/script/provision_data.sh <graph> "<world_sizes>"   # e.g. papers100M "2 4"
 ```
 
-Idempotent — only rebuilds what's missing. By default it **regenerates from OGB**
-(download the zip, unzip, rename to `ogbn_<g>`, then steps 1–3 of Section 2). OGB is
-**deterministic**: regenerated `feat.npy`/topology are byte-identical with the same
-node ordering, so any previously-saved partition map still aligns. METIS is retried
-once (it can segfault nondeterministically on huge graphs).
+Idempotent — only fetches what's missing. **By default it restores from B2** (`RESTORE_B2=1`,
+the `provision_data.sh` default): the partition map is the non-reproducible METIS artifact and
+B2 is its source of truth, so we never rebuild it by default. **OGB regeneration is opt-in**
+(`ALLOW_OGB=1`) and only kicks in on a B2 miss; otherwise a miss hard-fails rather than silently
+starting a ~70 GB download. **METIS is opt-in too** (`ALLOW_METIS=1`) — a missing map hard-fails
+unless it's set. Features/labels are pulled **only when `NEED_FEAT=1`** (real-feature/correctness
+runs); the Section-1 perf sweep uses `--random_feat`, so `feat.npy`/`label.npy` (e.g. ~57 GB for
+papers100M) are never fetched. See `provision_data.sh`'s header for all flags and
+[[data-provisioning-default]].
 
-Opt-in B2 restore instead of OGB (e.g. to reuse exact maps): `RESTORE_B2=1 bash .../provision_data.sh <graph> "2 4"`.
+If you *do* want OGB regeneration (e.g. to rebuild topology from scratch): `ALLOW_OGB=1 bash
+.../provision_data.sh <graph> "2 4"`. OGB is **deterministic** — regenerated `feat.npy`/topology
+are byte-identical with the same node ordering, so a previously-saved partition map still aligns.
 
 OGB download sources (direct zips):
 
@@ -204,6 +347,33 @@ per depth (fanout = depth copies of 15), writing one row per depth to
 `world_size` = number of GPUs **and** selects the `w<world_size>` partition map, because
 `train_main.py` forces `num_partition = world_size`. A 2-GPU pod can only run `w2`;
 `w4` needs a 4-GPU pod.
+
+### 5.1 The Section-1 sweep (gsplit vs DGL @ 0% cache)
+
+`run_split_experiment.sh` above is for single/ad-hoc runs. The **dissertation
+Section-1 grid** is driven by a dedicated, idempotent pair — do not hand-loop it:
+
+- **`gen_settings.py`** enumerates the planned grid and diffs it against the
+  consolidated results (`defense_latex/results/sweep_all.csv`), writing
+  `sec1_settings.jsonl` with **only the cells not already measured**. The grid is
+  two *separate* single-axis ablations per (graph, model, interconnect, system),
+  meeting at the pivot (L=4, h=1024): a hidden sweep `h∈{256,1024,4096}` at L=4 and a
+  depth sweep `L∈{2,4,6}` at h=1024. Systems are **`dgl` and `split` (gsplit, k=0),
+  both at `--cache_size=0G`** — no quiver, no k>0. Protocol: 3 epochs, world_size 4,
+  `--random_feat`, 1200 s/cell cap. (Edit the grid constants there, kept in sync with
+  `defense_latex/gen_sec1_tables.py`.)
+- **`run_settings.py`** iterates `sec1_settings.jsonl`, running each cell under
+  `timeout`, recording `timeout`/`oom` **sentinel rows** (so a capped/OOM'd cell is
+  never retried), and **skipping any cell already present** in `sweep_all.csv` or the
+  log — so it resumes cleanly after an interruption. Each cell runs in its own process
+  group (never a global `pkill`), and `--shard I/N` + `CUDA_VISIBLE_DEVICES` split the
+  grid across concurrent workers (see `run_worker2.sh`, and §0b for the 8-GPU layout).
+- **Consolidate + render:** merge the per-run CSVs into `sweep_all.csv`, then
+  `defense_latex/gen_sec1_tables.py` regenerates `tables/sec1_products.tex` /
+  `sec1_papers100M.tex` and `results/losing_cells.csv` from that single file.
+
+The older `sunday_sweep.sh` / `sunday_ledger.md` describe a **superseded** stress-to-OOM
+ladder (it ablated hidden and depth together); the grid above is the current design.
 
 ## 6. How data placement on the GPU is decided
 
