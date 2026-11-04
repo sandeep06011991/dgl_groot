@@ -11,6 +11,10 @@
 \usepackage[table]{xcolor}  % table option -> \rowcolor for gen_results_table.py
 \usepackage{tikz}
 \usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc, decorations.pathreplacing}
+\usepackage{pgfplots}          % roofline figure (figures/roofline.tex, from gen_roofline.py)
+\pgfplotsset{compat=1.18}
+\usepackage{algorithm}         % Algorithm env for the roofline procedure
+\usepackage{algpseudocode}
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
 
@@ -65,7 +69,8 @@ hybrids at those simulator-chosen configurations (Section~\ref{sec:results}).
 
 \input{sections/01_gsplit_limitations/limitations}
 \input{sections/02_alternate_hybrids/hybrids}
-\input{sections/03_simulator/simulator}
+\input{sections/03_simulator/roofline}
+% \input{sections/03_simulator/simulator}   % brute-force cost-model simulator: kept on disk, out of the PDF (user decision)
 \input{sections/04_simulator_predicted_cases/predicted_cases}
 \input{sections/05_final_results/final_results}
 

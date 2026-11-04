@@ -48,7 +48,7 @@ products cells (the lone exception, $L{=}4,h{=}1024$, picks $k^\star{=}2$ by a n
 $1.3\%$): the shuffle is concentrated in the \emph{outer}, large-frontier hops, which the
 $k$-hybrid only removes by going (near-)full data-parallel, where redundant compute
 dominates---so the $k$-sweep does \emph{not} recover these cells. The \textbf{pipeline}
-hybrid, however, does: once compute is modelled per-GPU (Section~\ref{sec:sim-calibration}),
+hybrid, however, does: once compute is modelled per-GPU (Section~\ref{sec:roofline}),
 the deep/large-hidden PCIe cells are \emph{communication-bound}, and overlapping the shuffle
 under compute is predicted to beat full-split by \textbf{18--35\%} and to beat the DGL
 baseline (Table~\ref{tab:predicted-prelim}).
@@ -58,7 +58,7 @@ baseline (Table~\ref{tab:predicted-prelim}).
 \caption{\emph{Preliminary} simulator predictions, products, 4$\times$A100, SAGE, PCIe
 (emulated). DGL/Quiver are measured; Split is the calibrated full-split ($k{=}0$); Pipeline
 is the overlap hybrid. ``gain'' is Pipeline vs.\ Split. Derived by rescaling the captured sim
-components with the Section~\ref{sec:sim-calibration} calibration; exact per-layer pipeline
+components with the Section~\ref{sec:roofline} calibration; exact per-layer pipeline
 numbers and the $L{=}5$ cases await the final sweep. Single measured run; PCIe emulated.}
 \label{tab:predicted-prelim}
 \begin{tabular}{l r r r r r}
