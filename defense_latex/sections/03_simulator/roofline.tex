@@ -242,6 +242,72 @@ Everything else is arithmetic.
 \end{algorithm}
 
 % ---------------------------------------------------------------------------
+\subsection{Checking the decision: a layer-level roofline}
+\label{sec:cm-check}
+
+\paraq{Can we check a decision instead of predicting one?}
+Yes. The parallelism strategy already fixes which nodes each GPU computes and which rows it
+pulls; sampling alone reveals them. We therefore sample \emph{every} configuration---data
+parallel, gsplit, and each hybrid split point $k$---without features or training, and use the
+cost model only to \emph{price} what was sampled. The question becomes: is the configuration
+that won in the measurements also the cheapest one under the model?
+
+\paraq{How does a whole layer become one point on the roofline?}
+We lift the per-node model of Section~\ref{sec:cm-node} to a whole layer. For strategy $s$
+at hop $\ell$, sampling gives, on the busiest GPU (which sets the layer time):
+$n^{s}_\ell$ nodes computed, $e^{s}_\ell$ edges aggregated, and $m^{s}_\ell$ rows received
+over the interconnect ($m^{\mathrm{dp}}_\ell = 0$). The layer's sparsity is its average
+fanout $\bar{e}^{s}_\ell = e^{s}_\ell / n^{s}_\ell$, and its time is the sum of its sparse,
+dense, and transfer work:
+\begin{equation}
+  T^{s}_\ell \;=\; n^{s}_\ell \Big( \frac{\alpha\, \bar{e}^{s}_\ell\, s_H}{\hat{B}_{\mathrm{mem}}}
+     + \frac{D(\bar{e}^{s}_\ell)}{\hat{P}} \Big)
+     \;+\; \frac{m^{s}_\ell\, s_H}{\hat{B}_{\mathrm{net}}}.
+  \label{eq:cm-layer-time}
+\end{equation}
+Data parallelism pays through $n^{\mathrm{dp}}_\ell$ (redundant nodes); gsplit pays through
+$m^{\mathrm{split}}_\ell$ (pulled rows).
+
+\paraq{What is plotted, so that the two strategies are comparable?}
+Each (strategy, layer) pair is one point: $x$ is the layer's sparsity $\bar{e}^{s}_\ell$, and
+$y$ is its \emph{useful} throughput,
+\begin{equation}
+  y^{s}_\ell \;=\; \frac{u_\ell\, s_H}{T^{s}_\ell}\quad\text{bytes/s},
+  \label{eq:cm-useful}
+\end{equation}
+where $u_\ell$ is the number of unique rows hop $\ell$ must produce, the same for every
+strategy. Normalising by useful rather than computed rows keeps redundant work from looking
+like progress: a data-parallel point sits below the compute roofs by its redundancy, a gsplit
+point sits below them by its transfer time. For an $L$-layer model this gives $2L$ points
+($6$ for $L{=}3$) on one plot. At each layer the higher point is the cheaper strategy; a hybrid
+is justified exactly when the higher point switches from one strategy to the other between
+layers, and the split point is the layer where it switches.
+
+\begin{figure}[h]
+  \centering
+  \fbox{\parbox{0.85\linewidth}{\centering\small
+  \expdiag{layer-level communication-centric roofline. $x$: layer sparsity $\bar{e}$ (log);
+  $y$: useful bytes/s (log). Roofs: $\hat{B}_{\mathrm{mem}}/(\alpha\bar{e})$,
+  $\hat{P}s_H/D(\bar{e})$, and $\hat{B}_{\mathrm{net}}$ (PCIe-emu, NVLink).
+  Points: data parallel ($\circ$) and gsplit ($\bullet$) for layers $\ell=1,2,3$, joined per
+  layer. One panel per (graph, model, $h$, interconnect).}\\[4pt]
+  \placeholder}}
+  \caption{Layer-level roofline: six points per configuration (placeholder; to be generated
+  from sampling-only runs and Tables~\ref{tab:cm-constants}--\ref{tab:cm-microbench}).}
+  \label{fig:cm-layer-roofline}
+\end{figure}
+
+\paraq{How is the check scored?}
+Summing Eq.~\eqref{eq:cm-layer-time} over layers prices every sampled configuration; the
+model's choice is the cheapest one. It is counted correct when it matches the configuration
+that won in the measurements of Section~\ref{sec:hybrids}, and the plot shows \emph{why} it
+won: which layers sit higher under which strategy.
+Sampling also gives the memory each configuration needs: a configuration whose busiest GPU
+holds more than its memory, about $\sum_\ell n^{s}_\ell\, s_H$ for the activations, is
+infeasible and is excluded before taking the cheapest (cf.\ the papers100M out-of-memory
+cells in Section~\ref{sec:hybrids}).
+
+% ---------------------------------------------------------------------------
 \subsection{What counts as reasonably close}
 \label{sec:cm-validation}
 
@@ -263,41 +329,20 @@ change from hop to hop, the cheaper strategy changes too, which is the basis for
 hybrid parallelism.
 
 % ===========================================================================
-% IDEAS (draft, for discussion): simple, heavily approximated decision rules.
+% IDEA (draft): zero-sampling estimate of the split point. Not covered by the
+% layer-level check (that one needs sampling); kept for the author to decide.
 % ===========================================================================
 \medskip
 \noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\color{red}\small
-\textbf{Ideas for a simple decision rule (draft, for discussion).} Each idea trades accuracy
-for a rule that fits on one line. $G$: GPUs; $B$: seeds per GPU; $N$: nodes in the graph.
-\begin{enumerate}\itemsep2pt
-  \item \textbf{One price ratio per machine.} Fold the whole roofline into one number,
-        $\kappa = T^{\mathrm{net}}/T^{\mathrm{cmp}}$. If the sparse term dominates (small $h$),
-        $\kappa \approx \hat{B}_{\mathrm{mem}}/(\alpha\, e\, \hat{B}_{\mathrm{net}})$; if the dense
-        term dominates (large $h$), $\kappa \approx \hat{P}\, s_H / (\hat{B}_{\mathrm{net}}\, D(e))$.
-        Rule~\eqref{eq:cm-layer-rule} becomes: hop $\ell$ is data parallel iff
-        $(\delta_\ell - 1)/r_\ell < \kappa$. One number per (model, $h$, interconnect),
-        one count ratio per hop.
-  \item \textbf{Closed-form counts: no sampling pass.} Treat each GPU's sampled tree as
-        $n_\ell \approx B e^{\ell}$ nodes drawn uniformly from $N$. The chance that another GPU
-        also holds a node is about $n_\ell/N$, so $\delta_\ell - 1 \approx (G-1)\, B e^{\ell}/N$
-        while $n_\ell \ll N$. For split, the remote fraction is roughly the partition's
-        edge cut, $r \approx$ cut fraction (about $(G-1)/G$ for a random partition, much less
-        for METIS), constant across hops. Then
-        \[
-          k^\star \;\approx\; \log_e\!\Big( \frac{\kappa\, r\, N}{(G-1)\, B} \Big),
-        \]
-        clipped to $[0, L]$: hops nearer the seeds than $k^\star$ are data parallel, the rest
-        split. Redundancy grows geometrically with the hop while the price ratio stays fixed,
-        which is why there is a crossover at all. (Power-law degree makes trees overlap
-        sooner, so this $k^\star$ is an upper estimate.)
-  \item \textbf{Calibrate one number, not a simulator.} Keep the form of idea~1 or~2 and fit a
-        single fudge factor on $\kappa$ per interconnect against a few measured hybrid
-        winners; check the remaining cells with it. One fitted constant is easy to defend.
-  \item \textbf{Memory as a feasibility check.} Data parallel at hop $\ell$ stores about
-        $\delta_\ell$ times more rows for that hop. Drop any $k$ whose
-        $\sum_{\ell<k} \delta_\ell |V_\ell|\, s_H$ exceeds GPU memory before taking the
-        $\arg\min$ (cf.\ the papers100M out-of-memory cells in Section~\ref{sec:hybrids}).
-\end{enumerate}}}
+\textbf{Idea (draft): estimating $k^\star$ without sampling.} Treat each GPU's sampled tree
+as $n_\ell \approx B e^{\ell}$ nodes drawn uniformly from $N$ ($B$: seeds per GPU, $G$: GPUs).
+Then $\delta_\ell - 1 \approx (G-1)\, B e^{\ell}/N$ while $n_\ell \ll N$, and the split remote
+fraction is roughly the partition's edge cut $r$, constant across hops. With
+$\kappa = T^{\mathrm{net}}/T^{\mathrm{cmp}}$, Rule~\eqref{eq:cm-layer-rule} gives
+$k^\star \approx \log_e\!\big(\kappa\, r\, N / ((G-1) B)\big)$, clipped to $[0,L]$.
+Redundancy grows geometrically with the hop while the price stays fixed, which is why a
+crossover exists. Power-law degree makes trees overlap sooner, so this is an upper estimate.
+Unlike Section~\ref{sec:cm-check}, it needs no sampling, but it is far less exact.}}
 \medskip
 
 % ===========================================================================
