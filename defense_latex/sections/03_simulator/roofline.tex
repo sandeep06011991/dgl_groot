@@ -263,6 +263,44 @@ change from hop to hop, the cheaper strategy changes too, which is the basis for
 hybrid parallelism.
 
 % ===========================================================================
+% IDEAS (draft, for discussion): simple, heavily approximated decision rules.
+% ===========================================================================
+\medskip
+\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\color{red}\small
+\textbf{Ideas for a simple decision rule (draft, for discussion).} Each idea trades accuracy
+for a rule that fits on one line. $G$: GPUs; $B$: seeds per GPU; $N$: nodes in the graph.
+\begin{enumerate}\itemsep2pt
+  \item \textbf{One price ratio per machine.} Fold the whole roofline into one number,
+        $\kappa = T^{\mathrm{net}}/T^{\mathrm{cmp}}$. If the sparse term dominates (small $h$),
+        $\kappa \approx \hat{B}_{\mathrm{mem}}/(\alpha\, e\, \hat{B}_{\mathrm{net}})$; if the dense
+        term dominates (large $h$), $\kappa \approx \hat{P}\, s_H / (\hat{B}_{\mathrm{net}}\, D(e))$.
+        Rule~\eqref{eq:cm-layer-rule} becomes: hop $\ell$ is data parallel iff
+        $(\delta_\ell - 1)/r_\ell < \kappa$. One number per (model, $h$, interconnect),
+        one count ratio per hop.
+  \item \textbf{Closed-form counts: no sampling pass.} Treat each GPU's sampled tree as
+        $n_\ell \approx B e^{\ell}$ nodes drawn uniformly from $N$. The chance that another GPU
+        also holds a node is about $n_\ell/N$, so $\delta_\ell - 1 \approx (G-1)\, B e^{\ell}/N$
+        while $n_\ell \ll N$. For split, the remote fraction is roughly the partition's
+        edge cut, $r \approx$ cut fraction (about $(G-1)/G$ for a random partition, much less
+        for METIS), constant across hops. Then
+        \[
+          k^\star \;\approx\; \log_e\!\Big( \frac{\kappa\, r\, N}{(G-1)\, B} \Big),
+        \]
+        clipped to $[0, L]$: hops nearer the seeds than $k^\star$ are data parallel, the rest
+        split. Redundancy grows geometrically with the hop while the price ratio stays fixed,
+        which is why there is a crossover at all. (Power-law degree makes trees overlap
+        sooner, so this $k^\star$ is an upper estimate.)
+  \item \textbf{Calibrate one number, not a simulator.} Keep the form of idea~1 or~2 and fit a
+        single fudge factor on $\kappa$ per interconnect against a few measured hybrid
+        winners; check the remaining cells with it. One fitted constant is easy to defend.
+  \item \textbf{Memory as a feasibility check.} Data parallel at hop $\ell$ stores about
+        $\delta_\ell$ times more rows for that hop. Drop any $k$ whose
+        $\sum_{\ell<k} \delta_\ell |V_\ell|\, s_H$ exceeds GPU memory before taking the
+        $\arg\min$ (cf.\ the papers100M out-of-memory cells in Section~\ref{sec:hybrids}).
+\end{enumerate}}}
+\medskip
+
+% ===========================================================================
 % Earlier draft of this section, kept verbatim (speculative; see banner).
 % ===========================================================================
 \input{sections/03_simulator/roofline_prev}
