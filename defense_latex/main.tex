@@ -15,6 +15,7 @@
 \pgfplotsset{compat=1.18}
 \usepackage{algorithm}         % Algorithm env for the roofline procedure
 \usepackage{algpseudocode}
+\usepackage{placeins}          % \FloatBarrier: keep hybrid tables out of the roofline section
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
 
@@ -60,15 +61,16 @@ In these settings potential savings in data loading and computation are lost due
 This chapter (i)~\emph{quantifies} where gsplit underperforms against the DGL and Quiver
 baselines (Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
 schemes}---a data-parallel hybrid and a pipeline hybrid---that should relieve those
-settings (Section~\ref{sec:hybrids}); (iii)~builds and validates a \emph{simulator} that
-predicts each hybrid configuration's performance cheaply, so we need not sweep every
-configuration on real hardware (Section~\ref{sec:simulator}); (iv)~runs that simulator on
-the problematic settings to \emph{predict the best Quiver/Split configuration} for each
-(Section~\ref{sec:predicted}); and (v)~reports the \emph{final runtime results} of the
-hybrids at those simulator-chosen configurations (Section~\ref{sec:results}).
+settings (Section~\ref{sec:hybrids}); (iii)~builds an approximate \emph{cost model} that
+gives the per-layer choice between pulling and recomputing a mathematical basis, aiming for a
+reasonably close choice rather than exact epoch times (Section~\ref{sec:roofline});
+(iv)~uses that model on the problematic settings to \emph{predict the best Quiver/Split
+configuration} for each (Section~\ref{sec:predicted}); and (v)~reports the \emph{final
+runtime results} of the hybrids at those configurations (Section~\ref{sec:results}).
 
 \input{sections/01_gsplit_limitations/limitations}
 \input{sections/02_alternate_hybrids/hybrids}
+\FloatBarrier  % flush hybrid tables (tab:hybrid-*) before the roofline section starts
 \input{sections/03_simulator/roofline}
 % \input{sections/03_simulator/simulator}   % brute-force cost-model simulator: kept on disk, out of the PDF (user decision)
 \input{sections/04_simulator_predicted_cases/predicted_cases}
