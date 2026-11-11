@@ -16,7 +16,8 @@ MAXLIFE="${MAXLIFE:-28800}"
 LOGDIR="$REPO/experiment/logs"
 WD="$REPO/idle_watchdog.out"
 log(){ echo "[idle-wd $(date -u +%FT%TZ)] $*" >> "$WD"; }
-push(){ rclone copy "$LOGDIR" gsplit-b2:gsplit-data/groot/logs/sec1_autoterm/ --include "sec1_*shard*.csv" >>"$WD" 2>&1 || true; }
+push(){ rclone copy "$LOGDIR" gsplit-b2:gsplit-data/groot/logs/sec1_autoterm/ --include "sec1_*shard*.csv" >>"$WD" 2>&1 || true
+        rclone copy "$LOGDIR" gsplit-b2:gsplit-data/groot/logs/${B2_SUBDIR:-sec1_autoterm}/ --include "${LOG_PREFIX:-hyb}_shard*.csv" >>"$WD" 2>&1 || true; }
 term(){ log "TERMINATE: $1"; push; curl -s --max-time 30 -X POST \
   -H "Authorization: Bearer $MC_API_TOKEN" -H "Content-Type: application/json" \
   -d "{\"instanceUuids\":[\"$SELF_UUID\"]}" "$API/instance/terminate" >>"$WD" 2>&1; }

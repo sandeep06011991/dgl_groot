@@ -9,13 +9,19 @@
 #
 # Required env: MC_API_TOKEN, SELF_UUID (from ~/.config/groot/mc_run.env).
 # Optional: MAX_HOURS=12, SETTINGS (default sec1_hybrid_settings.jsonl),
-#           GRAPHS="papers100M products", NO_TERMINATE=1 (debug).
+#           GRAPHS="papers100M products", NO_TERMINATE=1 (debug),
+#           LOG_PREFIX=hyb (shard logs <prefix>_shard{0,1}.csv, DONE flag tag),
+#           B2_SUBDIR=sec1_autoterm (push target gsplit-data/groot/logs/<subdir>/).
+# Pipeline micro-batch re-run (2026-11-11):
+#   SETTINGS=.../sec1_pipe_rerun_settings.jsonl LOG_PREFIX=pipefix B2_SUBDIR=pipe_rerun
 set -uo pipefail
 API="https://vm.massedcompute.com/api/v1"
 REPO=/home/dgl_groot
 SETTINGS="${SETTINGS:-$REPO/experiment/script/sec1_hybrid_settings.jsonl}"
 MAX_HOURS="${MAX_HOURS:-12}"
 GRAPHS="${GRAPHS:-papers100M products}"
+LOG_PREFIX="${LOG_PREFIX:-hyb}"
+B2_SUBDIR="${B2_SUBDIR:-sec1_autoterm}"
 export data_dir="${data_dir:-/home/data}"
 LOGDIR="$REPO/experiment/logs"
 mkdir -p "$LOGDIR"
@@ -34,7 +40,7 @@ setup_b2() {
 }
 push_b2() {
   command -v rclone >/dev/null 2>&1 && rclone listremotes 2>/dev/null | grep -q '^gsplit-b2:' || { echo "[hyb] no rclone/remote, cannot push"; return 1; }
-  rclone copy "$LOGDIR" gsplit-b2:gsplit-data/groot/logs/sec1_autoterm/ --include "hyb_shard*.csv" -v 2>&1 | tail -4
+  rclone copy "$LOGDIR" gsplit-b2:gsplit-data/groot/logs/$B2_SUBDIR/ --include "${LOG_PREFIX}_shard*.csv" -v 2>&1 | tail -4
 }
 terminate_self() {
   local why="${1:-unknown}"
@@ -67,8 +73,8 @@ done
 # 2) run two 4-GPU shards concurrently over the hybrid grid
 cd "$REPO/experiment/script"
 echo "[hyb] launching shards"
-bash run_worker2.sh 0 0,1,2,3 29500 "$SETTINGS" hyb_shard0.csv hyb & P0=$!
-bash run_worker2.sh 1 4,5,6,7 29600 "$SETTINGS" hyb_shard1.csv hyb & P1=$!
+bash run_worker2.sh 0 0,1,2,3 29500 "$SETTINGS" "${LOG_PREFIX}_shard0.csv" "$LOG_PREFIX" & P0=$!
+bash run_worker2.sh 1 4,5,6,7 29600 "$SETTINGS" "${LOG_PREFIX}_shard1.csv" "$LOG_PREFIX" & P1=$!
 wait "$P0"; r0=$?; wait "$P1"; r1=$?
 echo "[hyb $(date -u +%FT%TZ)] shards done rc0=$r0 rc1=$r1"
 terminate_self "complete"
