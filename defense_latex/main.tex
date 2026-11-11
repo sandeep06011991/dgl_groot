@@ -46,20 +46,20 @@ GNN training system, and showed that it trains correctly and outperforms the sta
 across a range of settings. In gsplit, each GPU owns a METIS partition weighted by sampling
 frequency, and sampling, feature loading, and the model forward/backward exchange only
 boundary data across GPUs via NCCL. This chapter starts from a tension our ablation studies exposed:
-\emph{the gain from gsplit is not uniform}---in some settings it is eroded or lost entirely.
+\emph{the gain from gsplit is not uniform}---depending on the setting, gsplit can be faster or slower
+than a data-parallel baseline.
 
-\paraq{Which settings erode gsplit's advantage, and why?}
-Two settings drive the cross-partition \textbf{shuffle} cost up until it dominates:
-\textbf{deeper models} (every additional layer adds another all-to-all shuffle), and
-\textbf{larger hidden sizes} (every shuffle moves a larger feature volume).
-In these settings, potential savings in data loading and computation are lost due to the increasing cost of splitting. 
-%  In these
-% regimes the communication gsplit was designed to minimize instead becomes its bottleneck,
-% and a simpler baseline can win.
+\paraq{Which settings make gsplit's gain inconsistent, and why?}
+Two model parameters change the cost of the cross-partition \textbf{shuffles}:
+\textbf{depth} (every additional layer adds another all-to-all shuffle) and
+\textbf{hidden size} (every shuffle moves a larger feature volume). Both also change the computation
+and data-loading savings that splitting provides, so neither has a consistent effect: as models grow
+deeper or wider, gsplit's training time relative to the baseline improves in some settings and
+degrades in others, depending on the GNN model, the graph, and the interconnect. 
 
 \paraq{What does this chapter do about it, and in what order?}
-This chapter (i)~\emph{quantifies} where gsplit underperforms against the DGL and Quiver
-baselines (Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
+This chapter (i)~\emph{quantifies} how gsplit's gain over the DGL baseline varies
+(Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
 schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
 (Section~\ref{sec:hybrids}); (iii)~builds a \emph{communication-centric, roofline-based cost model} that
 evaluates these parallelism schemes (Section~\ref{sec:roofline});

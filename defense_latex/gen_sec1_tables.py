@@ -16,7 +16,7 @@ sentinels render as OOM / t/o with Delta ``--``.
 
 Usage:
     python3 gen_sec1_tables.py                                  # default csv -> tables/
-    python3 gen_sec1_tables.py --csv results/sweep_all.csv --outdir tables
+    python3 gen_sec1_tables.py --csv results/sweep_all.csv --outdir tables --k 0
     python3 gen_sec1_tables.py --self-test                      # synthetic CSV, no real data
 """
 import argparse
@@ -43,6 +43,12 @@ GRAPH_LABEL = {"products": ("products", "tab:sec1-products"),
                "papers100M": ("papers100M", "tab:sec1-papers")}
 SENTINELS = {"oom": "OOM", "timeout": "t/o"}
 
+# gsplit's hybrid knob: number of redundant (data-parallel) layers. Section 1 is pure split
+# parallelism, k=0. sweep_all.csv also holds the hybrid sweeps (k>0, Section 2) at the same
+# 0%-cache cells, so gsplit rows MUST be filtered on k or the last-written hybrid row would
+# silently replace the k=0 number.
+SPLIT_K = 0
+
 
 def _depth_from_fanouts(s):
     s = str(s).strip().strip("[]")
@@ -68,11 +74,12 @@ def _num(x):
         return None
 
 
-def load_lookup(csv_path):
+def load_lookup(csv_path, k=SPLIT_K):
     """(graph, hardware, model, depth, hid, system) -> dict(epoch, train, sentinel).
 
-    Keeps only 0%-cache rows of dgl/split (the Section-1 condition); on duplicates the
-    last-written row wins (CSV is append-ordered)."""
+    Keeps only 0%-cache rows of dgl/split (the Section-1 condition), and for split only the
+    rows with num_redundant_layers == k; on duplicates the last-written row wins (CSV is
+    append-ordered)."""
     lut = {}
     if not os.path.isfile(csv_path):
         return lut
@@ -83,6 +90,13 @@ def load_lookup(csv_path):
             continue
         if _cache_gb(r.get("cache_size", "0")) != 0.0:
             continue
+        if system == "split":
+            try:
+                row_k = int(r.get("num_redundant_layers", 0) or 0)
+            except (TypeError, ValueError):
+                row_k = 0
+            if row_k != k:
+                continue
         try:
             if float(r.get("cache_frac", -1.0)) > 0:
                 continue
@@ -187,8 +201,8 @@ def emit_table(lut, graph):
     return "\n".join(L) + "\n"
 
 
-def write_tables(csv_path, outdir):
-    lut = load_lookup(csv_path)
+def write_tables(csv_path, outdir, k=SPLIT_K):
+    lut = load_lookup(csv_path, k=k)
     os.makedirs(outdir, exist_ok=True)
     out = {}
     for graph in GRAPHS:
@@ -222,6 +236,8 @@ def main():
     ap = argparse.ArgumentParser(description="generate the two Section-1 tables")
     ap.add_argument("--csv", default=DEFAULT_CSV)
     ap.add_argument("--outdir", default=DEFAULT_OUTDIR)
+    ap.add_argument("--k", type=int, default=SPLIT_K,
+                    help="gsplit num_redundant_layers to tabulate (Section 1 = 0, pure split)")
     ap.add_argument("--self-test", action="store_true", help="synthetic CSV -> tables, then print")
     args = ap.parse_args()
 
@@ -235,7 +251,7 @@ def main():
             print(open(p).read())
         return
 
-    out = write_tables(args.csv, args.outdir)
+    out = write_tables(args.csv, args.outdir, k=args.k)
     for g, p in out.items():
         print(f"wrote {g:11s} -> {p}")
 
