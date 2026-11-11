@@ -1,42 +1,48 @@
 % Pipeline-split hybrid: 2 micro-batches (A,B) on 2 CUDA streams, staggered by one
 % stage so one stream's split SHUFFLE (comm) overlaps the other's CONV (compute).
-% At any instant exactly one all-to-all is in flight (single NCCL communicator).
+% Each layer is shuffle -> conv; at any step exactly one all-to-all is in flight
+% (single NCCL communicator). Drawn for L=3 layers.
 % \input{figures/pipeline_split} inside a figure environment.
 \begin{tikzpicture}[
     font=\small,
-    comp/.style={draw, fill=blue!12, minimum height=0.8cm, align=center, font=\scriptsize},
-    comm/.style={draw, fill=red!14, minimum height=0.8cm, align=center, font=\scriptsize},
-    idle/.style={draw, dashed, fill=black!4, minimum height=0.8cm, align=center, font=\scriptsize\itshape},
-    ax/.style={-{Latex}, gray},
+    blk/.style={draw, minimum height=0.6cm, minimum width=1.4cm, anchor=west, font=\scriptsize},
+    comp/.style={blk, fill=blue!12},
+    comm/.style={blk, fill=red!14},
+    idle/.style={blk, draw=gray, dashed, fill=black!3},
+    ax/.style={-{Latex[length=1.6mm]}, gray},
   ]
-  \def\w{1.7}   % block width = one time unit
-  \def\ya{0}    % stream A row
-  \def\yb{-1.1} % stream B row
+  \def\w{1.4}
+  \def\ya{0}
+  \def\yb{-0.8}
 
-  % time axis
-  \draw[ax] (-0.2,-1.95) -- (7.9,-1.95) node[right, font=\scriptsize] {time};
-  \foreach \t in {0,1,2,3,4}{ \draw[gray] (\t*\w,-1.9) -- (\t*\w,-2.0); }
+  \node[font=\scriptsize, anchor=east] at (-0.15,\ya) {micro-batch $A$};
+  \node[font=\scriptsize, anchor=east] at (-0.15,\yb) {micro-batch $B$};
 
-  % row labels
-  \node[left=2pt, font=\scriptsize] at (0,\ya) {stream $s_A$};
-  \node[left=2pt, font=\scriptsize] at (0,\yb) {stream $s_B$};
-
-  % Stream A: comm L0 | comp L0 | comp L1 | comp L2
-  \node[comm, anchor=west, minimum width=\w cm] at (0*\w,\ya) {shuffle $L_0$};
-  \node[comp, anchor=west, minimum width=\w cm] at (1*\w,\ya) {conv $L_0$};
-  \node[comp, anchor=west, minimum width=\w cm] at (2*\w,\ya) {conv $L_1$};
-  \node[comp, anchor=west, minimum width=\w cm] at (3*\w,\ya) {conv $L_2$};
-
-  % Stream B: idle | shuffle L0 | conv L0 | conv L1 ...  (staggered one stage)
-  \node[idle, anchor=west, minimum width=\w cm] at (0*\w,\yb) {--};
-  \node[comm, anchor=west, minimum width=\w cm] at (1*\w,\yb) {shuffle $L_0$};
-  \node[comp, anchor=west, minimum width=\w cm] at (2*\w,\yb) {conv $L_0$};
-  \node[comp, anchor=west, minimum width=\w cm] at (3*\w,\yb) {conv $L_1$};
-
-  % overlap highlight: A-conv aligns with B-shuffle in the same time column
-  \foreach \t in {1,2,3}{
-    \draw[<->, green!50!black, thick] (\t*\w+\w/2,\ya-0.45) -- (\t*\w+\w/2,\yb+0.45);
+  % A: shuffle/conv per layer, starting at step 0
+  \foreach \l in {0,1,2}{
+    \node[comm] at ({(2*\l)*\w},\ya)   {shuffle $L_\l$};
+    \node[comp] at ({(2*\l+1)*\w},\ya) {conv $L_\l$};
   }
-  \node[font=\scriptsize\itshape, text=green!40!black, align=center] at (6.6,-0.55)
-    {compute $\parallel$ comm\\(one all-to-all\\in flight)};
+  % B: same sequence, one step later
+  \node[idle] at (0,\yb) {};
+  \foreach \l in {0,1,2}{
+    \node[comm] at ({(2*\l+1)*\w},\yb) {shuffle $L_\l$};
+    \node[comp] at ({(2*\l+2)*\w},\yb) {conv $L_\l$};
+  }
+
+  % time axis with step ticks
+  \draw[ax] (0,-1.4) -- ({7*\w+0.4},-1.4) node[right, font=\scriptsize, text=gray] {time};
+  \foreach \t in {0,...,7}{ \draw[gray] ({\t*\w},-1.35) -- ({\t*\w},-1.45); }
+
+  % overlapped steps (1..5): one stream computes while the other shuffles
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}, green!40!black]
+    ({1*\w},-1.6) -- ({6*\w},-1.6)
+    node[midway, below=5pt, font=\scriptsize\itshape, text=green!40!black]
+    {overlapped: in each step one stream computes while the other shuffles};
+
+  % legend
+  \node[comm, minimum width=0.35cm, minimum height=0.25cm, anchor=west] (lc) at ({7*\w+0.2},\ya) {};
+  \node[font=\scriptsize, anchor=west] at (lc.east) {comm};
+  \node[comp, minimum width=0.35cm, minimum height=0.25cm, anchor=west] (lp) at ({7*\w+0.2},\yb) {};
+  \node[font=\scriptsize, anchor=west] at (lp.east) {compute};
 \end{tikzpicture}

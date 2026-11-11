@@ -1,120 +1,194 @@
 \section{Alternate Hybrids}
 \label{sec:hybrids}
 
-\paraq{If full split parallelism is too expensive in those settings, what are the alternatives?}
-We consider two hybrid schemes that keep gsplit's partition-aware shuffle where it pays
-off but avoid or hide it where it does not. This section is kept deliberately brief; it
-will gain detail once the experimental results of the later sections are in.
+\paraq{What does this section propose?}
+Section~\ref{sec:limitations} showed that neither full split parallelism (gsplit) nor data
+parallelism (DGL) is faster across the measured space. Both strategies sit at the ends of a
+spectrum: gsplit computes each node once, on its owning GPU, but pays an all-to-all
+\textbf{shuffle} at every layer; data parallelism never shuffles, but every GPU recomputes the
+overlapping parts of its neighbourhood. This section introduces two hybrids that keep gsplit's
+partition-aware shuffle where it pays off and avoid or hide it where it does not: a
+\emph{data-parallel hybrid}, which removes shuffles (Section~\ref{sec:hybrid-dp}), and a
+\emph{pipeline hybrid}, which overlaps them with computation (Section~\ref{sec:hybrid-pipeline}).
+We then measure both against gsplit (Section~\ref{sec:hybrid-empirical}).
 
 \subsection{Hybrid Data Parallelism}
 \label{sec:hybrid-dp}
 
-\paraq{How does the data-parallel hybrid reduce shuffle cost?}
-The top layers of the model run as traditional \textbf{data parallelism}---each GPU
-processes its own micro-batch with a replicated graph and \emph{no} cross-GPU
-shuffle---and only the bottom layers run gsplit-style \textbf{split} parallelism. A
-single parameter, the split-point $k$, controls the switch: layers $0{\ldots}k{-}1$ are
-data-parallel and layers $k{\ldots}L{-}1$ shuffle (Figure~\ref{fig:data-split}).
-Intuitively the earliest layers (nearest the seeds, smallest frontier) are the cheapest
-to replicate, so moving the shuffle later removes the least-useful shuffles first.
-$k{=}0$ is today's full split and $k{=}L$ is pure data parallelism.
+\paraq{How does the data-parallel hybrid remove shuffles?}
+The model's layers are divided at a \textbf{split point} $k$. Layers $0,\ldots,k{-}1$, counted
+from the seed nodes, run as \textbf{data parallelism}: each GPU samples and computes the
+neighbourhood of its own seed shard on replicated features, with no cross-GPU shuffle. At
+layer $k$ the per-GPU micro-batches are concatenated into the global batch, every node is
+assigned to its owning partition, and layers $k,\ldots,L{-}1$ run as gsplit-style
+\textbf{split} parallelism, with a shuffle before each layer (Figure~\ref{fig:data-split}).
+Setting $k{=}0$ recovers full split (gsplit), and $k{=}L$ recovers pure data parallelism.
+% Detail: in the code k is num_redundant_layers (config.num_redundant_layer -> model num_dp and
+% sampler SetNumDP); DDP already all-reduces parameter gradients, so the DP prefix needs no new
+% reduction. Correctness verified by micro-tests MT1/MT2 (plans/01_dp_plus_split.md).
+
+\paraq{What does a larger $k$ cost?}
+Each layer moved into the data-parallel prefix removes one shuffle per iteration in both the
+forward and backward passes. The price is \textbf{redundant computation}: neighbourhoods of
+different seed shards overlap, so nodes in the overlap are computed by more than one GPU. The
+layers nearest the seeds have the smallest frontiers, which makes them the cheapest to
+replicate, so increasing $k$ removes shuffles in the order where replication costs least.
 
 \begin{figure}[t]
   \centering
   \input{figures/data_split}
-  \caption{\textbf{Data-split (DP-then-split)} with $L{=}4$ layers and split-point
-  $k{=}2$. Layers $0,1$ run data-parallel: each GPU computes its own micro-batch on a
-  replicated graph with \emph{no} cross-GPU communication (blue). At the switch point the
-  per-GPU micro-batches are concatenated into the global batch and nodes are assigned to
-  their owning partition; layers $2,3$ then run split, performing an all-to-all
-  \emph{shuffle} before each conv (red). Trading shuffle for replicated/redundant compute:
-  larger $k$ removes more shuffles but makes every GPU redo more of the early-layer work.}
+  \caption{\textbf{Data-parallel hybrid} with $L{=}4$ layers and split point $k{=}2$ on
+  four GPUs. Layers $0$ and $1$ run data-parallel: each GPU computes its own micro-batch with
+  no cross-GPU communication (blue). At the switch point the micro-batches are concatenated
+  into the global batch and each node is assigned to its owning partition; layers $2$ and $3$
+  then run split, with an all-to-all shuffle before each layer (red bands). A larger $k$
+  removes more shuffles but makes each GPU recompute more of the early-layer work.}
   \label{fig:data-split}
 \end{figure}
 
 \subsection{Hybrid Pipeline Parallelism}
 \label{sec:hybrid-pipeline}
 
-\paraq{How does the pipeline hybrid hide shuffle cost instead of removing it?}
-Two micro-batch streams run concurrently and are staggered by one stage so that one
-stream's \textbf{shuffle} (communication) overlaps with the other stream's
-\textbf{compute} (Figure~\ref{fig:pipeline-split}). The shuffle cost is not reduced but
-hidden behind useful work, so per layer the cost is $\max(\text{compute},
-\text{comm})$ rather than their sum. Because the stagger keeps exactly one all-to-all in
-flight at a time, a single NCCL communicator suffices and the two micro-batches simply
-accumulate gradients into one optimizer step.
+\paraq{How does the pipeline hybrid hide shuffles instead of removing them?}
+Each mini-batch is divided into two micro-batches, $A$ and $B$, which run through the same model
+on two CUDA streams, staggered by one stage. While $A$ computes layer $i$, $B$ performs the
+shuffle of the same layer, and the roles then alternate (Figure~\ref{fig:pipeline-split}). The
+shuffle still occurs, but it overlaps with useful work, so the cost of each layer approaches
+$\max(\text{compute}, \text{comm})$ instead of their sum. The two micro-batches accumulate
+gradients into a single optimizer step, so the training semantics match those of one
+mini-batch.
+% Implementation details (plans/02_pipeline_plus_split.md): sampling of A and B is sequential
+% (no overlap benefit, and it sidesteps the sampler's single-_batch constraint); the stagger
+% keeps exactly one all-to-all in flight, so a single NCCL communicator suffices; A's backward
+% runs under DDP no_sync() and B's backward triggers the all-reduce of the summed gradients.
+
+\paraq{How does it combine with the data-parallel hybrid, and what does it cost?}
+The pipeline composes with the data-parallel hybrid: it can run over full split ($k{=}0$, the
+\emph{pure} pipeline) or over a split model with a $k$-layer data-parallel prefix. Overlap only
+helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
+mini-batch's seeds, so the two live micro-batches together occupy roughly the memory of one
+mini-batch, and an optimizer step consumes the same number of seeds as in gsplit.
+% [FLAG: the measured pipeline runs did NOT halve the micro-batch. pipeline_split_trainer.py
+%  builds the loader with batch_size=config.batch_size and draws TWO batches per step, so each
+%  micro-batch holds the full 1024 seeds (2048 per optimizer step): ~2x live memory and 2x the
+%  effective batch (half the optimizer steps per epoch). The pipeline OOMs and timings in
+%  Tables tab:hybrid-* come from this configuration; re-run with batch_size/2 per micro-batch.]
 
 \begin{figure}[t]
   \centering
   \input{figures/pipeline_split}
-  \caption{\textbf{Pipeline-split} with two micro-batches $A,B$ on two CUDA streams.
-  Staggered by one stage, micro-batch $A$'s \emph{conv} (compute, blue) of a layer runs in
-  the same time column as micro-batch $B$'s \emph{shuffle} (comm, red) of the previous
-  layer. The epoch is then bounded by $\max$(compute, comm) per layer instead of their
-  sum; the benefit is largest exactly when the shuffle is expensive.}
+  \caption{\textbf{Pipeline hybrid} for $L{=}3$ layers with two micro-batches, $A$ and $B$,
+  on two CUDA streams. Each layer is a shuffle (red) followed by a conv (blue). $B$ starts one
+  step after $A$, so in every overlapped step one micro-batch computes while the other
+  shuffles, and exactly one all-to-all is in flight. Each step then costs
+  $\max(\text{compute}, \text{comm})$ instead of their sum.}
   \label{fig:pipeline-split}
 \end{figure}
 
-\subsection{The cost tradeoff and why the best strategy is machine-dependent}
+\subsection{The Cost Trade-off}
 \label{sec:hybrid-tradeoff}
 
-\paraq{What are the two costs that every hybrid is trading against each other?}
-Both hybrids attack the same quantity---the per-layer all-to-all \textbf{shuffle}---but
-pay for it in different currency. Full split minimizes redundant computation (each node is
-computed once, by its owner) at the price of a shuffle at \emph{every} layer. The
-data-parallel hybrid buys back shuffles by replicating the early layers, but replication
-means every GPU recomputes the overlapping frontier, so \textbf{redundant compute} rises
-as $k$ grows. The pipeline hybrid keeps the shuffles but hides them behind compute, so it
-pays only when compute is large enough to cover the comm. The right choice is therefore a
-balance: \emph{how expensive is a shuffle relative to the compute it would displace or the
-redundant compute it would avoid?}
+\paraq{What does each hybrid trade against the shuffle?}
+Both hybrids target the per-layer shuffle but pay for it differently. The data-parallel hybrid
+replaces shuffles with redundant computation, which grows with $k$. The pipeline hybrid keeps
+every shuffle and hides it behind computation, which only pays off when each micro-batch has
+enough computation to cover its partner's shuffle. Whether
+either pays off depends on how expensive a shuffle is relative to the computation it would
+replace or hide.
 
-\paraq{Why does that balance move with the machine and the hidden size?}
-The shuffle cost is (feature volume) $/$ (interconnect bandwidth), and both terms vary.
-A larger \textbf{hidden size} multiplies the feature volume moved at each layer, pushing
-the balance toward schemes that remove or hide shuffles. The \textbf{interconnect} sets
-the denominator: on an \textbf{NVLink} machine the all-to-all is cheap, so plain split is
-often already best and the hybrids have little to recover; emulating \textbf{PCIe} (here,
-by disabling NCCL peer-to-peer) drops the effective bandwidth several-fold, inflating
-every shuffle and making data-split (fewer shuffles) and pipeline-split (hidden shuffles)
-far more attractive. The same model can thus prefer different strategies on different
-hardware, which is precisely why a single static choice is wrong.
+\paraq{Which factors set the cost of a shuffle?}
+The cost of a shuffle is roughly the feature volume moved divided by the interconnect bandwidth.
+The \textbf{hidden size} sets the volume of each shuffle, the \textbf{depth} sets the number of
+shuffles, and the \textbf{interconnect} sets the bandwidth. Disabling NCCL peer-to-peer transfers
+to emulate PCIe lowers the effective bandwidth and raises the cost of every shuffle, so removing
+or hiding shuffles should help more on PCIe than on NVLink. Since the same factors also change
+the computation that the hybrids replicate or overlap, the best scheme and split point can differ
+across models, graphs, and machines.
 
-\paraq{So what is the configuration problem this chapter must solve?}
-Each hybrid adds a knob---the split-point $k$ for data-split, and whether to enable
-overlap for pipeline-split---and the best setting depends jointly on the graph, the model
-depth, the hidden size, and the interconnect. The brute-force answer, sweeping every
-$(\text{strategy}, k, \text{hardware})$ cell on real multi-GPU hardware, is exactly the
-expensive measurement this chapter is trying to avoid. That cost is what motivates the
-simulator of Section~\ref{sec:simulator}: predict each configuration cheaply, then measure
-only the one it chooses.
+\paraq{What configuration problem do the hybrids introduce?}
+The hybrids enlarge the configuration space. Each model now requires a choice of strategy
+(data-parallel hybrid, pipeline hybrid, or both) and a split point $k\in\{0,\ldots,L\}$, and the
+best choice depends jointly on the graph, the model, its depth and hidden size, and the
+interconnect.
 
-\subsection{Empirical hybrid sweep (ground truth)}
+\subsection{Empirical Hybrid Sweep}
 \label{sec:hybrid-empirical}
 
-\paraq{Do the hybrids actually pay off in practice, before any simulator?}
-We ran the full brute-force sweep once---every $(\text{strategy}, k, \text{hardware})$ cell
-across the Section-1 ablation grid---to obtain the ground-truth best each hybrid family can
-reach; this is the expensive measurement the simulator will later replace, and the target it
-must match. Table~\ref{tab:hybrid-papers100m} reports, per cell, baseline full-split gsplit
-against the fastest data-parallel (DP) and pipeline variant found, with the winning
-split-point $k$. The numbers are consistent with the cost argument above: a hybrid is
-fastest in \emph{every} papers100M cell, the data-parallel gains grow with $k$ and are
-largest on PCIe and at large depth/hidden size (where the shuffle dominates), and the
-pipeline hybrid helps SAGE but runs out of memory for GAT at these sizes.
-Table~\ref{tab:hybrid-products} shows the same pattern on the smaller \textsc{products}
-graph (a hybrid wins in 18 of 20 cells; the two exceptions are small GAT on NVLink, where
-the cheap interconnect leaves little shuffle to recover). These results are
-\emph{preliminary} and are presented as raw measurements for verification, not yet as final
-claims.
+\paraq{How do we measure the hybrids?}
+We measure every hybrid configuration on the same grid as Section~\ref{sec:limitations} and with
+the same setup: $4{\times}$A100-SXM-80GB GPUs, NVLink or emulated PCIe, a $0\%$ feature cache, a
+fanout of $15$, a batch size of $1024$, and $3$ epochs per configuration, with the per-epoch
+and training-only times reported as in Section~\ref{sec:limitations}. For each configuration we
+run the data-parallel hybrid at every interior split point $k\in\{1,\ldots,L{-}1\}$ and the
+pipeline hybrid at every $k\in\{0,\ldots,L{-}1\}$, and we compare the fastest variant of each
+family against baseline gsplit ($k{=}0$, no pipeline).
+{\color{red}\textbf{Caveat:} the pipeline runs did not halve the micro-batch size, so each
+micro-batch held a full mini-batch of $1024$ seeds. These runs therefore used about twice the
+memory and twice the effective batch size of baseline gsplit, so their times and
+out-of-memory failures are not directly comparable and must be re-measured.}
+% Detail: k = L (pure data parallelism) is not run as a gsplit variant; DGL in
+% Section~\ref{sec:limitations} is the data-parallel reference.
+% Detail: "best" is purely mechanical -- the minimum measured per-epoch time per family
+% (gen_hybrid_table.py docstring). A family whose every variant ran out of memory is shown as OOM.
+% [TODO: these tables compare against gsplit only. A DGL column (from sec1 tables) would show
+%  whether the best hybrid also beats data parallelism in the cells where gsplit lost.]
+% ---------------------------------------------------------------------------------------------
+% REPRODUCTION (for review; not printed)
+%   Tables are auto-generated from defense_latex/results/sweep_all.csv (split rows with
+%   num_redundant_layers = k, and gsplit_pipepar rows), via defense_latex/gen_hybrid_table.py;
+%   do not edit tables/hybrid_*.tex by hand.
+%   Counts quoted under "Observations" were derived from the rendered tables
+%   (tables/hybrid_{products,papers100M}.tex) by parsing each row's Delta, winning family,
+%   OOM marker, and best-DP k:
+%     40 configs; hybrid faster in 37 (exceptions: GAT NVLink L=2 on both graphs, products GAT
+%     NVLink L=4); Delta range -6.0% .. +38.9%; DP family fastest in 34; pipe all-OOM in 14 cells
+%     (all GAT: 10/10 papers100M, 4/10 products); PCIe Delta > NVLink Delta in 20/20 pairs;
+%     SAGE Delta > GAT Delta in 19/20; papers100M > products in 15/20; L=2->4 raises Delta in
+%     5/8 ladders; h=256->4096 raises Delta in 7/8; best DP k = L-1 in 37/40.
+% ---------------------------------------------------------------------------------------------
 
+\paraq{What do the tables report?}
+\textbf{Results.} Tables~\ref{tab:hybrid-products} and~\ref{tab:hybrid-papers100m} report, per
+configuration, baseline gsplit, the fastest data-parallel variant, and the fastest pipeline
+variant, each with its winning split point $k$, together with $\Delta$, the fastest hybrid's
+improvement over baseline gsplit.
+
+\FloatBarrier
 \input{tables/hybrid_papers100M}
 \input{tables/hybrid_products}
+\FloatBarrier
 
-\paraq{Conclusion of this section.}
-Both hybrids can \emph{potentially} fix the settings where gsplit underperforms, but each
-introduces \textbf{additional configuration parameters} (the split-point $k$ for the
-data-parallel hybrid; the stream count and staggering for the pipeline hybrid). The
-brute-force way to choose them---sweep every configuration on real hardware---is too
-expensive, which motivates the simulator of the next section. Design details for both
-schemes are in \texttt{plans/01\_dp\_plus\_split.md} and \texttt{plans/02\_pipeline\_plus\_split.md}.
+\paraq{What do the tables show?}
+\textbf{Observations.} Across the $40$ configurations, the fastest hybrid is faster than baseline
+gsplit in $37$, with a per-epoch $\Delta$ ranging from $-6\%$ to $+39\%$. The three exceptions
+are GAT on NVLink: $L{=}2$ on both graphs and $L{=}4$ on products.
+\begin{itemize}\itemsep1pt
+  \item \emph{Strategy.} The data-parallel hybrid is the fastest hybrid in $34$ of the $40$
+        configurations. The pipeline hybrid wins the remaining $6$, all on NVLink or at $L{=}2$
+        (e.g.\ papers100M SAGE, $L{=}2$, PCIe: $+20\%$); these pipeline times are subject to the
+        micro-batch caveat above.
+  \item \emph{Split point.} The fastest data-parallel variant uses the largest interior split
+        point, $k{=}L{-}1$, in $37$ of the $40$ configurations.
+  \item \emph{Interconnect.} The gain is larger on emulated PCIe than on NVLink in all $20$ paired
+        configurations, but a hybrid still wins in $17$ of the $20$ NVLink configurations.
+  \item \emph{Depth and hidden size.} Increasing $h$ from $256$ to $4096$ raises $\Delta$ in $7$
+        of the $8$ hidden-size ladders; increasing $L$ from $2$ to $4$ raises it in only $5$ of
+        the $8$ depth ladders.
+  \item \emph{Model.} SAGE gains more than GAT in $19$ of the $20$ paired configurations, the
+        opposite of the model trend in gsplit's gain over DGL (Section~\ref{sec:limitations}).
+  \item \emph{Memory.} The pipeline runs ran out of memory in every variant for $14$
+        configurations, all GAT: all $10$ on papers100M and the $4$ products configurations at
+        $h{=}4096$ or $L{=}2$. These failures come from the unhalved micro-batch (see the caveat
+        above), not from the pipeline design, and are kept in place until the re-run.
+\end{itemize}
+% Detail: products L=2 GAT OOM while L=4 GAT fits was unexpected (fewer layers, same h); recheck
+% it after the re-run with halved micro-batches.
+
+\paraq{What does this section conclude?}
+\textbf{Conclusion.} The hybrids improve on gsplit in $37$ of $40$ configurations, but the best
+strategy and split point vary across configurations. The pipeline measurements must be repeated
+with half-size micro-batches before the two hybrid families can be compared. Choosing a configuration therefore requires searching over the
+strategy, the split point $k$, and the hardware. This section performed that search by brute
+force, measuring every variant on real multi-GPU hardware, which is too expensive to repeat
+for every new model, graph, or machine. Section~\ref{sec:roofline} replaces this sweep with a
+cost model that estimates each configuration cheaply.

@@ -1,46 +1,52 @@
 % Data-split (DP-then-split) hybrid: first k layers data-parallel (no cross-GPU
-% shuffle), remaining L-k layers partition-aware split (all-to-all per layer).
+% shuffle), remaining L-k layers partition-aware split (all-to-all before each layer).
 % \input{figures/data_split} inside a figure environment.
+% Layout: one row per GPU, one column per layer; each all-to-all shuffle is drawn as a
+% single vertical band spanning all GPUs (instead of GPU-to-GPU arrows) to keep it legible.
 \begin{tikzpicture}[
     font=\small,
-    gpu/.style={draw, rounded corners, minimum width=2.1cm, minimum height=0.9cm, align=center},
-    dp/.style={gpu, fill=blue!8},
-    sp/.style={gpu, fill=red!10},
-    shuf/.style={-{Latex}, red!70!black, thick},
-    nolink/.style={-{Latex}, blue!60!black, dashed},
-    lbl/.style={font=\scriptsize\itshape, align=center},
+    box/.style={draw, rounded corners=2pt, minimum width=1.6cm, minimum height=0.6cm, align=center},
+    dp/.style={box, fill=blue!8},
+    sp/.style={box, fill=red!10},
+    band/.style={draw=red!60!black, fill=red!12, rounded corners=2pt},
+    flow/.style={-{Latex[length=1.6mm]}, gray!70!black},
+    hdr/.style={font=\scriptsize\itshape},
   ]
-  % layer columns: L0, L1 (DP, k=2) | L2, L3 (split); one row per GPU
-  \foreach \r/\y/\g in {0/0/0, 1/-1.1/1, 2/-2.2/2, 3/-3.3/3}{
-    \node[dp]  (a\r) at (0,\y)   {GPU \g\\\scriptsize own batch};
-    \node[dp]  (b\r) at (2.6,\y) {DP};
-    \node[sp]  (c\r) at (5.2,\y) {split};
-    \node[sp]  (d\r) at (7.8,\y) {split};
-  }
-  % layer headers
-  \node[lbl, above=2pt of a0] {Layer 0};
-  \node[lbl, above=2pt of b0] {Layer 1};
-  \node[lbl, above=2pt of c0] {Layer 2};
-  \node[lbl, above=2pt of d0] {Layer 3};
-
-  % DP region: independent per-GPU, no cross-GPU edges (dashed self-progress only)
-  \foreach \r in {0,1,2,3}{ \draw[nolink] (a\r) -- (b\r); }
-
-  % switch point k: concat micro-batches into the global batch, partition by owner
-  \draw[thick, dotted] ($(b0.north east)+(0.3,0.5)$) -- ($(b3.south east)+(0.3,-0.5)$);
-  \node[lbl, text=black, align=center] at (3.9,0.95) {switch $k{=}2$\\(concat $\to$ global batch)};
-
-  % split region: all-to-all shuffle BEFORE each conv (every GPU <-> every GPU)
+  \def\dy{0.85}
+  % rows = GPUs; columns = layers 0..3 (k=2: layers 0,1 DP | layers 2,3 split)
   \foreach \r in {0,1,2,3}{
-    \foreach \s in {0,1,2,3}{
-      \ifnum\r=\s\else \draw[shuf, opacity=0.5] (b\r.east) to[bend left=4] (c\s.west); \fi
-    }
-    \draw[shuf] (c\r) -- (d\r);
+    \pgfmathsetmacro{\y}{-\r*\dy}
+    \node[font=\scriptsize, anchor=east] at (-1.0,\y) {GPU \r};
+    \node[dp] (a\r) at (0,\y)   {DP};
+    \node[dp] (b\r) at (2.0,\y) {DP};
+    \node[sp] (c\r) at (4.6,\y) {split};
+    \node[sp] (d\r) at (7.2,\y) {split};
+    \draw[flow] (a\r) -- (b\r);
   }
 
-  % brackets
-  \draw[decorate, decoration={brace, amplitude=5pt, mirror}] ($(a3.south west)+(0,-0.5)$) -- ($(b3.south east)+(0,-0.5)$)
-    node[midway, below=6pt, lbl, text=blue!60!black] {data-parallel\\(no shuffle)};
-  \draw[decorate, decoration={brace, amplitude=5pt, mirror}] ($(c3.south west)+(0,-0.5)$) -- ($(d3.south east)+(0,-0.5)$)
-    node[midway, below=6pt, lbl, text=red!70!black] {split\\(all-to-all / layer)};
+  % all-to-all shuffle bands (before layer 2 and before layer 3)
+  \foreach \x/\n in {3.3/s1, 5.9/s2}{
+    \node[band, minimum width=0.5cm, minimum height={3*\dy cm + 0.6cm}, anchor=north]
+      (\n) at (\x,0.3) {};
+    \node[rotate=90, font=\scriptsize, text=red!60!black] at (\n.center) {all-to-all shuffle};
+  }
+  \foreach \r in {0,1,2,3}{
+    \draw[flow] (b\r.east) -- (b\r.east -| s1.west);
+    \draw[flow] (c\r.west -| s1.east) -- (c\r.west);
+    \draw[flow] (c\r.east) -- (c\r.east -| s2.west);
+    \draw[flow] (d\r.west -| s2.east) -- (d\r.west);
+  }
+
+  % layer headers, then the switch point on its own row above them
+  \foreach \n/\l in {a0/0, b0/1, c0/2, d0/3}{ \node[hdr, above=3pt of \n] {Layer \l}; }
+  \node[font=\scriptsize, above=16pt of s1.north] (sw) {switch point $k{=}2$};
+  \draw[-{Latex[length=1.6mm]}] (sw.south) -- (s1.north);
+
+  % region braces
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}]
+    ($(a3.south west)+(0,-0.25)$) -- ($(b3.south east)+(0,-0.25)$)
+    node[midway, below=5pt, hdr, text=blue!60!black] {data-parallel: no shuffle};
+  \draw[decorate, decoration={brace, amplitude=4pt, mirror}]
+    ($(s1.west |- d3.south)+(0,-0.25)$) -- ($(d3.south east)+(0,-0.25)$)
+    node[midway, below=5pt, hdr, text=red!60!black] {split: shuffle before each layer};
 \end{tikzpicture}
