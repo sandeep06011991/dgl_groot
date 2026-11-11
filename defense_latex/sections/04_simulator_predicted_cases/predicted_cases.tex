@@ -1,87 +1,170 @@
-\section{Simulator-Predicted Cases}
+\section{Roofline of Representative Settings}
 \label{sec:predicted}
 
-\paraq{Now that the simulator is trustworthy, what does it predict for the settings where gsplit lost?}
-We run the validated simulator on the Section~\ref{sec:limitations} cases---the deep-layer
-and large-hidden settings on products and papers100M---to predict, \emph{before building
-anything}, which strategy performs best and at what configuration. For each case the
-simulator sweeps the hybrid configuration space (the split-point $k$ for the data-parallel
-hybrid, and the pipeline schedule) and reports the best predicted \textbf{Split}/hybrid
-configuration, placed against the predicted \textbf{Quiver} and \textbf{DGL} baselines.
+\paraq{What does this section do?}
+It draws the roofline of Section~\ref{sec:roofline} for a few settings taken from the exhaustive
+sweep of Section~\ref{sec:hybrid-empirical}, places every layer of every strategy on it, and
+looks for the patterns that a configuration algorithm could later exploit. The section is
+exploratory: the plots and their presentation are still being tried out, and the algorithm is
+left for later (Section~\ref{sec:pred-algo}).
 
-\paraq{What does the simulator predict as the best performer per case?}
-Table~\ref{tab:predicted} reports, per case, the predicted per-epoch time of DGL, Quiver,
-and the simulator's \emph{best} Split/hybrid configuration (with the chosen $k$). These
-predictions set the targets that the real runs of Section~\ref{sec:results} must hit.
+% ---------------------------------------------------------------------------
+\subsection{Choice of settings}
+\label{sec:pred-settings}
+
+\paraq{Which settings are plotted, and why these?}
+We pick three settings, one per winning regime of the measured sweep, so that the plots show
+different bottlenecks: one where \textbf{gsplit} is fastest, one where a \textbf{data-parallel
+hybrid} with an interior split point $0<k<L$ is fastest, and one where \textbf{data parallelism}
+(DGL) is fastest. Pipeline rows marked $^{\dagger}$ in Section~\ref{sec:hybrid-empirical} are not
+used for the selection, because of the micro-batch caveat.
+% Candidate settings (to confirm with author), chosen so that each pair differs in one knob;
+% values are min duration (s) per epoch from results/sweep_all.csv:
+%   S1 products, GAT,  L=3, h=1024, NVLink   : DGL 15.48, gsplit 13.09, DP-hybrid k=2 13.63 -> gsplit
+%   S2 products, GAT,  L=3, h=1024, PCIe-emu : DGL 15.25, gsplit 16.48, DP-hybrid k=2 14.24 -> hybrid
+%   S3 products, SAGE, L=3, h=1024, PCIe-emu : DGL  4.76, gsplit  8.24, DP-hybrid k=2  5.54 -> DGL
+%   S1 vs S2 change only the interconnect; S2 vs S3 change only the model.
 
 \begin{table}[h]
 \centering
-\caption{Simulator-predicted per-epoch time (s) for the Section~\ref{sec:limitations} cases.
-``Best Split'' is the best hybrid configuration found by the sweep; $k^\star$ is its
-split-point. Default 4$\times$A100. \placeholder{} = to fill.}
-\label{tab:predicted}
-\begin{tabular}{l l r r r c}
+\caption{Settings plotted in this section, with the measured per-epoch time (s) of each
+strategy from Section~\ref{sec:hybrid-empirical}. Default 4$\times$A100, fanout 15, batch 1024.
+\placeholder{} = to fill.}
+\label{tab:pred-settings}
+\small
+\begin{tabular}{l l l c c l r r r l}
 \toprule
-Graph & Setting & DGL & Quiver & Best Split & $k^\star$ \\
+ID & Graph & Model & $L$ & $h$ & Interconnect & DGL & gsplit & best hybrid ($k$) & Winner \\
 \midrule
-products   & deep ($L{=}5$) & \placeholder & \placeholder & \placeholder & \placeholder \\
-products   & large hidden   & \placeholder & \placeholder & \placeholder & \placeholder \\
-papers100M & deep ($L{=}5$) & \placeholder & \placeholder & \placeholder & \placeholder \\
-papers100M & large hidden   & \placeholder & \placeholder & \placeholder & \placeholder \\
+S1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder
+   & \placeholder & \placeholder & \placeholder & gsplit \\
+S2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder
+   & \placeholder & \placeholder & \placeholder & hybrid \\
+S3 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder
+   & \placeholder & \placeholder & \placeholder & DGL \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\expdiag{per-case predicted-time bars (DGL / Quiver / best Split) with the chosen $k^\star$ annotated.}
+% ---------------------------------------------------------------------------
+\subsection{Inputs}
+\label{sec:pred-inputs}
 
-\paraq{What do we expect the simulator to predict?}
-\expected{for each case a hybrid configuration ($0 < k^\star < L$) is predicted to beat
-both full-split gsplit ($k{=}0$) and Quiver, and the predicted best moves toward larger
-$k^\star$ (more data-parallel layers) as depth and hidden size grow.} If instead the sweep
-keeps selecting $k^\star{=}0$, the hybrids would offer no predicted benefit and the premise
-of this chapter would be in question---so this is the key prediction to check.
+\paraq{What has to be measured to place the points?}
+For each setting and each of the three strategies---data parallel ($k{=}L$), gsplit ($k{=}0$),
+and the best data-parallel hybrid ($0<k<L$)---one \emph{sampling-only} pass (no features, no
+training) records, per layer $\ell$ and GPU $q$, the counts $n_{\ell,q}$, $e_{\ell,q}$,
+$m_{\ell,q}$ and the distinct rows $u_\ell$ of Section~\ref{sec:cm-point}. The pipeline needs no
+separate pass: its point is computed from the gsplit counts by Eq.~\eqref{eq:cm-pipe-point}.
 
-\paraq{What does the calibrated simulator actually predict? (preliminary)}
-The answer is more specific than the expectation above, and it splits by \emph{which}
-hybrid. For the \textbf{DP split-point} hybrid the sweep selects $k^\star{=}0$ on these
-products cells (the lone exception, $L{=}4,h{=}1024$, picks $k^\star{=}2$ by a noise-level
-$1.3\%$): the shuffle is concentrated in the \emph{outer}, large-frontier hops, which the
-$k$-hybrid only removes by going (near-)full data-parallel, where redundant compute
-dominates---so the $k$-sweep does \emph{not} recover these cells. The \textbf{pipeline}
-hybrid, however, does: once compute is modelled per-GPU (Section~\ref{sec:roofline}),
-the deep/large-hidden PCIe cells are \emph{communication-bound}, and overlapping the shuffle
-under compute is predicted to beat full-split by \textbf{18--35\%} and to beat the DGL
-baseline (Table~\ref{tab:predicted-prelim}).
+\paraq{Which rates are used?}
+The model constants of Table~\ref{tab:cm-constants} and the measured rates of
+Table~\ref{tab:cm-microbench}. Until the microbenchmarks exist, provisional rates are used and
+marked as such in each figure: \placeholder.
 
 \begin{table}[h]
 \centering
-\caption{\emph{Preliminary} simulator predictions, products, 4$\times$A100, SAGE, PCIe
-(emulated). DGL/Quiver are measured; Split is the calibrated full-split ($k{=}0$); Pipeline
-is the overlap hybrid. ``gain'' is Pipeline vs.\ Split. Derived by rescaling the captured sim
-components with the Section~\ref{sec:roofline} calibration; exact per-layer pipeline
-numbers and the $L{=}5$ cases await the final sweep. Single measured run; PCIe emulated.}
-\label{tab:predicted-prelim}
-\begin{tabular}{l r r r r r}
+\caption{Per-layer counts on the busiest GPU, from sampling-only runs, and the resulting point
+(Eq.~\eqref{eq:cm-point}). One block per setting; shown for S1. \placeholder{} = to fill.}
+\label{tab:pred-counts}
+\small
+\begin{tabular}{l c r r r r r r r r}
 \toprule
-Cell ($L$, hid) & DGL & Quiver & Split ($k{=}0$) & Pipeline & gain \\
+Strategy & $\ell$ & $n$ & $e$ & $m$ & $u$ & $\delta$ & $r$ & $x$ & $y$ \\
 \midrule
-$L{=}3$, 256  & 4.50  & 7.38  & 4.31  & 3.53  & 18\% \\
-$L{=}3$, 1024 & 6.75  & 9.67  & 9.84  & 7.02  & 29\% \\
-$L{=}4$, 256  & 18.07 & 24.33 & 14.27 & 11.41 & 20\% \\
-$L{=}4$, 1024 & 32.84 & 41.58 & 49.49 & 31.93 & 35\% \\
+data parallel & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
+              & 1 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
+              & 2 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
+\midrule
+gsplit        & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+\midrule
+best hybrid ($k{=}$\placeholder) & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paraq{What this means for the premise.}
-The chapter's premise survives, but with a sharper claim than first expected: the fix is the
-\textbf{pipeline/overlap} hybrid rather than the DP split-point sweep. Pipeline is predicted
-to turn two of gsplit's clear losses (the $L{=}4$ cells, where split trails DGL) back into
-wins or near-ties, and to improve the others. \emph{Caveat}: these are preliminary,
-directional predictions (calibration fit to four cells; PCIe emulated; single-run ground
-truth); the final results of Section~\ref{sec:results} must confirm them with real runs.
+% ---------------------------------------------------------------------------
+\subsection{Plots}
+\label{sec:pred-plots}
+
+\paraq{What does each plot show?}
+One roofline per setting, on the axes of Section~\ref{sec:cm-axes}:
+\begin{itemize}\itemsep1pt
+  \item roofs: dense and gather (dashed), the binding compute roof (solid), and
+        $\hat{B}_{\mathrm{net}}$ for the setting's interconnect (flat);
+  \item the regions of Section~\ref{sec:cm-regions}, shaded, with the ridge $x^*(r)$ marked;
+  \item one marker shape per strategy (data parallel, gsplit, best hybrid), labelled by layer
+        $\ell$;
+  \item the pipeline position above each gsplit point (Eq.~\eqref{eq:cm-pipe-point}), drawn as an
+        open marker with a vertical line showing the gain of Eq.~\eqref{eq:cm-pipe-gain}.
+\end{itemize}
+
+\begin{figure}[h]
+  \centering
+  \fbox{\parbox{0.85\linewidth}{\centering\small
+  \expdiag{roofline of S1 with per-layer points of data parallel, gsplit, and the best hybrid.}\\[4pt]
+  \placeholder}}
+  \caption{Roofline of setting S1 (\placeholder).}
+  \label{fig:pred-s1}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \fbox{\parbox{0.85\linewidth}{\centering\small
+  \expdiag{roofline of S2, same layout as Figure~\ref{fig:pred-s1}.}\\[4pt]
+  \placeholder}}
+  \caption{Roofline of setting S2 (\placeholder).}
+  \label{fig:pred-s2}
+\end{figure}
+
+\begin{figure}[h]
+  \centering
+  \fbox{\parbox{0.85\linewidth}{\centering\small
+  \expdiag{roofline of S3, same layout as Figure~\ref{fig:pred-s1}.}\\[4pt]
+  \placeholder}}
+  \caption{Roofline of setting S3 (\placeholder).}
+  \label{fig:pred-s3}
+\end{figure}
+
+\paraq{Which presentations are being tried?}
+\begin{enumerate}\itemsep1pt
+  \item \textbf{Single panel per setting}: all strategies and layers together (Figures
+        above).
+  \item \textbf{Arrows per layer}: an arrow from the gsplit point to the data-parallel point of
+        the same layer, so the direction (up or down) shows which strategy wins the layer.
+  \item \textbf{Small multiples per layer}: one panel per $\ell$, so the change of region with
+        depth is visible.
+\end{enumerate}
+\placeholder{} (choice of presentation).
+
+% ---------------------------------------------------------------------------
+\subsection{Observations}
+\label{sec:pred-obs}
+
+\paraq{What do the plots show?}
+\placeholder{} (to be written once the plots exist: which region each layer falls in, per
+strategy and setting; whether the region agrees with the measured winner of
+Table~\ref{tab:pred-settings}).
+
+\paraq{Open question: does the roofline explain the hidden-size trend?}
+In Section~\ref{sec:hybrid-empirical} the hybrid's gain over gsplit grows with $h$ in $7$ of $8$
+hidden-size ladders. In the roofline, larger $h$ moves points right ($x \propto h$), towards the
+compute-bound region where gsplit is favoured (Section~\ref{sec:cm-regions}); with a fixed
+$\hat{P}_{\mathrm{bind}}$ this predicts the opposite trend. Whether a $\hat{P}$ that rises with
+$h$ (Table~\ref{tab:cm-microbench}), or a change in $\delta$ or $r$, accounts for it is to be
+checked on the plots. \placeholder
+
+% ---------------------------------------------------------------------------
+\subsection{Towards an algorithm}
+\label{sec:pred-algo}
+
+\paraq{What algorithm do the plots suggest?}
+\placeholder{} (to be designed from the observations: a rule that maps each layer's region to a
+strategy, a split point $k$, and whether to enable the pipeline).
 
 \paraq{Conclusion of this section.}
-The simulator yields, for each problematic setting, a concrete best-predicted Split/hybrid
-configuration and its expected standing against Quiver and DGL. These predicted
-configurations are exactly the ones we build and measure for real in the next section.
+\placeholder

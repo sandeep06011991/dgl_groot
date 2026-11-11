@@ -1,34 +1,69 @@
-\section{Modelling the Cost of Computation}
+\section{A Communication-Centric Roofline}
 \label{sec:roofline}
 \label{sec:simulator}  % keeps existing \ref{sec:simulator} links alive
 
-\paraq{Why do we need a cost model, and what makes it hard?}
-Choosing the parallelism model means weighing the cost of \emph{redundant computation}
-(data parallelism recomputes nodes that other GPUs also compute) against the cost of
-\emph{communication} (split parallelism pulls those nodes from the GPU that owns them).
-Both costs depend jointly on the GPU, the interconnect, and the sparsity of the sampled
-graph, which makes them hard to model accurately. We first build a cost model for computing
-a single node of the GNN, and then extend it to decide which parallelism model to use at
-each layer.
+\paraq{What is this section for?}
+Section~\ref{sec:hybrids} showed that the fastest strategy---data parallelism, gsplit, or a
+hybrid---changes with the model, the graph, the depth, the hidden size, and the interconnect.
+This section introduces a \emph{roofline} on which every layer of every strategy appears as one
+point, so that a single plot per setting shows \emph{what bounds each layer} and why one strategy
+beats another at that layer. The roofline is a tool for identifying the \textbf{bottleneck}; it
+is not a timing model, and it is not used here to choose a strategy. Section~\ref{sec:predicted}
+plots it for representative settings, and Section~\ref{sec:results} checks how well its picture
+agrees with the measurements.
 
-\paraq{What does the model have to get right?}
-Not the epoch time, but the \emph{choice}. The aim is a reasonably close decision between
-pulling and recomputing at each layer, which gives the hybrid parallelism of
-Section~\ref{sec:hybrids} a mathematical basis. GNN training time cannot be predicted exactly
-from first principles, so we deliberately \emph{over-approximate} the cost of a node from its
-layer equations and measured hardware rates, and pair it with exact per-layer counts taken
-from sampling. Only the per-node price is approximate; the counts it is multiplied by are
-exact.
+% ---------------------------------------------------------------------------
+\subsection{Purpose and composition rules}
+\label{sec:cm-purpose}
+
+\paraq{Why a roofline and not a timing model?}
+GNN training time cannot be predicted exactly from first principles: kernel efficiency, launch
+overheads, and contention all vary with the sampled graph. A roofline avoids this by asking a
+weaker question---\emph{which resource limits this layer?}---whose answer is robust to those
+details. Each resource (dense arithmetic, scattered memory reads, the interconnect) gives one
+upper bound on throughput, a \emph{roof}; a layer runs no faster than the lowest roof that
+applies to it, and that roof names its bottleneck.
+
+\paraq{How are the costs of different events combined?}
+The roofline rests on one rule: events that are \emph{active at the same time} overlap, so their
+combined time is the \textbf{maximum} of their times (equivalently, the attainable throughput is
+the \textbf{minimum} over their roofs); events that \emph{follow one another} add. The rules used
+in this section are:
+\begin{center}
+\small
+\begin{tabular}{l l l}
+\toprule
+Events & Treated as & Combined time \\
+\midrule
+gather and GEMM (one layer, one GPU) & concurrent (bottleneck) & $\max$ \\
+compute and shuffle, gsplit & sequential & sum \\
+compute and shuffle, pipeline & concurrent across micro-batches & $2\max$ per micro-batch \\
+the $G$ GPUs of one layer & concurrent, synced by the shuffle & $\max$ over GPUs \\
+successive layers & sequential & sum over layers \\
+forward and backward pass & constant factor & (dropped) \\
+\bottomrule
+\end{tabular}
+\end{center}
+The first row is the standard roofline assumption; in practice the gather and GEMM kernels are
+launched back to back, so the true compute time lies between the $\max$ and the sum, a factor of
+at most $2$. Because of the $\max$ rules the roofline is an \emph{optimistic} bound: it places
+each layer at the best throughput its bottleneck allows. This is why it identifies bottlenecks
+reliably but does not predict time.
 
 % ---------------------------------------------------------------------------
 \subsection{Cost of computing one node}
 \label{sec:cm-node}
 
-\paraq{What does it cost to compute a single internal node?}
-The hidden representation $H^{l}_u$ of an internal node $u$ in layer $l$ is computed from the
-hidden representations of its neighbours, $H^{l-1}_v$ for $v \in N(u)$, and the layer's
-weights $W_l$. The computation is a sequence of interleaved dense and sparse operations; for
-GAT:
+\paraq{What work does computing a single node involve?}
+The hidden representation $H^{l}_u$ of a destination node $u$ in layer $l$ is computed from the
+hidden representations of its sampled neighbours, $H^{l-1}_v$ for $v \in N(u)$, and the layer's
+weights. For GraphSAGE (mean aggregator):
+\begin{align}
+  H^{l}_u &= \sigma\Big( W^{\mathrm{self}}_l H^{l-1}_u
+      + W^{\mathrm{neigh}}_l \tfrac{1}{|N(u)|}\textstyle\sum_{v \in N(u)} H^{l-1}_v \Big).
+      \label{eq:sage}
+\end{align}
+For GAT:
 \begin{align}
    z^{l}_v &= W_l\, H^{l-1}_v,
       \qquad v \in N(u) \cup \{u\}
@@ -39,55 +74,53 @@ GAT:
    H^{l}_u &= \sigma\Big( \sum_{v \in N(u)} \alpha_{uv}\, z^{l}_v \Big)
       && \text{sparse: weighted gather over } N(u) \label{eq:gat-agg}
 \end{align}
-The dense operations are vector--matrix products (Eq.~\eqref{eq:gat-dense}) and
-vector--vector products (the attention dot product), both over contiguous memory. The sparse
-operations are aggregations over $N(u)$ (Eqs.~\eqref{eq:gat-attn}--\eqref{eq:gat-agg}) that
-read neighbour rows at scattered DRAM addresses. The kernels run one after another, so we
-charge the node the \emph{sum} of the two parts:
-\begin{equation}
-  T^{\mathrm{cmp}}_u \;=\; T_{\mathrm{sparse}} + T_{\mathrm{dense}}.
-  \label{eq:tcmp-sum}
-\end{equation}
+Both models interleave two kinds of work. \emph{Dense} work is vector--matrix products
+(a row times $W$) and vector--vector products (the attention dot product), over contiguous
+memory; it is bound by the arithmetic rate. \emph{Sparse} work is the aggregation over $N(u)$,
+which reads neighbour rows at scattered addresses; it is bound by the bandwidth of scattered
+DRAM reads.
 
-\paraq{How do the two terms depend on the model and on the graph?}
-We make two simplifying assumptions: every hidden layer has the same width $h$, so one hidden
-row $H^{l}$ is $s_H = h\,b$ bytes ($b$ bytes per value); and the sparse term is bound by the
-bandwidth of scattered DRAM reads. Let $e$ be the fanout of $u$. Each GNN model is then
-described by a few constants, read off its layer equations:
+\paraq{Which constants describe a model?}
+Every hidden layer has width $h$, so a hidden row is $s_H = h\,b$ bytes with $b$ bytes per value
+($b{=}4$ for fp32). Let $e$ be the number of sampled edges into $u$ (its fanout). A model is
+described by five constants, read off its layer equations (Table~\ref{tab:cm-constants}):
 \begin{itemize}\itemsep1pt
-  \item $\alpha$: rows of $H^{l-1}$ read per edge, so the sparse traffic is $\alpha\, e\, s_H$ bytes;
-  \item $\beta_e, \beta_n$: vector--matrix products ($h^2$ each) per edge and per node;
-  \item $\gamma_e, \gamma_n$: vector--vector products ($h$ each) per edge and per node.
+  \item $\alpha$: hidden rows read per edge by the sparse kernels;
+  \item $\beta_e, \beta_n$: vector--matrix products ($h^2$ multiply--adds each) per edge and per node;
+  \item $\gamma_e, \gamma_n$: vector--vector products ($h$ multiply--adds each) per edge and per node.
 \end{itemize}
-The constants depend only on the model (Table~\ref{tab:cm-constants}); the graph enters only
-through the fanout $e$. The dense cost of $u$ is
+The constants depend only on the model; the graph enters only through $e$.
+
+\paraq{What are the dense and sparse work of one node?}
+Counting a multiply--add as two FLOPs, the dense work and the sparse (gather) traffic of $u$ are
+\begin{align}
+  F(e) &= 2\big[(\beta_e\, e + \beta_n)\, h^{2} + (\gamma_e\, e + \gamma_n)\, h\big]
+       \quad\text{FLOPs}, \label{eq:dense-cost}\\
+  S(e) &= \alpha\, e\, s_H \quad\text{bytes.} \label{eq:sparse-cost}
+\end{align}
+With the measured dense rate $\hat{P}$ and gather bandwidth $\hat{B}_{\mathrm{mem}}$
+(Table~\ref{tab:cm-microbench}) and the bottleneck rule of Section~\ref{sec:cm-purpose}, the
+compute time of one node is
 \begin{equation}
-  D(e) \;=\; (\beta_e\, e + \beta_n)\, h^{2} \;+\; (\gamma_e\, e + \gamma_n)\, h,
-  \label{eq:dense-cost}
-\end{equation}
-and with the measured dense rate $\hat{P}$ and gather bandwidth $\hat{B}_{\mathrm{mem}}$
-(Table~\ref{tab:cm-microbench}) the compute time of Eq.~\eqref{eq:tcmp-sum} becomes
-\begin{equation}
-  T^{\mathrm{cmp}}_u \;=\; \frac{\alpha\, e\, s_H}{\hat{B}_{\mathrm{mem}}} \;+\; \frac{D(e)}{\hat{P}}.
+  T^{\mathrm{cmp}}_u \;=\; \max\!\Big( \frac{F(e)}{\hat{P}},\; \frac{S(e)}{\hat{B}_{\mathrm{mem}}} \Big).
   \label{eq:tcmp}
 \end{equation}
 
-\paraq{In which direction is this approximation wrong?}
-Upward, on purpose. Summing the two terms ignores any overlap between sparse and dense
-kernels, and charging the per-edge products $\beta_e e h^2$ to every node assumes no source
-row is shared between destination nodes. Both choices over-count compute. We use
-\emph{measured} rather than peak rates because GNN kernels rarely approach the peak FLOP rate;
-with peak rates the model would under-count compute and lean toward recomputation.
+\paraq{Why measured rates rather than peak rates?}
+GNN kernels rarely approach the peak FLOP rate or the peak DRAM bandwidth, and how close they get
+depends on the model, $h$, and the sparsity. Peak rates would understate compute time and make
+recomputation look cheaper than it is. We therefore use rates measured by microbenchmarks that
+run the same kernels on sampled blocks, per hidden size.
 
 \paraq{What about the backward pass?}
-The constants describe the forward pass. We assume the backward pass is a constant multiple of
-it: it scales both the gradient traffic and the compute by about the same factor, so it does
-not change which side of the decision a node falls on, and we leave it out.
+The constants describe the forward pass. We assume the backward pass multiplies the compute
+\emph{and} the shuffled bytes (gradients travel the reverse path) by about the same factor, so it
+moves every point by the same amount and does not change which roof binds. It is left out.
 
 \begin{table}[h]
 \centering
-\caption{Model constants of Eq.~\eqref{eq:dense-cost} (forward pass, per node).
-\emph{Placeholders: approximate values to be filled in from the layer equations.}}
+\caption{Model constants of Eqs.~\eqref{eq:dense-cost}--\eqref{eq:sparse-cost} (forward pass,
+per destination node). \placeholder{} = to be derived from the layer equations.}
 \label{tab:cm-constants}
 \small
 \begin{tabular}{l c c c c c}
@@ -103,7 +136,7 @@ GAT  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder 
 \begin{table}[h]
 \centering
 \caption{Measured hardware rates (microbenchmarks on one A100 node; all-to-all over 4 GPUs).
-\emph{Placeholders: to be filled from the microbenchmarks.}}
+\placeholder{} = to be measured.}
 \label{tab:cm-microbench}
 \small
 \begin{tabular}{l l c c c c c}
@@ -123,229 +156,342 @@ $\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $s_H$-byte rows
 \end{table}
 
 % ---------------------------------------------------------------------------
-\subsection{Pull or recompute: a communication-centric roofline}
-\label{sec:cm-roofline}
+\subsection{The axes: why bandwidth is the reference}
+\label{sec:cm-axes}
 
-\paraq{What does it cost to pull the node instead?}
-With split parallelism the node is computed once, by the GPU that owns it, and every other GPU
-that needs it pulls its hidden row across the interconnect. The extra cost to a requesting GPU
-is the transfer alone:
-\begin{equation}
-  T^{\mathrm{net}}_u \;=\; \frac{s_H}{\hat{B}_{\mathrm{net}}}.
-  \label{eq:tnet}
-\end{equation}
-With data parallelism the requesting GPU instead pays $T^{\mathrm{cmp}}_u$ to recompute the
-node itself. For a single node the rule is therefore
-\begin{equation}
-  \boxed{\; \text{recompute } u \iff T^{\mathrm{cmp}}_u < T^{\mathrm{net}}_u,
-  \qquad \text{otherwise pull.} \;}
-  \label{eq:cm-node-rule}
-\end{equation}
+\paraq{Why not the classical roofline?}
+A classical roofline plots attained FLOP/s against arithmetic intensity, and its flat roof is the
+peak FLOP rate. For GNN layers that roof is not a fixed line: the achievable FLOP rate depends on
+the model and on the sparsity of the sampled block. The interconnect bandwidth, in contrast, is a
+property of the machine alone. We therefore measure throughput in \emph{bytes of hidden state},
+the unit the interconnect moves, so that the interconnect becomes the flat, uniform roof and the
+model-dependent compute appears as sloped roofs.
 
-\paraq{Why a communication-centric roofline?}
-We want one picture that covers different hidden sizes and sparsity levels. A classical
-roofline is capped by the dense FLOP rate, which sparse GNN kernels do not reach. We instead
-measure throughput in \emph{bytes of hidden state produced per second}, so that the
-interconnect is one of the roofs. Dividing $s_H$ by each term of Eq.~\eqref{eq:tcmp} gives the
-local compute rate, which lies under two roofs:
+\paraq{What is on the $y$-axis?}
+The \textbf{useful throughput per GPU}: bytes of hidden state per second that a GPU contributes
+to the layer's output. ``Useful'' counts each distinct output row once, so a row computed
+redundantly by several GPUs earns credit only once. Let $u$ be the number of distinct destination
+rows the layer must produce across all $G$ GPUs; each GPU's useful share is
+$U = (u/G)\,s_H$ bytes, and
 \begin{equation}
-  R^{\mathrm{cmp}}_u \;=\; \frac{s_H}{T^{\mathrm{cmp}}_u}
-  \;\le\; \min\!\Big( \frac{\hat{B}_{\mathrm{mem}}}{\alpha\, e},\;\; \frac{\hat{P}\, s_H}{D(e)} \Big)
-  \quad \text{bytes/s},
-  \label{eq:comm-roofline}
+  y \;=\; \frac{U}{T} \quad \text{bytes/s per GPU},
+  \label{eq:cm-y}
 \end{equation}
-and the interconnect delivers rows at $\hat{B}_{\mathrm{net}}$ bytes/s. Rule
-\eqref{eq:cm-node-rule} reads directly off the plot: a node whose compute rate lies above the
-interconnect roof ($R^{\mathrm{cmp}}_u > \hat{B}_{\mathrm{net}}$) is cheaper to recompute; one
-below it is cheaper to pull.
+where $T$ is the layer time.
+
+\paraq{What is on the $x$-axis?}
+The \textbf{compute per useful byte}: FLOPs a GPU spends per byte of useful output,
+\begin{equation}
+  x \;=\; \frac{n\, F(\bar{e})}{U} \quad \text{FLOP/byte},
+  \label{eq:cm-x}
+\end{equation}
+where $n$ is the number of destination rows the GPU actually computes and $\bar{e}$ their average
+fanout. If every row is computed once and the GPUs are balanced, $n = u/G$ and
+$x = F(\bar{e})/s_H$; redundancy ($n > u/G$) and imbalance both move the point to the right.
+
+\paraq{Why not FLOPs per \emph{communicated} byte?}
+That is the classical arithmetic intensity with the network in place of DRAM. Data parallelism
+communicates nothing, so its intensity would be infinite and its points would leave the plot.
+Normalising by useful bytes keeps every strategy on the same axes.
+
+\paraq{How do the model and the hidden size move a point?}
+From Eq.~\eqref{eq:dense-cost}, for balanced, non-redundant work,
+$x = 2\big[(\beta_e\bar{e}+\beta_n)\,h + (\gamma_e\bar{e}+\gamma_n)\big]/b$, which grows linearly in
+$h$. A model with more dense work per row (larger $\beta$) sits further right, and doubling $h$
+roughly doubles $x$.
 
 % ---------------------------------------------------------------------------
-\subsection{From one node to a strategy per layer}
-\label{sec:cm-layer}
+\subsection{The three roofs}
+\label{sec:cm-roofs}
 
-\paraq{Why can't the per-node rule alone justify a hybrid?}
-Within a layer every node has the same width $h$, the same fanout $e$, and the same model
-constants, so Rule~\eqref{eq:cm-node-rule} gives every node of the layer the same answer. What
-differs from layer to layer is \emph{how many} nodes each strategy pays for. The roofline
-supplies the unit prices; sampling supplies the counts.
-
-\paraq{How do the counts enter?}
-Let $V_\ell$ be the unique nodes at hop $\ell$ from the seeds. From one sampling pass of each
-strategy we record two per-node counts:
-$r_\ell$, the remote rows per node that split parallelism pulls at hop $\ell$, and
-$\delta_\ell \ge 1$, the number of GPUs that compute each node under data parallelism (so
-$\delta_\ell - 1$ copies are redundant). The extra cost of each strategy at hop $\ell$ is
+\paraq{What is the dense roof?}
+If the GEMMs were the only cost, a GPU would spend $nF/\hat{P}$ seconds producing $U$ useful bytes,
+so by Eqs.~\eqref{eq:cm-y}--\eqref{eq:cm-x}
 \begin{equation}
-  C^{\mathrm{dp}}_\ell \;=\; (\delta_\ell - 1)\,|V_\ell|\; T^{\mathrm{cmp}},
+  y \;\le\; \frac{U\hat{P}}{nF} \;=\; \frac{\hat{P}}{x}.
+  \label{eq:roof-dense}
+\end{equation}
+On log--log axes this is a line of slope $-1$.
+
+\paraq{What is the gather roof?}
+If the gather were the only cost, the GPU would spend $nS/\hat{B}_{\mathrm{mem}}$ seconds. Define
+the \emph{gather ratio}
+\begin{equation}
+  g \;=\; \frac{S(\bar{e})}{F(\bar{e})} \;=\; \frac{\alpha\,\bar{e}\,s_H}{F(\bar{e})}
+  \quad\text{bytes gathered per FLOP},
+  \label{eq:gather-ratio}
+\end{equation}
+which depends only on the model, $h$, and $\bar{e}$. The gathered bytes per useful byte are then
+$nS/U = g\,x$, and
+\begin{equation}
+  y \;\le\; \frac{U\hat{B}_{\mathrm{mem}}}{nS} \;=\; \frac{\hat{B}_{\mathrm{mem}}}{g\,x}.
+  \label{eq:roof-gather}
+\end{equation}
+This is also a line of slope $-1$, \emph{parallel} to the dense roof: gather traffic and FLOPs
+both scale with the number of rows computed, so the two roofs never cross. Whichever is lower
+binds everywhere for that (model, $h$, $\bar{e}$).
+
+\paraq{Which compute roof binds?}
+By the $\max$ rule of Eq.~\eqref{eq:tcmp}, the compute roof is the lower of the two:
+\begin{equation}
+  R^{\mathrm{cmp}}(x) \;=\; \frac{\hat{P}_{\mathrm{bind}}}{x},
   \qquad
-  C^{\mathrm{split}}_\ell \;=\; r_\ell\,|V_\ell|\; T^{\mathrm{net}},
-  \label{eq:cm-layer-cost}
+  \hat{P}_{\mathrm{bind}} \;=\; \min\!\Big(\hat{P},\; \frac{\hat{B}_{\mathrm{mem}}}{g}\Big).
+  \label{eq:roof-cmp}
 \end{equation}
-and hop $\ell$ is data parallel when
+The layer is \textbf{FLOP-bound} when $g < \hat{B}_{\mathrm{mem}}/\hat{P}$ and
+\textbf{gather-bound} otherwise. Since $F \propto h^2$ and $S \propto h$, $g \propto 1/h$:
+small hidden sizes tend to be gather-bound and large ones FLOP-bound. $\hat{P}_{\mathrm{bind}}$
+is the achievable FLOP rate of the layer---this is the precise sense in which ``different models
+and sparsities have different achievable FLOP rates''.
+
+\paraq{What is the interconnect roof?}
+Pulling one hidden row over the interconnect delivers $s_H$ bytes in $s_H/\hat{B}_{\mathrm{net}}$
+seconds, so a layer that pulls one row per useful row is bounded by the flat line
 \begin{equation}
-  C^{\mathrm{dp}}_\ell < C^{\mathrm{split}}_\ell
-  \;\iff\;
-  \frac{\delta_\ell - 1}{r_\ell} \;<\; \frac{T^{\mathrm{net}}}{T^{\mathrm{cmp}}}.
-  \label{eq:cm-layer-rule}
+  y \;\le\; \hat{B}_{\mathrm{net}}.
+  \label{eq:roof-net}
 \end{equation}
-The right-hand side is fixed by the model and the hardware; the left-hand side changes with
-the hop as the sampled frontier grows and the GPUs' trees overlap more or less. Where the
-count ratio crosses the price ratio, the best strategy changes---and a per-layer hybrid beats
-both pure strategies. The recursion of recomputation (a recomputed node also needs its own
-inputs) is not modelled per node; it is captured by $\delta_\ell$, which the data-parallel
-sampling pass measures at every hop.
-
-\paraq{Where does the pipeline hybrid fit?}
-At a split hop the shuffle can overlap with compute. With overlap efficiency $\eta \in [0,1]$
-on the given machine, the pipelined cost of the hop is
+There is one such line per interconnect (emulated PCIe and NVLink), identical for every model.
+A layer that receives $m$ rows on the GPU has a \emph{pull ratio}
 \begin{equation}
-  T^{\mathrm{pipe}}_\ell \;=\; \max\!\big(T^{\mathrm{cmp}}_\ell,\; T^{\mathrm{net}}_\ell\big)
-  + (1-\eta)\,\min\!\big(T^{\mathrm{cmp}}_\ell,\; T^{\mathrm{net}}_\ell\big),
-  \label{eq:cm-pipe}
+  r \;=\; \frac{m}{u/G} \quad\text{rows received per useful row},
+  \label{eq:pull-ratio}
 \end{equation}
-where $T^{\mathrm{cmp}}_\ell$ and $T^{\mathrm{net}}_\ell$ are the hop's total compute and
-shuffle times. The saving over no overlap, $\eta\min(\cdot,\cdot)$, is largest when the two
-are balanced, so overlap is worth enabling only at hops where
-$1/\beta_{\mathrm{band}} \le T^{\mathrm{net}}_\ell/T^{\mathrm{cmp}}_\ell \le \beta_{\mathrm{band}}$
-for a tunable band $\beta_{\mathrm{band}}$ (\placeholder).
+and its own interconnect ceiling is $\hat{B}_{\mathrm{net}}/r$: the flat roof shifted down by the
+partition's cut (for $r>1$) or up (for $r<1$).
 
-% ---------------------------------------------------------------------------
-\subsection{The procedure}
-\label{sec:cm-algo}
-
-\paraq{What is the procedure, end to end?}
-The expensive inputs---the counts $r_\ell$ and $\delta_\ell$---come from \emph{sampling
-alone}: one pass of the sampler per strategy, without features, training, or multiple GPUs.
-The unit prices come from Tables~\ref{tab:cm-constants} and~\ref{tab:cm-microbench}.
-Everything else is arithmetic.
-
-\begin{algorithm}[h]
-\caption{Cost-model choice of the per-layer strategy}
-\label{alg:cm}
-\begin{algorithmic}[1]
-\Require graph, partition map, model $\in\{\text{SAGE},\text{GAT}\}$, depth $L$, width $h$,
-         fanout $e$; constants (Table~\ref{tab:cm-constants}); measured rates
-         (Table~\ref{tab:cm-microbench}); overlap efficiency $\eta$, band $\beta_{\mathrm{band}}$
-\State \textbf{Sample the split variant:} for each hop $\ell$ record $|V_\ell|$ and $r_\ell$
-\State \textbf{Sample the data-parallel variant:} for each hop $\ell$ record $\delta_\ell$
-\State $T^{\mathrm{cmp}} \gets$ Eq.~\eqref{eq:tcmp};\quad $T^{\mathrm{net}} \gets$ Eq.~\eqref{eq:tnet}
-       \Comment{unit prices, same for every hop}
-\For{each hop $\ell = 0,\dots,L-1$ (seeds outward)}
-  \State $C^{\mathrm{dp}}_\ell,\; C^{\mathrm{split}}_\ell \gets$ Eq.~\eqref{eq:cm-layer-cost}
-\EndFor
-\State \textbf{Prefix constraint:} data-parallel hops are contiguous from the seeds, so
-       $k^\star \gets \arg\min_k \big[\sum_{\ell<k} C^{\mathrm{dp}}_\ell + \sum_{\ell\ge k} C^{\mathrm{split}}_\ell\big]$
-\State \textbf{Pipeline:} at each split hop $\ell \ge k^\star$ enable overlap iff
-       $1/\beta_{\mathrm{band}} \le T^{\mathrm{net}}_\ell / T^{\mathrm{cmp}}_\ell \le \beta_{\mathrm{band}}$
-\State \Return $k^\star$ and the overlap flags
-\end{algorithmic}
-\end{algorithm}
-
-% ---------------------------------------------------------------------------
-\subsection{Checking the decision: a layer-level roofline}
-\label{sec:cm-check}
-
-\paraq{Can we check a decision instead of predicting one?}
-Yes. The parallelism strategy already fixes which nodes each GPU computes and which rows it
-pulls; sampling alone reveals them. We therefore sample \emph{every} configuration---data
-parallel, gsplit, and each hybrid split point $k$---without features or training, and use the
-cost model only to \emph{price} what was sampled. The question becomes: is the configuration
-that won in the measurements also the cheapest one under the model?
-
-\paraq{How does a whole layer become one point on the roofline?}
-We lift the per-node model of Section~\ref{sec:cm-node} to a whole layer. For strategy $s$
-at hop $\ell$, sampling gives, on the busiest GPU (which sets the layer time):
-$n^{s}_\ell$ nodes computed, $e^{s}_\ell$ edges aggregated, and $m^{s}_\ell$ rows received
-over the interconnect ($m^{\mathrm{dp}}_\ell = 0$). The layer's sparsity is its average
-fanout $\bar{e}^{s}_\ell = e^{s}_\ell / n^{s}_\ell$, and its time is the sum of its sparse,
-dense, and transfer work:
+\paraq{Where is the ridge?}
+For a layer with pull ratio $r$, the compute and transfer times are equal where
+$R^{\mathrm{cmp}}(x) = \hat{B}_{\mathrm{net}}/r$, i.e.\ at
 \begin{equation}
-  T^{s}_\ell \;=\; n^{s}_\ell \Big( \frac{\alpha\, \bar{e}^{s}_\ell\, s_H}{\hat{B}_{\mathrm{mem}}}
-     + \frac{D(\bar{e}^{s}_\ell)}{\hat{P}} \Big)
-     \;+\; \frac{m^{s}_\ell\, s_H}{\hat{B}_{\mathrm{net}}}.
-  \label{eq:cm-layer-time}
+  x^{*}(r) \;=\; \frac{r\,\hat{P}_{\mathrm{bind}}}{\hat{B}_{\mathrm{net}}}.
+  \label{eq:ridge}
 \end{equation}
-Data parallelism pays through $n^{\mathrm{dp}}_\ell$ (redundant nodes); gsplit pays through
-$m^{\mathrm{split}}_\ell$ (pulled rows).
-
-\paraq{What is plotted, so that the two strategies are comparable?}
-Each (strategy, layer) pair is one point: $x$ is the layer's sparsity $\bar{e}^{s}_\ell$, and
-$y$ is its \emph{useful} throughput,
-\begin{equation}
-  y^{s}_\ell \;=\; \frac{u_\ell\, s_H}{T^{s}_\ell}\quad\text{bytes/s},
-  \label{eq:cm-useful}
-\end{equation}
-where $u_\ell$ is the number of unique rows hop $\ell$ must produce, the same for every
-strategy. Normalising by useful rather than computed rows keeps redundant work from looking
-like progress: a data-parallel point sits below the compute roofs by its redundancy, a gsplit
-point sits below them by its transfer time. For an $L$-layer model this gives $2L$ points
-($6$ for $L{=}3$) on one plot. At each layer the higher point is the cheaper strategy; a hybrid
-is justified exactly when the higher point switches from one strategy to the other between
-layers, and the split point is the layer where it switches.
+For $r{=}1$ this is the crossing of the sloped compute roof with the flat $\hat{B}_{\mathrm{net}}$
+line. The ridge on NVLink lies far to the left of the ridge on emulated PCIe, because
+$\hat{B}_{\mathrm{net}}$ is much larger.
 
 \begin{figure}[h]
   \centering
   \fbox{\parbox{0.85\linewidth}{\centering\small
-  \expdiag{layer-level communication-centric roofline. $x$: layer sparsity $\bar{e}$ (log);
-  $y$: useful bytes/s (log). Roofs: $\hat{B}_{\mathrm{mem}}/(\alpha\bar{e})$,
-  $\hat{P}s_H/D(\bar{e})$, and $\hat{B}_{\mathrm{net}}$ (PCIe-emu, NVLink).
-  Points: data parallel ($\circ$) and gsplit ($\bullet$) for layers $\ell=1,2,3$, joined per
-  layer. One panel per (graph, model, $h$, interconnect).}\\[4pt]
+  \expdiag{schematic roofline. $x$: compute per useful byte (log); $y$: useful bytes/s per GPU
+  (log). Dashed: dense roof $\hat{P}/x$ and gather roof $\hat{B}_{\mathrm{mem}}/(gx)$ (parallel);
+  solid: the binding compute roof $\hat{P}_{\mathrm{bind}}/x$. Flat: $\hat{B}_{\mathrm{net}}$ for
+  PCIe-emu and NVLink; dotted: $\hat{B}_{\mathrm{net}}/r$ for one layer. Ridge $x^*$ marked.
+  Regions of Section~\ref{sec:cm-regions} shaded. One gsplit, one pipeline and one data-parallel
+  point of the same layer, as in Section~\ref{sec:cm-strategies}.}\\[4pt]
   \placeholder}}
-  \caption{Layer-level roofline: six points per configuration (placeholder; to be generated
-  from sampling-only runs and Tables~\ref{tab:cm-constants}--\ref{tab:cm-microbench}).}
-  \label{fig:cm-layer-roofline}
+  \caption{Schematic communication-centric roofline (placeholder).}
+  \label{fig:cm-schematic}
 \end{figure}
 
-\paraq{How is the check scored?}
-Summing Eq.~\eqref{eq:cm-layer-time} over layers prices every sampled configuration; the
-model's choice is the cheapest one. It is counted correct when it matches the configuration
-that won in the measurements of Section~\ref{sec:hybrids}, and the plot shows \emph{why} it
-won: which layers sit higher under which strategy.
-Sampling also gives the memory each configuration needs: a configuration whose busiest GPU
-holds more than its memory, about $\sum_\ell n^{s}_\ell\, s_H$ for the activations, is
-infeasible and is excluded before taking the cheapest (cf.\ the papers100M out-of-memory
-cells in Section~\ref{sec:hybrids}).
+% ---------------------------------------------------------------------------
+\subsection{A layer as a point}
+\label{sec:cm-point}
+
+\paraq{Which quantities does sampling provide?}
+A strategy fixes which rows each GPU computes and which rows it receives; one sampling pass
+reveals both, without features or training. For strategy $s$, layer $\ell$ (counted from the
+seeds, as in Section~\ref{sec:hybrid-dp}), and GPU $q$, sampling gives
+\begin{itemize}\itemsep1pt
+  \item $n^{s}_{\ell,q}$: destination rows computed;
+  \item $e^{s}_{\ell,q}$: edges aggregated, so $\bar{e}^{s}_{\ell,q} = e^{s}_{\ell,q}/n^{s}_{\ell,q}$;
+  \item $m^{s}_{\ell,q}$: rows received over the interconnect ($m = 0$ for data parallelism);
+  \item $u^{s}_{\ell}$: distinct destination rows of the layer over all GPUs.
+\end{itemize}
+
+\paraq{How long does the layer take on each GPU?}
+Applying the composition rules of Section~\ref{sec:cm-purpose},
+\begin{align}
+  T^{\mathrm{cmp}}_{\ell,q} &= \max\!\Big(\frac{n_{\ell,q} F(\bar{e}_{\ell,q})}{\hat{P}},\;
+       \frac{\alpha\, e_{\ell,q}\, s_H}{\hat{B}_{\mathrm{mem}}}\Big), \qquad
+  T^{\mathrm{net}}_{\ell,q} = \frac{m_{\ell,q}\, s_H}{\hat{B}_{\mathrm{net}}},
+  \label{eq:cm-gpu-parts}\\
+  T^{s}_{\ell,q} &= \begin{cases}
+     T^{\mathrm{cmp}}_{\ell,q} & \text{data parallel},\\
+     T^{\mathrm{cmp}}_{\ell,q} + T^{\mathrm{net}}_{\ell,q} & \text{gsplit (split layer)},\\
+     \max\!\big(T^{\mathrm{cmp}}_{\ell,q},\, T^{\mathrm{net}}_{\ell,q}\big) & \text{pipeline (split layer)}.
+  \end{cases}
+  \label{eq:cm-gpu-time}
+\end{align}
+The pipeline case follows from its two half-size micro-batches: each micro-batch has half the
+compute and half the shuffle, and one computes while the other shuffles, so
+\[
+  T^{\mathrm{pipe}} = 2\max\!\big(T^{\mathrm{cmp}}/2,\; T^{\mathrm{net}}/2\big)
+  = \max\!\big(T^{\mathrm{cmp}}, T^{\mathrm{net}}\big).
+\]
+
+\paraq{Which GPU represents the layer?}
+The shuffle synchronises the GPUs, so the layer ends when its slowest GPU does. The point is
+taken from the \textbf{busiest GPU},
+$q^{*} = \arg\max_q T^{s}_{\ell,q}$, which keeps load imbalance visible instead of averaging it
+away. The layer's point is
+\begin{equation}
+  x^{s}_\ell = \frac{n_{\ell,q^*}\, F(\bar{e}_{\ell,q^*})}{(u^{s}_\ell/G)\, s_H},
+  \qquad
+  y^{s}_\ell = \frac{(u^{s}_\ell/G)\, s_H}{T^{s}_{\ell,q^*}},
+  \qquad
+  r^{s}_\ell = \frac{m_{\ell,q^*}}{u^{s}_\ell/G}.
+  \label{eq:cm-point}
+\end{equation}
+An $L$-layer model gives $L$ points per strategy.
+
+\paraq{What else does sampling give for free?}
+The activation memory of the busiest GPU, about $\sum_\ell n_{\ell,q^*} s_H$ times a
+model-dependent factor, so configurations that cannot fit (cf.\ the out-of-memory cells of
+Section~\ref{sec:hybrid-empirical}) can be marked on the plot.
 
 % ---------------------------------------------------------------------------
-\subsection{What counts as reasonably close}
-\label{sec:cm-validation}
+\subsection{Where each strategy lands}
+\label{sec:cm-strategies}
 
-\paraq{How is the model checked?}
-By its \emph{choice}, not its epoch time. For each measured configuration (graph, model,
-depth, $h$, interconnect) we compare the strategy the model picks with the one that won in the
-hybrid measurements of Section~\ref{sec:hybrids}. Because the model over-approximates the
-per-node price, disagreements are expected near the crossover of
-Rule~\eqref{eq:cm-layer-rule}, where the competing strategies cost about the same and a wrong
-choice is cheap. \placeholder{} [Decision-accuracy table with the measured rates of
-Table~\ref{tab:cm-microbench}: to be generated.]
+\paraq{Where does a data-parallel layer sit?}
+It has no transfer, so $T = T^{\mathrm{cmp}}$ and, by Eqs.~\eqref{eq:roof-cmp}
+and~\eqref{eq:cm-point}, $y = \hat{P}_{\mathrm{bind}}/x$ exactly: the point lies \emph{on} the
+binding compute roof. Data parallelism pays through its $x$: each GPU computes
+$n = \delta\, u/G$ rows, where
+\begin{equation}
+  \delta_\ell \;=\; \frac{G\, n_{\ell,q^*}}{u_\ell} \;\ge\; 1
+  \label{eq:cm-redundancy}
+\end{equation}
+combines redundancy (rows computed by several GPUs) with imbalance. The point slides $\delta$
+times further right along the roof, and therefore $\delta$ times lower, than a non-redundant
+layer of the same model. Since the trees of different GPUs overlap more as they grow, $\delta$
+rises with distance from the seeds, and the outer data-parallel layers drift right.
+
+\paraq{Where does a gsplit layer sit?}
+Each row is computed once, so $x$ is near its non-redundant value, but compute and shuffle add:
+\begin{equation}
+  \frac{1}{y} \;=\; \frac{x}{\hat{P}_{\mathrm{bind}}} \;+\; \frac{r}{\hat{B}_{\mathrm{net}}}.
+  \label{eq:cm-gsplit-point}
+\end{equation}
+The point lies \emph{below} both the compute roof and its interconnect ceiling
+$\hat{B}_{\mathrm{net}}/r$, and at least half as high as the lower of the two. It is furthest
+below (by a factor of $2$) at the ridge, where the two terms are equal.
+
+\paraq{Where does a pipeline layer sit?}
+With $T = \max(T^{\mathrm{cmp}}, T^{\mathrm{net}})$,
+\begin{equation}
+  y \;=\; \min\!\Big( \frac{\hat{P}_{\mathrm{bind}}}{x},\; \frac{\hat{B}_{\mathrm{net}}}{r} \Big),
+  \label{eq:cm-pipe-point}
+\end{equation}
+so the point lies \emph{on} the lower roof, directly above the gsplit point of the same layer.
+The vertical gap is the pipeline's gain,
+\begin{equation}
+  \frac{y^{\mathrm{pipe}}}{y^{\mathrm{split}}} \;=\; \frac{T^{\mathrm{cmp}} + T^{\mathrm{net}}}{\max(T^{\mathrm{cmp}}, T^{\mathrm{net}})}
+  \;=\; 1 + \frac{\min(T^{\mathrm{cmp}}, T^{\mathrm{net}})}{\max(T^{\mathrm{cmp}}, T^{\mathrm{net}})}
+  \;\in\; [1, 2],
+  \label{eq:cm-pipe-gain}
+\end{equation}
+which is largest, $2$, when $T^{\mathrm{cmp}} = T^{\mathrm{net}}$, i.e.\ at the ridge
+$x^{*}(r)$. Far from the ridge one term dominates and the extra overlap has little to hide.
+The pipeline is thus best for layers near the ridge.
+
+\paraq{Where does a data-parallel hybrid sit?}
+With split point $k$, layers $\ell < k$ are data-parallel points (on the compute roof, shifted
+right by $\delta_\ell$) and layers $\ell \ge k$ are gsplit points (below both roofs). On one plot
+the hybrid's $L$ points are therefore a mixture of the two series, and at each layer the higher of
+the data-parallel and gsplit points is the faster strategy for that layer.
+
+\paraq{How are two strategies compared at one layer?}
+By height. Both points of a layer refer to (approximately) the same useful output $U$, so the
+higher point has the shorter layer time. Data parallelism wins a layer when sliding right by
+$\delta$ along the compute roof costs less height than the transfer term of
+Eq.~\eqref{eq:cm-gsplit-point}. Comparing heights assumes $u^{\mathrm{dp}}_\ell \approx
+u^{\mathrm{split}}_\ell$; the two samplings are not identical, and the difference is listed among
+the assumptions below.
+
+% ---------------------------------------------------------------------------
+\subsection{Regions of the roofline}
+\label{sec:cm-regions}
+
+\paraq{Which regions does the roofline divide into?}
+The roofs and the ridge split the plane into regions, each naming a bottleneck and the strategy
+that the bottleneck favours. For a layer with pull ratio $r$ and band parameter
+$\beta_{\mathrm{band}} > 1$ (\placeholder):
+\begin{center}
+\footnotesize
+\begin{tabular}{l l l l}
+\toprule
+Region & Condition & Bottleneck & Favours \\
+\midrule
+I.\ Communication-bound & $x < x^{*}(r)/\beta_{\mathrm{band}}$
+   & interconnect & DP / larger $k$ \\
+II.\ Balanced (ridge band) & $x^{*}(r)/\beta_{\mathrm{band}} \le x \le \beta_{\mathrm{band}}\, x^{*}(r)$
+   & neither dominates & pipeline \\
+III.a Compute-bound, gather & $x > \beta_{\mathrm{band}}\, x^{*}(r)$, $g \ge \hat{B}_{\mathrm{mem}}/\hat{P}$
+   & DRAM gather & gsplit \\
+III.b Compute-bound, FLOP & $x > \beta_{\mathrm{band}}\, x^{*}(r)$, $g < \hat{B}_{\mathrm{mem}}/\hat{P}$
+   & dense arithmetic & gsplit \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paraq{Why does each region favour that strategy?}
+\begin{itemize}\itemsep2pt
+  \item \textbf{Region I (left of the ridge).} The compute roof is high, so computing is cheap per
+        useful byte, and the transfer term of Eq.~\eqref{eq:cm-gsplit-point} dominates the gsplit
+        point. Recomputing instead of pulling costs a slide of $\delta$ along a roof that is far
+        above the interconnect ceiling, so data parallelism (or a larger split point $k$) wins
+        unless $\delta$ is large enough to push the data-parallel point past the ridge.
+  \item \textbf{Region II (around the ridge).} Compute and transfer are comparable. gsplit loses up
+        to half its throughput to the sum of the two (Eq.~\eqref{eq:cm-gsplit-point}), and the
+        pipeline recovers up to $2\times$ (Eq.~\eqref{eq:cm-pipe-gain}).
+  \item \textbf{Region III (right of the ridge).} The layer is compute-bound; the transfer is small
+        next to the compute. Redundant computation is expensive here because sliding right by
+        $\delta$ lowers the point in proportion, so gsplit, which computes each row once, wins.
+        The sub-region (gather- or FLOP-bound) says which compute resource a faster kernel would
+        have to improve; it does not change the strategy.
+\end{itemize}
+
+\paraq{How do the settings of Section~\ref{sec:hybrids} move a layer between regions?}
+\begin{itemize}\itemsep1pt
+  \item \textbf{Interconnect.} A slower interconnect lowers $\hat{B}_{\mathrm{net}}$ and moves the
+        ridge $x^{*}$ to the right (Eq.~\eqref{eq:ridge}), so the same layer moves from Region III
+        on NVLink towards Region I on emulated PCIe.
+  \item \textbf{Hidden size.} Larger $h$ moves the point right ($x \propto h$) and lowers $g$
+        (towards FLOP-bound); with $\hat{P}_{\mathrm{bind}}$ fixed this moves the layer towards
+        Region III.
+  \item \textbf{Model.} More dense work per row (GAT) moves the point right of a SAGE layer of the
+        same $h$.
+  \item \textbf{Depth / hop.} Outer layers have larger frontiers and more overlap between GPUs:
+        $\delta_\ell$ grows (data-parallel points move right) and $r_\ell$ changes with the
+        partition's cut, which moves the ridge. Different layers of one model can therefore fall
+        in different regions---the condition under which a per-layer hybrid can beat both pure
+        strategies.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\subsection{Assumptions to check}
+\label{sec:cm-assumptions}
+
+\paraq{Which assumptions does the roofline rest on?}
+\begin{enumerate}\itemsep1pt
+  \item Gather and GEMM of a layer overlap ($\max$); in practice they run back to back, so true
+        compute time is up to $2\times$ the modelled time.
+  \item The backward pass scales compute and shuffled bytes by the same factor.
+  \item All hidden layers have width $h$; input-feature loading and the first layer's feature
+        width are not modelled.
+  \item The per-edge dense products $\beta_e e h^2$ are charged to every destination node,
+        i.e.\ no sharing of source-row products between destinations (an over-count for GAT,
+        whose $z_v$ is computed once per source row).
+  \item $u^{\mathrm{dp}}_\ell \approx u^{\mathrm{split}}_\ell$ when comparing heights at one
+        layer.
+  \item The pipeline has exactly two half-size micro-batches; fill and drain, and the lower
+        efficiency of half-size GEMMs, are ignored.
+  \item Sampling and feature loading are outside the plot; they add the same per-epoch cost to
+        every strategy only to first order.
+  \item The microbenchmark rates of Table~\ref{tab:cm-microbench} are independent of the layer
+        (a single $\hat{P}$, $\hat{B}_{\mathrm{mem}}$, $\hat{B}_{\mathrm{net}}$ per $h$).
+\end{enumerate}
 
 \paraq{Conclusion of this section.}
-The cost of a node is the sum of its sparse and dense work, priced from a few constants of the
-layer equations and measured hardware rates; pulling it costs one row over the interconnect.
-These unit prices are the same for every node of a layer, so the decision between pulling and
-recomputing is driven by per-layer counts that sampling measures exactly. As those counts
-change from hop to hop, the cheaper strategy changes too, which is the basis for per-layer
-hybrid parallelism.
-
-% ===========================================================================
-% IDEA (draft): zero-sampling estimate of the split point. Not covered by the
-% layer-level check (that one needs sampling); kept for the author to decide.
-% ===========================================================================
-\medskip
-\noindent\fbox{\parbox{\dimexpr\linewidth-2\fboxsep-2\fboxrule}{\color{red}\small
-\textbf{Idea (draft): estimating $k^\star$ without sampling.} Treat each GPU's sampled tree
-as $n_\ell \approx B e^{\ell}$ nodes drawn uniformly from $N$ ($B$: seeds per GPU, $G$: GPUs).
-Then $\delta_\ell - 1 \approx (G-1)\, B e^{\ell}/N$ while $n_\ell \ll N$, and the split remote
-fraction is roughly the partition's edge cut $r$, constant across hops. With
-$\kappa = T^{\mathrm{net}}/T^{\mathrm{cmp}}$, Rule~\eqref{eq:cm-layer-rule} gives
-$k^\star \approx \log_e\!\big(\kappa\, r\, N / ((G-1) B)\big)$, clipped to $[0,L]$.
-Redundancy grows geometrically with the hop while the price stays fixed, which is why a
-crossover exists. Power-law degree makes trees overlap sooner, so this is an upper estimate.
-Unlike Section~\ref{sec:cm-check}, it needs no sampling, but it is far less exact.}}
-\medskip
-
-% ===========================================================================
-% Earlier draft of this section, kept verbatim (speculative; see banner).
-% ===========================================================================
-\input{sections/03_simulator/roofline_prev}
+Each layer of each strategy becomes one point: its $x$ is the compute it spends per useful byte,
+its $y$ the useful bytes it delivers per second on its busiest GPU. The interconnect is a flat
+roof shared by all models; dense and gather work are parallel sloped roofs whose lower one is the
+achievable compute rate. Data-parallel layers sit on the compute roof, shifted right by
+redundancy; gsplit layers sit below both roofs; pipeline layers sit on the lower roof. The ridge
+divides the plane into a communication-bound region, a balanced band, and a compute-bound
+region, and the region a layer falls in names its bottleneck. Section~\ref{sec:predicted} draws
+this roofline for representative settings.

@@ -11,10 +11,8 @@
 \usepackage[table]{xcolor}  % table option -> \rowcolor for gen_results_table.py
 \usepackage{tikz}
 \usetikzlibrary{positioning, arrows.meta, fit, backgrounds, calc, decorations.pathreplacing}
-\usepackage{pgfplots}          % roofline figure (figures/roofline.tex, from gen_roofline.py)
+\usepackage{pgfplots}
 \pgfplotsset{compat=1.18}
-\usepackage{algorithm}         % Algorithm env for the roofline procedure
-\usepackage{algpseudocode}
 \usepackage{placeins}          % \FloatBarrier: keep hybrid tables out of the roofline section
 \usepackage{hyperref}
 \hypersetup{colorlinks=true, linkcolor=black, urlcolor=blue}
@@ -61,16 +59,16 @@ degrades in others, depending on the GNN model, the graph, and the interconnect.
 This chapter (i)~\emph{quantifies} how gsplit's gain over the DGL baseline varies
 (Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
 schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
-(Section~\ref{sec:hybrids}); (iii)~builds a \emph{communication-centric, roofline-based cost model} that
-evaluates these parallelism schemes (Section~\ref{sec:roofline});
-(iv)~uses that model to choose the optimal parallel strategy (Section~\ref{sec:predicted}); and 
-(v)~reports the \emph{final runtime results} of the optimal strategy against \textbf{gsplit} (Section~\ref{sec:results}).
+(Section~\ref{sec:hybrids}); (iii)~introduces a \emph{communication-centric roofline} on which
+every layer of every strategy is one point, so that the bottleneck of each layer can be read off
+(Section~\ref{sec:roofline}); (iv)~draws that roofline for representative settings of the sweep and
+looks for the patterns a configuration algorithm can use (Section~\ref{sec:predicted}); and
+(v)~checks how close the roofline's picture comes to the measured winners (Section~\ref{sec:results}).
 
 \input{sections/01_gsplit_limitations/limitations}
 \input{sections/02_alternate_hybrids/hybrids}
 \FloatBarrier  % flush hybrid tables (tab:hybrid-*) before the roofline section starts
 \input{sections/03_simulator/roofline}
-% \input{sections/03_simulator/simulator}   % brute-force cost-model simulator: kept on disk, out of the PDF (user decision)
 \input{sections/04_simulator_predicted_cases/predicted_cases}
 \input{sections/05_final_results/final_results}
 

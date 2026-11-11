@@ -1,46 +1,67 @@
-\section{Final Results}
+\section{How Close Is the Roofline?}
 \label{sec:results}
 
-\paraq{With the simulator-chosen configurations, do the hybrids actually beat gsplit and the baseline at runtime?}
-This section reports the real multi-GPU runtime of the two hybrids---data-parallel and
-pipeline---at the configurations the simulator selected in Section~\ref{sec:predicted},
-on the deep-layer and large-hidden settings (products and papers100M) where gsplit
-underperformed in Section~\ref{sec:limitations}.
+\paraq{What does this section check?}
+Whether the picture drawn by the roofline (Section~\ref{sec:roofline}) and the algorithm built
+from it (Section~\ref{sec:pred-algo}) agree with the measured sweep of
+Section~\ref{sec:hybrid-empirical}: does the region a layer falls in name the strategy that
+actually wins, and how much is lost when it does not?
 
-\paraq{Status: are the hybrid models built yet?}
-Both hybrid models may not be implemented at the time of writing. A \textbf{separate build
-loop} will implement the data-parallel and pipeline hybrids (starting from the micro-tests
-in \texttt{plans/}), and the measured numbers will be filled into Table~\ref{tab:final}
-once those runs complete. The table below is scratch.
+% ---------------------------------------------------------------------------
+\subsection{What is compared}
+\label{sec:res-compare}
+
+\paraq{What is the ground truth?}
+For each configuration of the sweep (graph, model, $L$, $h$, interconnect), the fastest measured
+strategy among data parallelism (DGL), gsplit, and the data-parallel hybrids $0<k<L$, together
+with its per-epoch time. Pipeline rows are included only after the re-run with half-size
+micro-batches. \placeholder
+
+\paraq{What does the roofline contribute?}
+For the same configuration, the strategy (and split point $k$, and pipeline flag) selected by the
+algorithm of Section~\ref{sec:pred-algo} from the roofline points, and the region of each layer.
+
+% ---------------------------------------------------------------------------
+\subsection{Metrics}
+\label{sec:res-metrics}
+
+\paraq{How is closeness measured?}
+\begin{itemize}\itemsep1pt
+  \item \textbf{Agreement}: the fraction of configurations in which the selected strategy is the
+        measured winner.
+  \item \textbf{Regret}: the cost of a wrong choice,
+        $\mathrm{regret} = t(\text{selected})/t(\text{best}) - 1$, from the measured times; a
+        wrong choice between two near-equal strategies has small regret.
+  \item \textbf{Region consistency} (per layer): whether layers placed in Region~I, II, or III
+        (Section~\ref{sec:cm-regions}) behave as that region predicts in the measured breakdown.
+\end{itemize}
+
+% ---------------------------------------------------------------------------
+\subsection{Results}
+\label{sec:res-table}
 
 \begin{table}[h]
 \centering
-\caption{Final per-epoch time (s): baseline (DGL) vs.\ gsplit vs.\ the two hybrids at
-their simulator-chosen configurations. Default 4$\times$A100-SXM. \placeholder{} = to fill
-once built.}
+\caption{Roofline-selected vs.\ measured best strategy. Default 4$\times$A100.
+\placeholder{} = to fill.}
 \label{tab:final}
-\begin{tabular}{l l r r r r}
+\small
+\begin{tabular}{l l c c l l l r}
 \toprule
-Graph & Setting & DGL & gsplit & DP-hybrid & Pipeline-hybrid \\
+Graph & Model & $L$ & $h$ & Interconnect & Measured best & Roofline choice & Regret \\
 \midrule
-products   & deep ($L{=}5$)   & \placeholder & \placeholder & \placeholder & \placeholder \\
-products   & large hidden     & \placeholder & \placeholder & \placeholder & \placeholder \\
-papers100M & deep ($L{=}5$)   & \placeholder & \placeholder & \placeholder & \placeholder \\
-papers100M & large hidden     & \placeholder & \placeholder & \placeholder & \placeholder \\
+\placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+\placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+\placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+\midrule
+\multicolumn{5}{l}{Agreement / mean regret} & \multicolumn{2}{c}{\placeholder} & \placeholder \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\expdiag{a grouped bar chart (per setting: DGL / gsplit / DP-hybrid / pipeline-hybrid) rather
-than a large table, once the runs are complete.}
-
-\paraq{What do we expect the final results to show?}
-\expected{at least one hybrid beats both gsplit and DGL in every case where gsplit
-previously lost, and the simulator's ranking of the configurations matches the measured
-ranking.} Divergence between the predicted and measured ranking is the key thing to check:
-it would indicate a gap in the cost model rather than in the hybrid itself.
+\paraq{Where does the roofline disagree, and why?}
+\placeholder{} (to be written: for each disagreement, which assumption of
+Section~\ref{sec:cm-assumptions} is responsible).
 
 \paraq{Conclusion of this section.}
-\placeholder{} (to be written once results land: state whether the hybrids recovered the
-settings where gsplit underperformed, and whether the simulator correctly selected their
-configurations).
+\placeholder

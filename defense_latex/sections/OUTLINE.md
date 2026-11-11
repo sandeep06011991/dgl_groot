@@ -4,19 +4,21 @@
 decently in many settings. But our ablation studies reveal settings where its performance
 gain over the baseline **drops significantly** — specifically at **deeper layers** (shuffle
 cost grows) and at **larger hidden sizes** (shuffle volume grows). This final chapter
-explores **hybrid parallelism** schemes to handle those settings better, and builds a
-**simulator** to pick the right hybrid configuration cheaply instead of sweeping everything.
+explores **hybrid parallelism** schemes to handle those settings better, and introduces a
+**communication-centric roofline** that identifies the bottleneck of each layer under each
+strategy, as the basis for choosing a configuration without sweeping everything.
 
 **Overall narrative flow:**
 1. Show the *problem* with gsplit (where it loses to the baseline).
 2. Propose *two hybrids* that could fix it (but which add configuration parameters).
-3. Build and validate a *simulator* that predicts configurations cheaply (≈1 GPU, no full training).
-4. Run the simulator on the problem cases to *predict the best Quiver/Split configuration*.
-5. Show the *final results* from the real hybrid runs.
+3. Introduce a *communication-centric roofline*: every layer of every strategy is one point;
+   the region it falls in names its bottleneck (explanatory, not a timing model).
+4. Draw the roofline for 3 representative settings of the sweep; explore presentations;
+   design an algorithm from the patterns (to be filled).
+5. Check *how close* the roofline's choice comes to the measured winners (to be filled).
 
-Each section lives in `sections/<NN_name>/` with two files:
-- `claude_plan.md` — working plan: the argument, source material, tables/figures to fill, TODOs. (Not in the PDF.)
-- `<name>.tex` — the LaTeX source, `\input`-ed by top-level `main.tex`.
+Each section lives in `sections/<NN_name>/` with its LaTeX source `<name>.tex`, `\input`-ed by
+top-level `main.tex` (Sections 1-2 also keep a `claude_plan.md` working plan, not in the PDF).
 
 **Writing conventions (global rules):**
 - Every LaTeX paragraph opens with a one-line lead question/point in **blue** via `\paraq{...}`.
@@ -51,29 +53,26 @@ Each section lives in `sections/<NN_name>/` with two files:
   A brute-force sweep over all configs is too expensive — which motivates the simulator.
 - **Source:** `plans/01_dp_plus_split.md`, `plans/02_pipeline_plus_split.md`, `plans/README.md`.
 
-## Section 3 — The simulator and its fidelity (`03_simulator`)
-- **Key question:** Can we predict each hybrid configuration's performance cheaply, without running full training?
-- **Covers:** A simulator that predicts expected performance using **few resources (≈1 GPU)**
-  and **without finishing full training**. Simulator + fidelity are **one section**. First a
-  **DGL-baseline validation** note; then **fidelity demonstrated on papers100M, 4×A100, SAGE
-  & GAT, L=3**, with a **within-10%** pass criterion; plus the nsys microprofile component
-  cross-check (real data).
-- **Source:** `defense_latex` §Simulator Fidelity + §Microprofile; `experiment/simulation/hybrid_dp_sim.py`.
+## Section 3 — A communication-centric roofline (`03_simulator/roofline.tex`)
+- **Key question:** What bounds each layer under each strategy, and why does one strategy beat another at that layer?
+- **Covers:** composition rules (concurrent -> max / min over roofs; sequential -> sum);
+  per-node cost (dense F, gather S; constants α, β, γ; measured rates); axes
+  (x = FLOPs per useful byte, y = useful bytes/s per GPU); three roofs (dense, gather — parallel
+  slope −1 — and flat B_net) and the ridge x*(r); a layer as a point from busiest-GPU sampled
+  counts (n, e, m, u); where DP / gsplit / pipeline / DP-hybrid land; **regions** (I comm-bound,
+  II ridge band -> pipeline, III compute-bound gather/FLOP); assumptions list.
+- **Not** a timing model and **no** measured check here.
 
-## Section 4 — Simulator-predicted cases (`04_simulator_predicted_cases`)
-- **Key question:** What does the validated simulator predict for the Section 1 bad cases?
-- **Covers:** Run the simulator on the deep-layer / large-hidden settings (products, papers100M),
-  sweeping the hybrid config space, to find the **best Quiver/Split performance** and the chosen
-  split-point k* per case — the targets the real runs must hit.
-- **Source:** `experiment/simulation/hybrid_dp_sim.py::simulate_optimal_k`, `plans/03_configurations_and_gpus.md`.
+## Section 4 — Roofline of representative settings (`04_simulator_predicted_cases/predicted_cases.tex`)
+- **Key question:** What do the per-layer points look like for real settings?
+- **Covers:** 3 settings (gsplit wins / interior-k hybrid wins / DGL wins) from the sweep;
+  sampling-only per-layer counts; one roofline per setting with DP, gsplit, best-hybrid points
+  (pipeline derived from gsplit); presentation variants; observations; algorithm (to be filled).
+- Candidate settings are in a LaTeX comment in the .tex, to confirm.
 
-## Section 5 — Final results (`05_final_results`)
-- **Key question:** With the simulator-chosen configs, do the hybrids actually beat gsplit/baseline at runtime?
-- **Covers:** Real runtime results showing that **pipeline** and **data-parallel hybrid**,
-  at the chosen configurations, recover performance on the Section 1 bad cases.
-- **Status caveat:** both hybrid models **may not be built yet**; a **separate build loop**
-  will implement them and fill these results. Tables are scratch/placeholder for now.
-- **Note:** this section may later use a **bar chart** instead of a large table — not a concern yet.
+## Section 5 — How close is the roofline? (`05_final_results/final_results.tex`)
+- **Key question:** Does the roofline's choice match the measured winner, and what does a miss cost?
+- **Covers:** agreement, regret = t(selected)/t(best) − 1, per-layer region consistency; table skeleton.
 
 ---
 
