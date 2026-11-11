@@ -7,7 +7,9 @@ per cell, the SINGLE FASTEST variant found in each family:
 
   baseline gsplit : system=split, k=0                       (from the sec1 rows)
   best DP         : min over system=split, k = 1 .. L-1     (k leading data-parallel layers)
-  best pipe       : min over system=gsplit_pipepar, k = 0.. (k=0 pure pipeline; k>0 pipe+DP)
+  best pipe       : system=gsplit_pipepar, k = 0 ONLY (pure, fully non-redundant pipeline).
+                    k>0 pipeline rows mix pipeline with the DP hybrid, so they are NOT
+                    candidates for this column; they stay in hybrid_ablation.csv.
   Delta           : improvement of the fastest hybrid over baseline gsplit
                     (POSITIVE = hybrid faster), as per-epoch (training).
 
@@ -220,8 +222,7 @@ def pipe_cell(rows_bykhw):
     mark = LEGACY_MARK if (use and not fixed) else ""
     v, sent = best_of(use)
     if v is not None:
-        tag = "pure" if v["k"] == 0 else f"$k{v['k']}$"
-        return f"{et(v['epoch'], v['train'])}{mark}~{{\\footnotesize {tag}}}", v
+        return f"{et(v['epoch'], v['train'])}{mark}", v
     return ((sent or "--") + mark if sent else "--"), None
 
 
@@ -237,11 +238,10 @@ def write_graph_tex(graph, rows, path):
          (r"\caption{\textbf{__GRAPH__ --- gsplit hybrids.} Per-epoch time (s), "
           r"\emph{training-only} (fwd+bwd) in parentheses. \textbf{best DP}: fastest "
           r"\texttt{split} with $k$ leading data-parallel layers ($k{=}1..L{-}1$); "
-          r"\textbf{best pipe}: fastest \texttt{gsplit\_pipepar} (\emph{pure} $={}$pure "
-          r"pipeline $k{=}0$, else pipe over a $k$-layer DP prefix); the winning $k$ is "
-          r"shown. $\Delta$ is the fastest hybrid's improvement over baseline gsplit "
+          r"\textbf{best pipe}: pure \texttt{gsplit\_pipepar} pipeline ($k{=}0$, no "
+          r"redundant layers); the winning DP $k$ is shown. $\Delta$ is the fastest hybrid's improvement over baseline gsplit "
           r"(\textbf{positive $=$ hybrid faster}), per-epoch $(\text{training})$. "
-          r"\texttt{OOM} $=$ every variant in that family ran out of memory (kept in "
+          r"\texttt{OOM} $=$ every variant in that column ran out of memory (kept in "
           r"place). $^{\dagger}$ $=$ pipeline run with an \emph{unhalved} micro-batch (each "
           r"of the two micro-batches held a full batch, i.e.\ $2\times$ the seeds per "
           r"optimizer step of baseline gsplit): not comparable, re-run pending. $0\%$ cache, 3 epochs, random features; PCIe emulated via "
@@ -267,7 +267,8 @@ def write_graph_tex(graph, rows, path):
                 base_list = [v for v in fam.get("split", []) if v["k"] == 0]
                 base = base_list[0] if base_list else None
                 dp_list = [v for v in fam.get("split", []) if v["k"] >= 1]
-                pipe_list = fam.get("gsplit_pipepar", [])
+                # pure pipeline only: k>0 would conflate pipeline with the DP hybrid
+                pipe_list = [v for v in fam.get("gsplit_pipepar", []) if v["k"] == 0]
                 dptxt, dpv = dp_cell(dp_list)
                 pptxt, ppv = pipe_cell(pipe_list)
                 basetxt = et(base["epoch"], base["train"]) if base else "--"
