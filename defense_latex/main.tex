@@ -42,17 +42,17 @@
 
 \paraq{What has been established before this chapter, and what problem remains?}
 In the preceding chapters we built \textbf{gsplit} (Spara), a partition-aware distributed
-GNN training system, and showed that it trains correctly and performs decently across a
-range of settings: each GPU owns a METIS partition (weighted by sampling frequency), and
-sampling, feature loading, and the model forward/backward exchange only boundary data
-across GPUs via NCCL. This chapter starts from a tension our ablation studies exposed:
+GNN training system, and showed that it trains correctly and outperforms the state of the art
+across a range of settings. In gsplit, each GPU owns a METIS partition weighted by sampling
+frequency, and sampling, feature loading, and the model forward/backward exchange only
+boundary data across GPUs via NCCL. This chapter starts from a tension our ablation studies exposed:
 \emph{the gain from gsplit is not uniform}---in some settings it is eroded or lost entirely.
 
 \paraq{Which settings erode gsplit's advantage, and why?}
 Two settings drive the cross-partition \textbf{shuffle} cost up until it dominates:
 \textbf{deeper models} (every additional layer adds another all-to-all shuffle), and
 \textbf{larger hidden sizes} (every shuffle moves a larger feature volume).
-In these settings potential savings in data loading and computation are lost due to the increasing cost of splitting. 
+In these settings, potential savings in data loading and computation are lost due to the increasing cost of splitting. 
 %  In these
 % regimes the communication gsplit was designed to minimize instead becomes its bottleneck,
 % and a simpler baseline can win.
@@ -60,13 +60,11 @@ In these settings potential savings in data loading and computation are lost due
 \paraq{What does this chapter do about it, and in what order?}
 This chapter (i)~\emph{quantifies} where gsplit underperforms against the DGL and Quiver
 baselines (Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
-schemes}---a data-parallel hybrid and a pipeline hybrid---that should relieve those
-settings (Section~\ref{sec:hybrids}); (iii)~builds an approximate \emph{cost model} that
-gives the per-layer choice between pulling and recomputing a mathematical basis, aiming for a
-reasonably close choice rather than exact epoch times (Section~\ref{sec:roofline});
-(iv)~uses that model on the problematic settings to \emph{predict the best Quiver/Split
-configuration} for each (Section~\ref{sec:predicted}); and (v)~reports the \emph{final
-runtime results} of the hybrids at those configurations (Section~\ref{sec:results}).
+schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
+(Section~\ref{sec:hybrids}); (iii)~builds a \emph{communication-centric, roofline-based cost model} that
+evaluates these parallelism schemes (Section~\ref{sec:roofline});
+(iv)~uses that model to choose the optimal parallel strategy (Section~\ref{sec:predicted}); and 
+(v)~reports the \emph{final runtime results} of the optimal strategy against \textbf{gsplit} (Section~\ref{sec:results}).
 
 \input{sections/01_gsplit_limitations/limitations}
 \input{sections/02_alternate_hybrids/hybrids}
