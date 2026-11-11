@@ -12,7 +12,7 @@
 #           GRAPHS="papers100M products", NO_TERMINATE=1 (debug),
 #           LOG_PREFIX=hyb (shard logs <prefix>_shard{0,1}.csv, DONE flag tag),
 #           B2_SUBDIR=sec1_autoterm (push target gsplit-data/groot/logs/<subdir>/).
-# Pipeline micro-batch re-run (2026-11-11):
+# Pipeline micro-batch re-run (2026-11-11; 40 cells, pure pipeline k=0 only):
 #   SETTINGS=.../sec1_pipe_rerun_settings.jsonl LOG_PREFIX=pipefix B2_SUBDIR=pipe_rerun
 set -uo pipefail
 API="https://vm.massedcompute.com/api/v1"
