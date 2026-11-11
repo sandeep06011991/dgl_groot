@@ -68,8 +68,9 @@ The pipeline composes with the data-parallel hybrid: it can run over full split 
 helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
 mini-batch's seeds, so the two live micro-batches together occupy roughly the memory of one
 mini-batch, and an optimizer step consumes the same number of seeds as in gsplit.
-% [FLAG: the measured pipeline runs did NOT halve the micro-batch. pipeline_split_trainer.py
-%  builds the loader with batch_size=config.batch_size and draws TWO batches per step, so each
+% [FLAG: the measured pipeline runs did NOT halve the micro-batch (now fixed in
+%  pipeline_split_trainer.py: micro_batch_size = batch_size // 2). The 2026-11-04 runs
+%  built the loader with batch_size=config.batch_size and draws TWO batches per step, so each
 %  micro-batch holds the full 1024 seeds (2048 per optimizer step): ~2x live memory and 2x the
 %  effective batch (half the optimizer steps per epoch). The pipeline OOMs and timings in
 %  Tables tab:hybrid-* come from this configuration; re-run with batch_size/2 per micro-batch.]
@@ -125,13 +126,12 @@ family against baseline gsplit ($k{=}0$, no pipeline).
 {\color{red}\textbf{Caveat:} the pipeline runs did not halve the micro-batch size, so each
 micro-batch held a full mini-batch of $1024$ seeds. These runs therefore used about twice the
 memory and twice the effective batch size of baseline gsplit, so their times and
-out-of-memory failures are not directly comparable and must be re-measured.}
+out-of-memory failures are not directly comparable and must be re-measured. These cells are
+marked $^{\dagger}$ in the tables.}
 % Detail: k = L (pure data parallelism) is not run as a gsplit variant; DGL in
 % Section~\ref{sec:limitations} is the data-parallel reference.
 % Detail: "best" is purely mechanical -- the minimum measured per-epoch time per family
 % (gen_hybrid_table.py docstring). A family whose every variant ran out of memory is shown as OOM.
-% [TODO: these tables compare against gsplit only. A DGL column (from sec1 tables) would show
-%  whether the best hybrid also beats data parallelism in the cells where gsplit lost.]
 % ---------------------------------------------------------------------------------------------
 % REPRODUCTION (for review; not printed)
 %   Tables are auto-generated from defense_latex/results/sweep_all.csv (split rows with

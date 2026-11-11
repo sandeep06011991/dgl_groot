@@ -1,7 +1,8 @@
 """gsplit_pipepar -- pipeline + split training driver (Plan 2).
 
 A DRIVER-ONLY variant of the split system (the model is NOT modified): each
-optimizer step consumes TWO micro-batches run on TWO CUDA streams with a
+optimizer step consumes TWO micro-batches (each HALF of config.batch_size, so a
+step trains on the same number of seeds as the split baseline) run on TWO CUDA streams with a
 one-stage-staggered schedule, so one micro-batch's split shuffle (all-to-all
 comm) overlaps the other's conv (compute). Exactly one shuffle is in flight at a
 time -> the single gsplit NCCL communicator is sufficient and cannot deadlock.
@@ -145,8 +146,17 @@ def train_pipeline_split_ddp(rank, config, unique_id, graph, feat, label,
         dist.broadcast(param.data, src=0)
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
+    # Each optimizer step consumes TWO micro-batches (A, B), so each micro-batch holds HALF
+    # of the mini-batch: a step then trains on config.batch_size seeds per GPU, the same as
+    # the split baseline (same nodes per optimizer step across GPUs, same live memory, same
+    # number of optimizer steps per epoch). config.batch_size stays the per-step mini-batch
+    # and is what gets logged. (Before this fix each micro-batch was a full batch_size,
+    # i.e. 2x the seeds per step -- those sweep rows are flagged in gen_hybrid_table.py.)
+    assert config.batch_size % 2 == 0, \
+        f"gsplit_pipepar needs an even batch_size to split into 2 micro-batches, got {config.batch_size}"
+    micro_batch_size = config.batch_size // 2
     sample_config = SampleConfig(rank=rank, num_partition=config.num_partition,
-                                 batch_size=config.batch_size, world_size=config.world_size,
+                                 batch_size=micro_batch_size, world_size=config.world_size,
                                  mode="uva", fanouts=config.fanouts, reindex=True, drop_last=True)
     dataloader = SplitGraphLoader(graph, partition_map, train_idx, unique_id, sample_config)
 
@@ -161,7 +171,7 @@ def train_pipeline_split_ddp(rank, config, unique_id, graph, feat, label,
 
     pipeline = TwoStreamPipeline(model)
     step = 0
-    step_per_epoch = dataloader.max_step_per_epoch
+    step_per_epoch = dataloader.max_step_per_epoch // 2   # loader yields micro-batches; a step = 2
     dist.barrier()
     CudaProfilerStart()
     timer = Timer()
