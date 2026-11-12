@@ -54,6 +54,14 @@ SENTINELS = {"timeout": "t/o", "oom": "OOM"}
 LEGACY_PIPE_CUTOFF = "2026-11-04 09:20:34.862848"   # last row of the 2026-11-04 sweep
 LEGACY_MARK = r"$^{\dagger}$"
 
+# Post-fix (2026-11-12) pipeline re-run: run_settings.py records ANY nonzero exit as an "oom"
+# sentinel, but the run log (results/hybrid/pipefix_run_log.txt) shows every failed re-run cell
+# died with "CUDA error: an illegal memory access" and the log has 0 out-of-memory messages.
+# So post-fix gsplit_pipepar "oom" rows are displayed as a crash, not OOM. The raw rows in
+# sweep_all.csv keep the logged "oom" value; only the label shown here changes.
+CRASH_LABEL = "crash"
+CRASH_MARK = r"$^{\ddagger}$"
+
 # Preliminary observations to print under each graph's table. User will verify these.
 # Keyed by graph name; value is a list of (short) LaTeX lines.
 OBSERVATIONS = {
@@ -62,11 +70,9 @@ OBSERVATIONS = {
         r"both SAGE and GAT, and the speedup \emph{grows with} $k$: the largest interior "
         r"$k$ ($k{=}L{-}1$) is the fastest hybrid in 13 of 18 cells. Largest gains are on "
         r"\textbf{PCIe + deep/wide} (SAGE PCIe $L{=}4$: $+34\%$).",
-        r"\textbf{Pipeline numbers ($^{\dagger}$) are not yet comparable.} They were run with "
-        r"an unhalved micro-batch (2$\times$ the seeds per optimizer step of baseline gsplit). "
-        r"All 30 GAT pipeline variants ran out of memory under that bug (kept in place as "
-        r"OOM); SAGE pipeline cells are shown as measured. Re-run pending with half-size "
-        r"micro-batches.",
+        r"\textbf{Pipeline column = 2026-11-12 re-run} (pure pipeline, two half-size "
+        r"micro-batches). All 10 GAT pipeline cells crashed with a CUDA illegal memory access "
+        r"(crash$^{\ddagger}$; under investigation). Legacy unhalved rows stay in the CSVs.",
         r"\textbf{Gains track communication pressure} --- PCIe $>$ NVLink and "
         r"deeper/wider $>$ shallow, i.e. the hybrids help most exactly where the "
         r"shuffle/all-to-all dominates. (Preliminary; to verify.)",
@@ -80,10 +86,10 @@ OBSERVATIONS = {
         r"where the cheap NVLink all-to-all leaves little shuffle for a hybrid to recover "
         r"and baseline split is already near-best --- consistent with the "
         r"interconnect argument of \S\ref{sec:hybrid-tradeoff}.",
-        r"\textbf{Pipeline numbers ($^{\dagger}$) are not yet comparable.} As on papers100M "
-        r"they were run with an unhalved micro-batch; the 12 GAT pipeline OOMs ($h{=}4096$ "
-        r"and $L{=}2$) occurred under that bug and are kept in place. Re-run pending with "
-        r"half-size micro-batches.",
+        r"\textbf{Pipeline column = 2026-11-12 re-run} (pure pipeline, two half-size "
+        r"micro-batches). 6 of 10 GAT pipeline cells crashed with a CUDA illegal memory "
+        r"access (crash$^{\ddagger}$; under investigation). Legacy unhalved rows stay in the CSVs. "
+        r"(Win counts in the items above predate the re-run; to re-verify.)",
     ],
 }
 
@@ -159,6 +165,9 @@ def load_rows(csv_path):
                          if str(dur).strip().lower() == kk), None)
             legacy = (r.get("system") == "gsplit_pipepar"
                       and str(r.get("timestamp", "")) <= LEGACY_PIPE_CUTOFF)
+            if (r.get("system") == "gsplit_pipepar" and not legacy
+                    and sent == SENTINELS["oom"]):
+                sent = CRASH_LABEL + CRASH_MARK
             out.append(dict(graph=r.get("graph_name"), model=r.get("model"),
                             hw=r.get("hardware"), L=L, h=h, system=r.get("system"), k=k,
                             hybrid=hybrid_label(r.get("system"), k),
@@ -201,8 +210,11 @@ def write_csv(rows, path):
                         r["k"], r["hybrid"],
                         "" if r["epoch"] is None else f"{r['epoch']:.3f}",
                         "" if r["train"] is None else f"{r['train']:.3f}",
-                        r["sentinel"] or "ok",
-                        "unhalved_microbatch" if r["legacy"] else ""])
+                        (CRASH_LABEL if (r["sentinel"] or "").startswith(CRASH_LABEL)
+                         else r["sentinel"]) or "ok",
+                        "unhalved_microbatch" if r["legacy"] else
+                        ("illegal_memory_access (logged as oom)"
+                         if (r["sentinel"] or "").startswith(CRASH_LABEL) else "")])
     print(f"wrote {path}")
 
 
@@ -244,7 +256,10 @@ def write_graph_tex(graph, rows, path):
           r"\texttt{OOM} $=$ every variant in that column ran out of memory (kept in "
           r"place). $^{\dagger}$ $=$ pipeline run with an \emph{unhalved} micro-batch (each "
           r"of the two micro-batches held a full batch, i.e.\ $2\times$ the seeds per "
-          r"optimizer step of baseline gsplit): not comparable, re-run pending. $0\%$ cache, 3 epochs, random features; PCIe emulated via "
+          r"optimizer step of baseline gsplit): not comparable; shown only where no re-run row exists. "
+          r"\texttt{crash}$^{\ddagger}$ $=$ re-run pipeline cell died with a CUDA illegal "
+          r"memory access (logged by the runner as \texttt{oom}; the run log has no "
+          r"out-of-memory error). $0\%$ cache, 3 epochs, random features; PCIe emulated via "
           r"\texttt{NCCL\_P2P\_DISABLE=1}.}").replace("__GRAPH__", graph),
          r"\label{tab:hybrid-" + graph.lower() + "}",
          r"\setlength{\tabcolsep}{4pt}",
