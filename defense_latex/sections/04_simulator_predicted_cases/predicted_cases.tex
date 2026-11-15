@@ -54,8 +54,11 @@ S3 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder
 For each setting and each of the three strategies---data parallel ($k{=}L$), gsplit ($k{=}0$),
 and the best data-parallel hybrid ($0<k<L$)---one \emph{sampling-only} pass (no features, no
 training) records, per layer $\ell$ and GPU $q$, the counts $n_{\ell,q}$, $e_{\ell,q}$,
-$m_{\ell,q}$ and the distinct rows $u_\ell$ of Section~\ref{sec:cm-point}. The pipeline needs no
-separate pass: its point is computed from the gsplit counts by Eq.~\eqref{eq:cm-pipe-point}.
+$m_{\ell,q}$ and the distinct rows $u_\ell$ of Section~\ref{sec:cm-point}. From these counts each
+layer gets its two coordinates, the interconnect intensity $I$ and the work inflation $\delta$
+(Eq.~\eqref{eq:cm-point}). The pipeline needs no separate pass: its point and the gsplit point
+are both computed from the split counts (Eqs.~\eqref{eq:cm-pipe-point}
+and~\eqref{eq:cm-gsplit-point}).
 
 \paraq{Which rates are used?}
 The model constants of Table~\ref{tab:cm-constants} and the measured rates of
@@ -68,21 +71,21 @@ marked as such in each figure: \placeholder.
 (Eq.~\eqref{eq:cm-point}). One block per setting; shown for S1. \placeholder{} = to fill.}
 \label{tab:pred-counts}
 \small
-\begin{tabular}{l c r r r r r r r r}
+\begin{tabular}{l c r r r r r r r}
 \toprule
-Strategy & $\ell$ & $n$ & $e$ & $m$ & $u$ & $\delta$ & $r$ & $x$ & $y$ \\
+Strategy & $\ell$ & $n$ & $e$ & $m$ & $u$ & $\delta$ & $I$ & $y$ \\
 \midrule
-data parallel & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
-              & 1 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
-              & 2 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder \\
+data parallel & 0 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & $\infty$ & \placeholder \\
+              & 1 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & $\infty$ & \placeholder \\
+              & 2 & \placeholder & \placeholder & 0 & \placeholder & \placeholder & $\infty$ & \placeholder \\
 \midrule
-gsplit        & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+gsplit        & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
 \midrule
-best hybrid ($k{=}$\placeholder) & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+best hybrid ($k{=}$\placeholder) & 0 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 1 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+              & 2 & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -94,13 +97,17 @@ best hybrid ($k{=}$\placeholder) & 0 & \placeholder & \placeholder & \placeholde
 \paraq{What does each plot show?}
 One roofline per setting, on the axes of Section~\ref{sec:cm-axes}:
 \begin{itemize}\itemsep1pt
-  \item roofs: dense and gather (dashed), the binding compute roof (solid), and
-        $\hat{B}_{\mathrm{net}}$ for the setting's interconnect (flat);
-  \item the regions of Section~\ref{sec:cm-regions}, shaded, with the ridge $x^*(r)$ marked;
-  \item one marker shape per strategy (data parallel, gsplit, best hybrid), labelled by layer
-        $\ell$;
-  \item the pipeline position above each gsplit point (Eq.~\eqref{eq:cm-pipe-point}), drawn as an
-        open marker with a vertical line showing the gain of Eq.~\eqref{eq:cm-pipe-gain}.
+  \item roofs: the dense roof $\hat{P}$ and the gather roof $\hat{B}_{\mathrm{mem}}/g$ (flat,
+        dashed), the compute ceiling $C$ (flat, solid), and the interconnect roof
+        $\hat{B}_{\mathrm{net}} I$ of the setting's interconnect (sloped);
+  \item the two regions of Section~\ref{sec:cm-regions}, shaded, with the ridge $I^*$ marked;
+  \item one colour per layer $\ell$;
+  \item each split layer's pipeline point on the roof (Eq.~\eqref{eq:cm-pipe-point}) and its gsplit
+        point directly below (Eq.~\eqref{eq:cm-gsplit-point}), joined by a vertical segment that
+        shows the overlap gap of Eq.~\eqref{eq:cm-pipe-gain};
+  \item each data-parallel layer as a horizontal line at $C/\delta^{\mathrm{dp}}_\ell$, so that the
+        highest of the three marks of a colour is the winner of that layer
+        (Eq.~\eqref{eq:cm-rule}).
 \end{itemize}
 
 \begin{figure}[h]
@@ -134,8 +141,8 @@ One roofline per setting, on the axes of Section~\ref{sec:cm-axes}:
 \begin{enumerate}\itemsep1pt
   \item \textbf{Single panel per setting}: all strategies and layers together (Figures
         above).
-  \item \textbf{Arrows per layer}: an arrow from the gsplit point to the data-parallel point of
-        the same layer, so the direction (up or down) shows which strategy wins the layer.
+  \item \textbf{Arrows per layer}: an arrow from the gsplit point down (or up) to the data-parallel
+        line of the same layer, so the direction shows which strategy wins the layer.
   \item \textbf{Small multiples per layer}: one panel per $\ell$, so the change of region with
         depth is visible.
 \end{enumerate}
@@ -152,19 +159,22 @@ Table~\ref{tab:pred-settings}).
 
 \paraq{Open question: does the roofline explain the hidden-size trend?}
 In Section~\ref{sec:hybrid-empirical} the hybrid's gain over gsplit grows with $h$ in $7$ of $8$
-hidden-size ladders. In the roofline, larger $h$ moves points right ($x \propto h$), towards the
-compute-bound region where gsplit is favoured (Section~\ref{sec:cm-regions}); with a fixed
-$\hat{P}_{\mathrm{bind}}$ this predicts the opposite trend. Whether a $\hat{P}$ that rises with
-$h$ (Table~\ref{tab:cm-microbench}), or a change in $\delta$ or $r$, accounts for it is to be
-checked on the plots. \placeholder
+hidden-size ladders. In the roofline, larger $h$ moves points right ($I$ grows roughly linearly
+in $h$), towards the compute-bound region where gsplit is favoured (Section~\ref{sec:cm-regions});
+with fixed ceilings this predicts the opposite trend. Whether a compute ceiling $C$ that rises with
+$h$ (Table~\ref{tab:cm-microbench}), and so moves the ridge $I^*$ right with the points, or a
+change in $\delta$ or $m$, accounts for it is to be checked on the plots. \placeholder
 
 % ---------------------------------------------------------------------------
 \subsection{Towards an algorithm}
 \label{sec:pred-algo}
 
 \paraq{What algorithm do the plots suggest?}
-\placeholder{} (to be designed from the observations: a rule that maps each layer's region to a
-strategy, a split point $k$, and whether to enable the pipeline).
+\placeholder{} (to be designed from the observations: a rule that maps each layer's position on
+the roofline to a strategy, a split point $k$, and whether to enable the pipeline). The starting
+candidate to test against the measured winners is the per-layer rule of Eq.~\eqref{eq:cm-rule},
+with $k$ the first layer at which data parallelism stops winning, and the pipeline chosen over
+gsplit for the split layers where its point is higher.
 
 \paraq{Conclusion of this section.}
 \placeholder
