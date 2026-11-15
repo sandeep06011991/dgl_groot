@@ -185,15 +185,16 @@ def measured_times(sweep, counts, h, ic):
                        ("pipeline", (s.system == "gsplit_pipepar") & (s.num_redundant_layers == 0))]:
         t = s[sel].t.min()
         if not np.isnan(t):
-            parts.append(f"{label} {t:.2f}s")
+            parts.append(f"{label} {t:.2f}")
     hybrid = s[(s.system == "split") & (s.num_redundant_layers > 0)]
     if not hybrid.empty:
         r = hybrid.loc[hybrid.t.idxmin()]
-        parts.append(f"hybrid k={int(r.num_redundant_layers)} {r.t:.2f}s")
-    return "measured fwd+bwd: " + ", ".join(parts)
+        parts.append(f"hybrid k={int(r.num_redundant_layers)} {r.t:.2f}")
+    lines = [", ".join(parts[i:i + 2]) for i in range(0, len(parts), 2)]
+    return "measured fwd+bwd (s): " + "\n".join(lines)
 
 
-def stagger(ys, min_ratio=1.07):
+def stagger(ys, min_ratio=1.10):
     """Spread label heights apart (log scale) so right-edge labels never overlap."""
     order = np.argsort(ys)
     out = np.array(ys, dtype=float)
@@ -207,7 +208,7 @@ def plot(all_pts, rules, L, args, model, counts):
     """One panel per interconnect. Per layer (one colour): gsplit x, pipeline dot, and the
     pure-DP dashed line; the highest mark of a colour wins that layer."""
     ics = list(all_pts)
-    fig, axes = plt.subplots(1, len(ics), figsize=(5.6 * len(ics), 4.6), sharey=True)
+    fig, axes = plt.subplots(1, len(ics), figsize=(5.6 * len(ics), 4.9), sharey=True)
     axes = np.atleast_1d(axes)
     colors = plt.cm.viridis(np.linspace(0.05, 0.85, L))
     TF = 1e12   # plot in TFLOP/s
