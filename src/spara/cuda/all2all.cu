@@ -98,6 +98,17 @@ NDArray NCCLAllToAll(
   return ret;
 }
 
+// D2H copies of the offsets are read on the host right after CopyTo. DGL's GPUCopy only
+// synchronizes a device->host copy when it runs on the legacy default stream (stream 0);
+// on any other stream (e.g. gsplit_pipepar's comm stream) it is a bare cudaMemcpyAsync, so
+// the host would read stale/uninitialized offsets -> garbage NCCL sizes -> illegal memory
+// access. Explicitly wait for the copy on both the copy (current) stream and `stream`.
+static void SyncHostCopy(cudaStream_t stream) {
+  cudaStream_t cur = runtime::getCurrentCUDAStream();
+  CUDA_CALL(cudaStreamSynchronize(cur));
+  if (stream != cur) CUDA_CALL(cudaStreamSynchronize(stream));
+}
+
 std::pair<IdArray, IdArray> Alltoall(
     int64_t rank, int64_t world_size, const IdArray& input,
     const IdArray& send_offset, IdArray recv_offset, cudaStream_t stream,
@@ -107,7 +118,8 @@ std::pair<IdArray, IdArray> Alltoall(
   CHECK(send_offset->data != nullptr);
   auto send_sizes = Diff(send_offset);
   auto host_ctx = DGLContext{kDGLCPU, 0};
-  auto host_send_offset = send_offset.CopyTo(host_ctx); // blocking
+  auto host_send_offset = send_offset.CopyTo(host_ctx);
+  SyncHostCopy(stream);  // CopyTo is async off stream 0
 //  LOG(INFO) << "send sizes: " << send_sizes;
 //  CUDA_CALL(cudaStreamSynchronize(stream));
 
@@ -120,7 +132,8 @@ std::pair<IdArray, IdArray> Alltoall(
     recv_offset = aten::CumSum(recv_sizes, true);
   }
 
-  auto host_recv_offset = recv_offset.CopyTo(host_ctx); // blocking
+  auto host_recv_offset = recv_offset.CopyTo(host_ctx);
+  SyncHostCopy(stream);  // CopyTo is async off stream 0
 //  LOG(INFO) << "recv offset: " << recv_offset;
 
   auto retbuff = NCCLAllToAll(
