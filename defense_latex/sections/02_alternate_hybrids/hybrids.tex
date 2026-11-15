@@ -59,8 +59,8 @@ gradients into a single optimizer step, so the training semantics match those of
 mini-batch.
 % Implementation details (plans/02_pipeline_plus_split.md): sampling of A and B is sequential
 % (no overlap benefit, and it sidesteps the sampler's single-_batch constraint); the stagger
-% keeps exactly one all-to-all in flight, so a single NCCL communicator suffices; A's backward
-% runs under DDP no_sync() and B's backward triggers the all-reduce of the summed gradients.
+% keeps exactly one all-to-all in flight, so a single NCCL communicator suffices; A's and B's
+% backward passes accumulate into one gradient, which is all-reduced once per optimizer step.
 
 \paraq{How does it combine with the data-parallel hybrid, and what does it cost?}
 The pipeline composes with the data-parallel hybrid: it can run over full split ($k{=}0$, the
@@ -68,12 +68,9 @@ The pipeline composes with the data-parallel hybrid: it can run over full split 
 helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
 mini-batch's seeds, so the two live micro-batches together occupy roughly the memory of one
 mini-batch, and an optimizer step consumes the same number of seeds as in gsplit.
-% [FLAG: the measured pipeline runs did NOT halve the micro-batch (now fixed in
-%  pipeline_split_trainer.py: micro_batch_size = batch_size // 2). The 2026-11-04 runs
-%  built the loader with batch_size=config.batch_size and draws TWO batches per step, so each
-%  micro-batch holds the full 1024 seeds (2048 per optimizer step): ~2x live memory and 2x the
-%  effective batch (half the optimizer steps per epoch). The pipeline OOMs and timings in
-%  Tables tab:hybrid-* come from this configuration; re-run with batch_size/2 per micro-batch.]
+% Measured runs (2026-11-14) use micro_batch_size = batch_size // 2 and include the DGL fix
+% e8c6acc8 (broadcast-offset copy on the current stream), without which GAT crashed with an
+% illegal memory access whenever the pipeline ran on a non-default CUDA stream.
 
 \begin{figure}[t]
   \centering
@@ -121,13 +118,10 @@ the same setup: $4{\times}$A100-SXM-80GB GPUs, NVLink or emulated PCIe, a $0\%$ 
 fanout of $15$, a batch size of $1024$, and $3$ epochs per configuration, with the per-epoch
 and training-only times reported as in Section~\ref{sec:limitations}. For each configuration we
 run the data-parallel hybrid at every interior split point $k\in\{1,\ldots,L{-}1\}$ and the
-pipeline hybrid at every $k\in\{0,\ldots,L{-}1\}$, and we compare the fastest variant of each
-family against baseline gsplit ($k{=}0$, no pipeline).
-{\color{red}\textbf{Caveat:} the pipeline runs did not halve the micro-batch size, so each
-micro-batch held a full mini-batch of $1024$ seeds. These runs therefore used about twice the
-memory and twice the effective batch size of baseline gsplit, so their times and
-out-of-memory failures are not directly comparable and must be re-measured. These cells are
-marked $^{\dagger}$ in the tables.}
+pure pipeline hybrid ($k{=}0$, two micro-batches of $512$ seeds each), and we compare the
+fastest data-parallel variant and the pipeline against baseline gsplit ($k{=}0$, no pipeline).
+% Detail: pipeline variants with k>0 mix the pipeline with the data-parallel hybrid, so they
+% are not measured; the pipeline column isolates the effect of overlap alone.
 % Detail: k = L (pure data parallelism) is not run as a gsplit variant; DGL in
 % Section~\ref{sec:limitations} is the data-parallel reference.
 % Detail: "best" is purely mechanical -- the minimum measured per-epoch time per family
@@ -140,18 +134,20 @@ marked $^{\dagger}$ in the tables.}
 %   Counts quoted under "Observations" were derived from the rendered tables
 %   (tables/hybrid_{products,papers100M}.tex) by parsing each row's Delta, winning family,
 %   OOM marker, and best-DP k:
+%     (recomputed 2026-11-14 from results/hybrid_ablation.csv after the pipeline re-run)
 %     40 configs; hybrid faster in 37 (exceptions: GAT NVLink L=2 on both graphs, products GAT
-%     NVLink L=4); Delta range -6.0% .. +38.9%; DP family fastest in 34; pipe all-OOM in 14 cells
-%     (all GAT: 10/10 papers100M, 4/10 products); PCIe Delta > NVLink Delta in 20/20 pairs;
-%     SAGE Delta > GAT Delta in 19/20; papers100M > products in 15/20; L=2->4 raises Delta in
-%     5/8 ladders; h=256->4096 raises Delta in 7/8; best DP k = L-1 in 37/40.
+%     NVLink L=4); Delta range -6.0% .. +38.9%; DP family fastest in 40/40; pipeline slower than
+%     baseline gsplit in 40/40 (-69.9% .. -4.6%; closest: papers100M SAGE L=3 h=4096 NVLink);
+%     0 OOM / crash; PCIe Delta > NVLink Delta in 20/20 pairs; SAGE Delta > GAT Delta in 19/20;
+%     papers100M > products in 16/20; L=2->4 raises Delta in 7/8 ladders; h=256->4096 raises
+%     Delta in 7/8; best DP k = L-1 in 37/40.
 % ---------------------------------------------------------------------------------------------
 
 \paraq{What do the tables report?}
 \textbf{Results.} Tables~\ref{tab:hybrid-products} and~\ref{tab:hybrid-papers100m} report, per
-configuration, baseline gsplit, the fastest data-parallel variant, and the fastest pipeline
-variant, each with its winning split point $k$, together with $\Delta$, the fastest hybrid's
-improvement over baseline gsplit.
+configuration, baseline gsplit, the fastest data-parallel variant with its winning split point
+$k$, and the pure pipeline, together with $\Delta$, the fastest hybrid's improvement over
+baseline gsplit.
 
 \FloatBarrier
 \input{tables/hybrid_papers100M}
@@ -163,31 +159,26 @@ improvement over baseline gsplit.
 gsplit in $37$, with a per-epoch $\Delta$ ranging from $-6\%$ to $+39\%$. The three exceptions
 are GAT on NVLink: $L{=}2$ on both graphs and $L{=}4$ on products.
 \begin{itemize}\itemsep1pt
-  \item \emph{Strategy.} The data-parallel hybrid is the fastest hybrid in $34$ of the $40$
-        configurations. The pipeline hybrid wins the remaining $6$, all on NVLink or at $L{=}2$
-        (e.g.\ papers100M SAGE, $L{=}2$, PCIe: $+20\%$); these pipeline times are subject to the
-        micro-batch caveat above.
+  \item \emph{Strategy.} The data-parallel hybrid is the fastest hybrid in all $40$
+        configurations. The pure pipeline is slower than baseline gsplit in all $40$, by $4.6\%$
+        (papers100M SAGE, $L{=}3$, $h{=}4096$, NVLink) to $70\%$ (papers100M GAT, $L{=}2$,
+        PCIe); within each graph and model, its gap is smallest at $L{=}3$, $h{=}4096$ on NVLink.
   \item \emph{Split point.} The fastest data-parallel variant uses the largest interior split
         point, $k{=}L{-}1$, in $37$ of the $40$ configurations.
   \item \emph{Interconnect.} The gain is larger on emulated PCIe than on NVLink in all $20$ paired
         configurations, but a hybrid still wins in $17$ of the $20$ NVLink configurations.
   \item \emph{Depth and hidden size.} Increasing $h$ from $256$ to $4096$ raises $\Delta$ in $7$
-        of the $8$ hidden-size ladders; increasing $L$ from $2$ to $4$ raises it in only $5$ of
-        the $8$ depth ladders.
+        of the $8$ hidden-size ladders; increasing $L$ from $2$ to $4$ raises it in $7$ of the $8$
+        depth ladders.
   \item \emph{Model.} SAGE gains more than GAT in $19$ of the $20$ paired configurations, the
         opposite of the model trend in gsplit's gain over DGL (Section~\ref{sec:limitations}).
-  \item \emph{Memory.} The pipeline runs ran out of memory in every variant for $14$
-        configurations, all GAT: all $10$ on papers100M and the $4$ products configurations at
-        $h{=}4096$ or $L{=}2$. These failures come from the unhalved micro-batch (see the caveat
-        above), not from the pipeline design, and are kept in place until the re-run.
+  \item \emph{Memory.} Every configuration of both hybrids completed; none ran out of memory.
 \end{itemize}
-% Detail: products L=2 GAT OOM while L=4 GAT fits was unexpected (fewer layers, same h); recheck
-% it after the re-run with halved micro-batches.
 
 \paraq{What does this section conclude?}
 \textbf{Conclusion.} The hybrids improve on gsplit in $37$ of $40$ configurations, but the best
-strategy and split point vary across configurations. The pipeline measurements must be repeated
-with half-size micro-batches before the two hybrid families can be compared. Choosing a configuration therefore requires searching over the
+split point and the size of the gain vary across configurations, and the pure pipeline does not
+improve on gsplit in any of them. Choosing a configuration therefore requires searching over the
 strategy, the split point $k$, and the hardware. This section performed that search by brute
 force, measuring every variant on real multi-GPU hardware, which is too expensive to repeat
 for every new model, graph, or machine. Section~\ref{sec:roofline} replaces this sweep with a

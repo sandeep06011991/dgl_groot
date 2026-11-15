@@ -55,13 +55,13 @@ class TwoStreamPipeline:
         self.world_size = model.world_size
         self.comm_stream = torch.cuda.Stream()
         self.compute_streams = [torch.cuda.Stream(), torch.cuda.Stream()]
-        # Stream-ordering fix (2026-11-14). The original schedule never ordered the pipeline
-        # streams after the default stream, so shuffle(A,0) / conv could read the features
-        # (async .clone()), the blocks' reindexed edge arrays and the parameters (previous
-        # optimizer.step()) before the default stream finished writing them, and the caching
-        # allocator could recycle cross-stream tensors early. Suspected cause of the
-        # "CUDA error: an illegal memory access" GAT crashes of the 2026-11-12 re-run.
-        # PIPE_STREAM_FIX=0 restores the old (racy) behaviour for reproduction.
+        # Stream ordering (2026-11-14): order the pipeline streams after the default stream
+        # (features from the async .clone(), reindexed block edge arrays, and parameters from
+        # the previous optimizer.step() are all written there), record cross-stream tensors
+        # with the caching allocator, and join after backward. This was NOT the cause of the
+        # GAT illegal-memory-access crashes (that was DGL's legacy-stream cudaMemcpy in
+        # src/array/cuda/macro.cuh, fixed in e8c6acc8); it is kept because the 2026-11-14
+        # sweep numbers were measured with it. PIPE_STREAM_FIX=0 disables it.
         self.stream_fix = os.environ.get("PIPE_STREAM_FIX", "1") != "0"
 
     def _streams(self):

@@ -1,161 +1,161 @@
-graph,model,L,h,interconnect,system,k,hybrid,epoch_s,train_s,status,note
-papers100M,gat,2,1024,nvlink,gsplit_pipepar,0,pipe,21.560,17.450,ok,
-papers100M,gat,2,1024,nvlink,split,0,gsplit,13.270,9.080,ok,
-papers100M,gat,2,1024,nvlink,split,1,DP k1,13.880,10.090,ok,
-papers100M,gat,2,1024,pcie_emu,gsplit_pipepar,0,pipe,21.510,17.710,ok,
-papers100M,gat,2,1024,pcie_emu,split,0,gsplit,12.660,8.830,ok,
-papers100M,gat,2,1024,pcie_emu,split,1,DP k1,12.510,9.130,ok,
-papers100M,gat,3,256,nvlink,gsplit_pipepar,0,pipe,34.150,25.820,ok,
-papers100M,gat,3,256,nvlink,split,0,gsplit,21.210,13.520,ok,
-papers100M,gat,3,256,nvlink,split,1,DP k1,20.820,13.400,ok,
-papers100M,gat,3,256,nvlink,split,2,DP k2,21.480,13.700,ok,
-papers100M,gat,3,256,pcie_emu,gsplit_pipepar,0,pipe,34.300,26.530,ok,
-papers100M,gat,3,256,pcie_emu,split,0,gsplit,22.050,14.770,ok,
-papers100M,gat,3,256,pcie_emu,split,1,DP k1,25.950,17.500,ok,
-papers100M,gat,3,256,pcie_emu,split,2,DP k2,20.620,14.010,ok,
-papers100M,gat,3,1024,nvlink,gsplit_pipepar,0,pipe,40.880,32.900,ok,
-papers100M,gat,3,1024,nvlink,split,0,gsplit,30.240,23.150,ok,
-papers100M,gat,3,1024,nvlink,split,1,DP k1,30.470,23.690,ok,
-papers100M,gat,3,1024,nvlink,split,2,DP k2,28.790,21.810,ok,
-papers100M,gat,3,1024,pcie_emu,gsplit_pipepar,0,pipe,45.890,38.580,ok,
-papers100M,gat,3,1024,pcie_emu,split,0,gsplit,34.890,28.240,ok,
-papers100M,gat,3,1024,pcie_emu,split,1,DP k1,34.900,28.350,ok,
-papers100M,gat,3,1024,pcie_emu,split,2,DP k2,31.040,24.110,ok,
-papers100M,gat,3,4096,nvlink,gsplit_pipepar,0,pipe,160.430,150.620,ok,
-papers100M,gat,3,4096,nvlink,split,0,gsplit,147.960,139.930,ok,
-papers100M,gat,3,4096,nvlink,split,1,DP k1,147.970,139.560,ok,
-papers100M,gat,3,4096,nvlink,split,2,DP k2,142.380,134.510,ok,
-papers100M,gat,3,4096,pcie_emu,gsplit_pipepar,0,pipe,183.150,174.230,ok,
-papers100M,gat,3,4096,pcie_emu,split,0,gsplit,166.230,158.050,ok,
-papers100M,gat,3,4096,pcie_emu,split,1,DP k1,162.520,155.110,ok,
-papers100M,gat,3,4096,pcie_emu,split,2,DP k2,143.880,136.320,ok,
-papers100M,gat,4,1024,nvlink,gsplit_pipepar,0,pipe,110.050,92.670,ok,
-papers100M,gat,4,1024,nvlink,split,0,gsplit,101.440,83.820,ok,
-papers100M,gat,4,1024,nvlink,split,1,DP k1,98.390,82.130,ok,
-papers100M,gat,4,1024,nvlink,split,2,DP k2,95.340,79.330,ok,
-papers100M,gat,4,1024,nvlink,split,3,DP k3,95.420,77.230,ok,
-papers100M,gat,4,1024,pcie_emu,gsplit_pipepar,0,pipe,134.900,117.230,ok,
-papers100M,gat,4,1024,pcie_emu,split,0,gsplit,120.490,104.270,ok,
-papers100M,gat,4,1024,pcie_emu,split,1,DP k1,121.790,104.990,ok,
-papers100M,gat,4,1024,pcie_emu,split,2,DP k2,115.500,99.770,ok,
-papers100M,gat,4,1024,pcie_emu,split,3,DP k3,101.460,82.670,ok,
-papers100M,sage,2,1024,nvlink,gsplit_pipepar,0,pipe,13.040,8.860,ok,
-papers100M,sage,2,1024,nvlink,split,0,gsplit,7.890,4.290,ok,
-papers100M,sage,2,1024,nvlink,split,1,DP k1,7.290,3.380,ok,
-papers100M,sage,2,1024,pcie_emu,gsplit_pipepar,0,pipe,12.730,9.120,ok,
-papers100M,sage,2,1024,pcie_emu,split,0,gsplit,8.400,4.600,ok,
-papers100M,sage,2,1024,pcie_emu,split,1,DP k1,6.900,3.530,ok,
-papers100M,sage,3,256,nvlink,gsplit_pipepar,0,pipe,20.800,12.440,ok,
-papers100M,sage,3,256,nvlink,split,0,gsplit,13.360,5.760,ok,
-papers100M,sage,3,256,nvlink,split,1,DP k1,12.960,5.660,ok,
-papers100M,sage,3,256,nvlink,split,2,DP k2,12.330,5.040,ok,
-papers100M,sage,3,256,pcie_emu,gsplit_pipepar,0,pipe,20.910,12.910,ok,
-papers100M,sage,3,256,pcie_emu,split,0,gsplit,13.860,6.590,ok,
-papers100M,sage,3,256,pcie_emu,split,1,DP k1,13.420,6.620,ok,
-papers100M,sage,3,256,pcie_emu,split,2,DP k2,11.570,4.860,ok,
-papers100M,sage,3,1024,nvlink,gsplit_pipepar,0,pipe,22.070,13.840,ok,
-papers100M,sage,3,1024,nvlink,split,0,gsplit,16.900,9.340,ok,
-papers100M,sage,3,1024,nvlink,split,1,DP k1,15.900,8.480,ok,
-papers100M,sage,3,1024,nvlink,split,2,DP k2,14.310,6.970,ok,
-papers100M,sage,3,1024,pcie_emu,gsplit_pipepar,0,pipe,26.380,19.100,ok,
-papers100M,sage,3,1024,pcie_emu,split,0,gsplit,21.370,14.690,ok,
-papers100M,sage,3,1024,pcie_emu,split,1,DP k1,21.420,13.840,ok,
-papers100M,sage,3,1024,pcie_emu,split,2,DP k2,15.020,8.390,ok,
-papers100M,sage,3,4096,nvlink,gsplit_pipepar,0,pipe,65.500,55.990,ok,
-papers100M,sage,3,4096,nvlink,split,0,gsplit,62.590,53.210,ok,
-papers100M,sage,3,4096,nvlink,split,1,DP k1,58.550,50.090,ok,
-papers100M,sage,3,4096,nvlink,split,2,DP k2,54.720,46.230,ok,
-papers100M,sage,3,4096,pcie_emu,gsplit_pipepar,0,pipe,97.430,88.330,ok,
-papers100M,sage,3,4096,pcie_emu,split,0,gsplit,78.830,70.240,ok,
-papers100M,sage,3,4096,pcie_emu,split,1,DP k1,77.300,68.000,ok,
-papers100M,sage,3,4096,pcie_emu,split,2,DP k2,61.990,53.980,ok,
-papers100M,sage,4,1024,nvlink,gsplit_pipepar,0,pipe,57.220,39.660,ok,
-papers100M,sage,4,1024,nvlink,split,0,gsplit,51.120,34.660,ok,
-papers100M,sage,4,1024,nvlink,split,1,DP k1,50.000,33.280,ok,
-papers100M,sage,4,1024,nvlink,split,2,DP k2,48.030,31.070,ok,
-papers100M,sage,4,1024,nvlink,split,3,DP k3,44.550,26.640,ok,
-papers100M,sage,4,1024,pcie_emu,gsplit_pipepar,0,pipe,81.300,63.640,ok,
-papers100M,sage,4,1024,pcie_emu,split,0,gsplit,76.930,59.200,ok,
-papers100M,sage,4,1024,pcie_emu,split,1,DP k1,73.660,57.110,ok,
-papers100M,sage,4,1024,pcie_emu,split,2,DP k2,69.320,52.880,ok,
-papers100M,sage,4,1024,pcie_emu,split,3,DP k3,50.920,32.770,ok,
-products,gat,2,1024,nvlink,gsplit_pipepar,0,pipe,4.230,3.000,ok,
-products,gat,2,1024,nvlink,split,0,gsplit,3.180,2.040,ok,
-products,gat,2,1024,nvlink,split,1,DP k1,3.370,2.130,ok,
-products,gat,2,1024,pcie_emu,gsplit_pipepar,0,pipe,3.990,3.110,ok,
-products,gat,2,1024,pcie_emu,split,0,gsplit,3.380,2.490,ok,
-products,gat,2,1024,pcie_emu,split,1,DP k1,2.890,2.130,ok,
-products,gat,3,256,nvlink,gsplit_pipepar,0,pipe,8.930,5.540,ok,
-products,gat,3,256,nvlink,split,0,gsplit,6.430,3.660,ok,
-products,gat,3,256,nvlink,split,1,DP k1,6.440,3.670,ok,
-products,gat,3,256,nvlink,split,2,DP k2,6.320,3.490,ok,
-products,gat,3,256,pcie_emu,gsplit_pipepar,0,pipe,10.120,6.970,ok,
-products,gat,3,256,pcie_emu,split,0,gsplit,7.220,4.730,ok,
-products,gat,3,256,pcie_emu,split,1,DP k1,7.210,4.660,ok,
-products,gat,3,256,pcie_emu,split,2,DP k2,6.900,4.370,ok,
-products,gat,3,1024,nvlink,gsplit_pipepar,0,pipe,16.970,13.530,ok,
-products,gat,3,1024,nvlink,split,0,gsplit,13.990,11.180,ok,
-products,gat,3,1024,nvlink,split,1,DP k1,13.950,11.110,ok,
-products,gat,3,1024,nvlink,split,2,DP k2,13.630,10.840,ok,
-products,gat,3,1024,pcie_emu,gsplit_pipepar,0,pipe,19.130,16.000,ok,
-products,gat,3,1024,pcie_emu,split,0,gsplit,16.480,13.960,ok,
-products,gat,3,1024,pcie_emu,split,1,DP k1,16.200,13.700,ok,
-products,gat,3,1024,pcie_emu,split,2,DP k2,14.240,11.680,ok,
-products,gat,3,4096,nvlink,gsplit_pipepar,0,pipe,90.440,86.890,ok,
-products,gat,3,4096,nvlink,split,0,gsplit,78.690,75.790,ok,
-products,gat,3,4096,nvlink,split,1,DP k1,79.430,76.510,ok,
-products,gat,3,4096,nvlink,split,2,DP k2,78.130,75.180,ok,
-products,gat,3,4096,pcie_emu,gsplit_pipepar,0,pipe,103.990,100.690,ok,
-products,gat,3,4096,pcie_emu,split,0,gsplit,88.470,85.890,ok,
-products,gat,3,4096,pcie_emu,split,1,DP k1,88.220,85.560,ok,
-products,gat,3,4096,pcie_emu,split,2,DP k2,78.600,76.000,ok,
-products,gat,4,1024,nvlink,gsplit_pipepar,0,pipe,77.750,68.510,ok,
-products,gat,4,1024,nvlink,split,0,gsplit,55.330,48.960,ok,
-products,gat,4,1024,nvlink,split,1,DP k1,55.940,49.690,ok,
-products,gat,4,1024,nvlink,split,2,DP k2,57.280,50.810,ok,
-products,gat,4,1024,nvlink,split,3,DP k3,60.320,53.250,ok,
-products,gat,4,1024,pcie_emu,gsplit_pipepar,0,pipe,93.670,84.470,ok,
-products,gat,4,1024,pcie_emu,split,0,gsplit,70.850,64.720,ok,
-products,gat,4,1024,pcie_emu,split,1,DP k1,71.830,65.540,ok,
-products,gat,4,1024,pcie_emu,split,2,DP k2,73.780,67.690,ok,
-products,gat,4,1024,pcie_emu,split,3,DP k3,63.870,56.670,ok,
-products,sage,2,1024,nvlink,gsplit_pipepar,0,pipe,2.760,1.500,ok,
-products,sage,2,1024,nvlink,split,0,gsplit,1.990,0.800,ok,
-products,sage,2,1024,nvlink,split,1,DP k1,1.960,0.720,ok,
-products,sage,2,1024,pcie_emu,gsplit_pipepar,0,pipe,2.400,1.520,ok,
-products,sage,2,1024,pcie_emu,split,0,gsplit,1.760,0.900,ok,
-products,sage,2,1024,pcie_emu,split,1,DP k1,1.510,0.690,ok,
-products,sage,3,256,nvlink,gsplit_pipepar,0,pipe,5.890,2.320,ok,
-products,sage,3,256,nvlink,split,0,gsplit,4.310,1.400,ok,
-products,sage,3,256,nvlink,split,1,DP k1,4.280,1.360,ok,
-products,sage,3,256,nvlink,split,2,DP k2,4.010,1.040,ok,
-products,sage,3,256,pcie_emu,gsplit_pipepar,0,pipe,6.550,3.400,ok,
-products,sage,3,256,pcie_emu,split,0,gsplit,5.080,2.560,ok,
-products,sage,3,256,pcie_emu,split,1,DP k1,5.060,2.390,ok,
-products,sage,3,256,pcie_emu,split,2,DP k2,4.270,1.750,ok,
-products,sage,3,1024,nvlink,gsplit_pipepar,0,pipe,7.060,3.580,ok,
-products,sage,3,1024,nvlink,split,0,gsplit,5.840,2.930,ok,
-products,sage,3,1024,nvlink,split,1,DP k1,5.610,2.710,ok,
-products,sage,3,1024,nvlink,split,2,DP k2,5.130,2.270,ok,
-products,sage,3,1024,pcie_emu,gsplit_pipepar,0,pipe,9.580,6.450,ok,
-products,sage,3,1024,pcie_emu,split,0,gsplit,8.240,5.600,ok,
-products,sage,3,1024,pcie_emu,split,1,DP k1,7.800,5.240,ok,
-products,sage,3,1024,pcie_emu,split,2,DP k2,5.540,2.960,ok,
-products,sage,3,4096,nvlink,gsplit_pipepar,0,pipe,19.890,16.050,ok,
-products,sage,3,4096,nvlink,split,0,gsplit,18.300,15.170,ok,
-products,sage,3,4096,nvlink,split,1,DP k1,18.910,15.330,ok,
-products,sage,3,4096,nvlink,split,2,DP k2,16.650,13.460,ok,
-products,sage,3,4096,pcie_emu,gsplit_pipepar,0,pipe,30.450,27.060,ok,
-products,sage,3,4096,pcie_emu,split,0,gsplit,27.600,24.830,ok,
-products,sage,3,4096,pcie_emu,split,1,DP k1,27.830,24.990,ok,
-products,sage,3,4096,pcie_emu,split,2,DP k2,16.870,14.060,ok,
-products,sage,4,1024,nvlink,gsplit_pipepar,0,pipe,29.540,20.160,ok,
-products,sage,4,1024,nvlink,split,0,gsplit,23.030,16.590,ok,
-products,sage,4,1024,nvlink,split,1,DP k1,23.120,16.440,ok,
-products,sage,4,1024,nvlink,split,2,DP k2,23.280,16.670,ok,
-products,sage,4,1024,nvlink,split,3,DP k3,21.740,14.520,ok,
-products,sage,4,1024,pcie_emu,gsplit_pipepar,0,pipe,48.140,38.830,ok,
-products,sage,4,1024,pcie_emu,split,0,gsplit,38.770,32.610,ok,
-products,sage,4,1024,pcie_emu,split,1,DP k1,39.490,33.110,ok,
-products,sage,4,1024,pcie_emu,split,2,DP k2,40.080,33.810,ok,
-products,sage,4,1024,pcie_emu,split,3,DP k3,25.840,18.520,ok,
+graph,model,L,h,interconnect,system,k,hybrid,epoch_s,train_s,status
+papers100M,gat,2,1024,nvlink,gsplit_pipepar,0,pipe,21.560,17.450,ok
+papers100M,gat,2,1024,nvlink,split,0,gsplit,13.270,9.080,ok
+papers100M,gat,2,1024,nvlink,split,1,DP k1,13.880,10.090,ok
+papers100M,gat,2,1024,pcie_emu,gsplit_pipepar,0,pipe,21.510,17.710,ok
+papers100M,gat,2,1024,pcie_emu,split,0,gsplit,12.660,8.830,ok
+papers100M,gat,2,1024,pcie_emu,split,1,DP k1,12.510,9.130,ok
+papers100M,gat,3,256,nvlink,gsplit_pipepar,0,pipe,34.150,25.820,ok
+papers100M,gat,3,256,nvlink,split,0,gsplit,21.210,13.520,ok
+papers100M,gat,3,256,nvlink,split,1,DP k1,20.820,13.400,ok
+papers100M,gat,3,256,nvlink,split,2,DP k2,21.480,13.700,ok
+papers100M,gat,3,256,pcie_emu,gsplit_pipepar,0,pipe,34.300,26.530,ok
+papers100M,gat,3,256,pcie_emu,split,0,gsplit,22.050,14.770,ok
+papers100M,gat,3,256,pcie_emu,split,1,DP k1,25.950,17.500,ok
+papers100M,gat,3,256,pcie_emu,split,2,DP k2,20.620,14.010,ok
+papers100M,gat,3,1024,nvlink,gsplit_pipepar,0,pipe,40.880,32.900,ok
+papers100M,gat,3,1024,nvlink,split,0,gsplit,30.240,23.150,ok
+papers100M,gat,3,1024,nvlink,split,1,DP k1,30.470,23.690,ok
+papers100M,gat,3,1024,nvlink,split,2,DP k2,28.790,21.810,ok
+papers100M,gat,3,1024,pcie_emu,gsplit_pipepar,0,pipe,45.890,38.580,ok
+papers100M,gat,3,1024,pcie_emu,split,0,gsplit,34.890,28.240,ok
+papers100M,gat,3,1024,pcie_emu,split,1,DP k1,34.900,28.350,ok
+papers100M,gat,3,1024,pcie_emu,split,2,DP k2,31.040,24.110,ok
+papers100M,gat,3,4096,nvlink,gsplit_pipepar,0,pipe,160.430,150.620,ok
+papers100M,gat,3,4096,nvlink,split,0,gsplit,147.960,139.930,ok
+papers100M,gat,3,4096,nvlink,split,1,DP k1,147.970,139.560,ok
+papers100M,gat,3,4096,nvlink,split,2,DP k2,142.380,134.510,ok
+papers100M,gat,3,4096,pcie_emu,gsplit_pipepar,0,pipe,183.150,174.230,ok
+papers100M,gat,3,4096,pcie_emu,split,0,gsplit,166.230,158.050,ok
+papers100M,gat,3,4096,pcie_emu,split,1,DP k1,162.520,155.110,ok
+papers100M,gat,3,4096,pcie_emu,split,2,DP k2,143.880,136.320,ok
+papers100M,gat,4,1024,nvlink,gsplit_pipepar,0,pipe,110.050,92.670,ok
+papers100M,gat,4,1024,nvlink,split,0,gsplit,101.440,83.820,ok
+papers100M,gat,4,1024,nvlink,split,1,DP k1,98.390,82.130,ok
+papers100M,gat,4,1024,nvlink,split,2,DP k2,95.340,79.330,ok
+papers100M,gat,4,1024,nvlink,split,3,DP k3,95.420,77.230,ok
+papers100M,gat,4,1024,pcie_emu,gsplit_pipepar,0,pipe,134.900,117.230,ok
+papers100M,gat,4,1024,pcie_emu,split,0,gsplit,120.490,104.270,ok
+papers100M,gat,4,1024,pcie_emu,split,1,DP k1,121.790,104.990,ok
+papers100M,gat,4,1024,pcie_emu,split,2,DP k2,115.500,99.770,ok
+papers100M,gat,4,1024,pcie_emu,split,3,DP k3,101.460,82.670,ok
+papers100M,sage,2,1024,nvlink,gsplit_pipepar,0,pipe,13.040,8.860,ok
+papers100M,sage,2,1024,nvlink,split,0,gsplit,7.890,4.290,ok
+papers100M,sage,2,1024,nvlink,split,1,DP k1,7.290,3.380,ok
+papers100M,sage,2,1024,pcie_emu,gsplit_pipepar,0,pipe,12.730,9.120,ok
+papers100M,sage,2,1024,pcie_emu,split,0,gsplit,8.400,4.600,ok
+papers100M,sage,2,1024,pcie_emu,split,1,DP k1,6.900,3.530,ok
+papers100M,sage,3,256,nvlink,gsplit_pipepar,0,pipe,20.800,12.440,ok
+papers100M,sage,3,256,nvlink,split,0,gsplit,13.360,5.760,ok
+papers100M,sage,3,256,nvlink,split,1,DP k1,12.960,5.660,ok
+papers100M,sage,3,256,nvlink,split,2,DP k2,12.330,5.040,ok
+papers100M,sage,3,256,pcie_emu,gsplit_pipepar,0,pipe,20.910,12.910,ok
+papers100M,sage,3,256,pcie_emu,split,0,gsplit,13.860,6.590,ok
+papers100M,sage,3,256,pcie_emu,split,1,DP k1,13.420,6.620,ok
+papers100M,sage,3,256,pcie_emu,split,2,DP k2,11.570,4.860,ok
+papers100M,sage,3,1024,nvlink,gsplit_pipepar,0,pipe,22.070,13.840,ok
+papers100M,sage,3,1024,nvlink,split,0,gsplit,16.900,9.340,ok
+papers100M,sage,3,1024,nvlink,split,1,DP k1,15.900,8.480,ok
+papers100M,sage,3,1024,nvlink,split,2,DP k2,14.310,6.970,ok
+papers100M,sage,3,1024,pcie_emu,gsplit_pipepar,0,pipe,26.380,19.100,ok
+papers100M,sage,3,1024,pcie_emu,split,0,gsplit,21.370,14.690,ok
+papers100M,sage,3,1024,pcie_emu,split,1,DP k1,21.420,13.840,ok
+papers100M,sage,3,1024,pcie_emu,split,2,DP k2,15.020,8.390,ok
+papers100M,sage,3,4096,nvlink,gsplit_pipepar,0,pipe,65.500,55.990,ok
+papers100M,sage,3,4096,nvlink,split,0,gsplit,62.590,53.210,ok
+papers100M,sage,3,4096,nvlink,split,1,DP k1,58.550,50.090,ok
+papers100M,sage,3,4096,nvlink,split,2,DP k2,54.720,46.230,ok
+papers100M,sage,3,4096,pcie_emu,gsplit_pipepar,0,pipe,97.430,88.330,ok
+papers100M,sage,3,4096,pcie_emu,split,0,gsplit,78.830,70.240,ok
+papers100M,sage,3,4096,pcie_emu,split,1,DP k1,77.300,68.000,ok
+papers100M,sage,3,4096,pcie_emu,split,2,DP k2,61.990,53.980,ok
+papers100M,sage,4,1024,nvlink,gsplit_pipepar,0,pipe,57.220,39.660,ok
+papers100M,sage,4,1024,nvlink,split,0,gsplit,51.120,34.660,ok
+papers100M,sage,4,1024,nvlink,split,1,DP k1,50.000,33.280,ok
+papers100M,sage,4,1024,nvlink,split,2,DP k2,48.030,31.070,ok
+papers100M,sage,4,1024,nvlink,split,3,DP k3,44.550,26.640,ok
+papers100M,sage,4,1024,pcie_emu,gsplit_pipepar,0,pipe,81.300,63.640,ok
+papers100M,sage,4,1024,pcie_emu,split,0,gsplit,76.930,59.200,ok
+papers100M,sage,4,1024,pcie_emu,split,1,DP k1,73.660,57.110,ok
+papers100M,sage,4,1024,pcie_emu,split,2,DP k2,69.320,52.880,ok
+papers100M,sage,4,1024,pcie_emu,split,3,DP k3,50.920,32.770,ok
+products,gat,2,1024,nvlink,gsplit_pipepar,0,pipe,4.230,3.000,ok
+products,gat,2,1024,nvlink,split,0,gsplit,3.180,2.040,ok
+products,gat,2,1024,nvlink,split,1,DP k1,3.370,2.130,ok
+products,gat,2,1024,pcie_emu,gsplit_pipepar,0,pipe,3.990,3.110,ok
+products,gat,2,1024,pcie_emu,split,0,gsplit,3.380,2.490,ok
+products,gat,2,1024,pcie_emu,split,1,DP k1,2.890,2.130,ok
+products,gat,3,256,nvlink,gsplit_pipepar,0,pipe,8.930,5.540,ok
+products,gat,3,256,nvlink,split,0,gsplit,6.430,3.660,ok
+products,gat,3,256,nvlink,split,1,DP k1,6.440,3.670,ok
+products,gat,3,256,nvlink,split,2,DP k2,6.320,3.490,ok
+products,gat,3,256,pcie_emu,gsplit_pipepar,0,pipe,10.120,6.970,ok
+products,gat,3,256,pcie_emu,split,0,gsplit,7.220,4.730,ok
+products,gat,3,256,pcie_emu,split,1,DP k1,7.210,4.660,ok
+products,gat,3,256,pcie_emu,split,2,DP k2,6.900,4.370,ok
+products,gat,3,1024,nvlink,gsplit_pipepar,0,pipe,16.970,13.530,ok
+products,gat,3,1024,nvlink,split,0,gsplit,13.990,11.180,ok
+products,gat,3,1024,nvlink,split,1,DP k1,13.950,11.110,ok
+products,gat,3,1024,nvlink,split,2,DP k2,13.630,10.840,ok
+products,gat,3,1024,pcie_emu,gsplit_pipepar,0,pipe,19.130,16.000,ok
+products,gat,3,1024,pcie_emu,split,0,gsplit,16.480,13.960,ok
+products,gat,3,1024,pcie_emu,split,1,DP k1,16.200,13.700,ok
+products,gat,3,1024,pcie_emu,split,2,DP k2,14.240,11.680,ok
+products,gat,3,4096,nvlink,gsplit_pipepar,0,pipe,90.440,86.890,ok
+products,gat,3,4096,nvlink,split,0,gsplit,78.690,75.790,ok
+products,gat,3,4096,nvlink,split,1,DP k1,79.430,76.510,ok
+products,gat,3,4096,nvlink,split,2,DP k2,78.130,75.180,ok
+products,gat,3,4096,pcie_emu,gsplit_pipepar,0,pipe,103.990,100.690,ok
+products,gat,3,4096,pcie_emu,split,0,gsplit,88.470,85.890,ok
+products,gat,3,4096,pcie_emu,split,1,DP k1,88.220,85.560,ok
+products,gat,3,4096,pcie_emu,split,2,DP k2,78.600,76.000,ok
+products,gat,4,1024,nvlink,gsplit_pipepar,0,pipe,77.750,68.510,ok
+products,gat,4,1024,nvlink,split,0,gsplit,55.330,48.960,ok
+products,gat,4,1024,nvlink,split,1,DP k1,55.940,49.690,ok
+products,gat,4,1024,nvlink,split,2,DP k2,57.280,50.810,ok
+products,gat,4,1024,nvlink,split,3,DP k3,60.320,53.250,ok
+products,gat,4,1024,pcie_emu,gsplit_pipepar,0,pipe,93.670,84.470,ok
+products,gat,4,1024,pcie_emu,split,0,gsplit,70.850,64.720,ok
+products,gat,4,1024,pcie_emu,split,1,DP k1,71.830,65.540,ok
+products,gat,4,1024,pcie_emu,split,2,DP k2,73.780,67.690,ok
+products,gat,4,1024,pcie_emu,split,3,DP k3,63.870,56.670,ok
+products,sage,2,1024,nvlink,gsplit_pipepar,0,pipe,2.760,1.500,ok
+products,sage,2,1024,nvlink,split,0,gsplit,1.990,0.800,ok
+products,sage,2,1024,nvlink,split,1,DP k1,1.960,0.720,ok
+products,sage,2,1024,pcie_emu,gsplit_pipepar,0,pipe,2.400,1.520,ok
+products,sage,2,1024,pcie_emu,split,0,gsplit,1.760,0.900,ok
+products,sage,2,1024,pcie_emu,split,1,DP k1,1.510,0.690,ok
+products,sage,3,256,nvlink,gsplit_pipepar,0,pipe,5.890,2.320,ok
+products,sage,3,256,nvlink,split,0,gsplit,4.310,1.400,ok
+products,sage,3,256,nvlink,split,1,DP k1,4.280,1.360,ok
+products,sage,3,256,nvlink,split,2,DP k2,4.010,1.040,ok
+products,sage,3,256,pcie_emu,gsplit_pipepar,0,pipe,6.550,3.400,ok
+products,sage,3,256,pcie_emu,split,0,gsplit,5.080,2.560,ok
+products,sage,3,256,pcie_emu,split,1,DP k1,5.060,2.390,ok
+products,sage,3,256,pcie_emu,split,2,DP k2,4.270,1.750,ok
+products,sage,3,1024,nvlink,gsplit_pipepar,0,pipe,7.060,3.580,ok
+products,sage,3,1024,nvlink,split,0,gsplit,5.840,2.930,ok
+products,sage,3,1024,nvlink,split,1,DP k1,5.610,2.710,ok
+products,sage,3,1024,nvlink,split,2,DP k2,5.130,2.270,ok
+products,sage,3,1024,pcie_emu,gsplit_pipepar,0,pipe,9.580,6.450,ok
+products,sage,3,1024,pcie_emu,split,0,gsplit,8.240,5.600,ok
+products,sage,3,1024,pcie_emu,split,1,DP k1,7.800,5.240,ok
+products,sage,3,1024,pcie_emu,split,2,DP k2,5.540,2.960,ok
+products,sage,3,4096,nvlink,gsplit_pipepar,0,pipe,19.890,16.050,ok
+products,sage,3,4096,nvlink,split,0,gsplit,18.300,15.170,ok
+products,sage,3,4096,nvlink,split,1,DP k1,18.910,15.330,ok
+products,sage,3,4096,nvlink,split,2,DP k2,16.650,13.460,ok
+products,sage,3,4096,pcie_emu,gsplit_pipepar,0,pipe,30.450,27.060,ok
+products,sage,3,4096,pcie_emu,split,0,gsplit,27.600,24.830,ok
+products,sage,3,4096,pcie_emu,split,1,DP k1,27.830,24.990,ok
+products,sage,3,4096,pcie_emu,split,2,DP k2,16.870,14.060,ok
+products,sage,4,1024,nvlink,gsplit_pipepar,0,pipe,29.540,20.160,ok
+products,sage,4,1024,nvlink,split,0,gsplit,23.030,16.590,ok
+products,sage,4,1024,nvlink,split,1,DP k1,23.120,16.440,ok
+products,sage,4,1024,nvlink,split,2,DP k2,23.280,16.670,ok
+products,sage,4,1024,nvlink,split,3,DP k3,21.740,14.520,ok
+products,sage,4,1024,pcie_emu,gsplit_pipepar,0,pipe,48.140,38.830,ok
+products,sage,4,1024,pcie_emu,split,0,gsplit,38.770,32.610,ok
+products,sage,4,1024,pcie_emu,split,1,DP k1,39.490,33.110,ok
+products,sage,4,1024,pcie_emu,split,2,DP k2,40.080,33.810,ok
+products,sage,4,1024,pcie_emu,split,3,DP k3,25.840,18.520,ok

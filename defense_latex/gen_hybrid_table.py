@@ -7,7 +7,7 @@ per cell, the SINGLE FASTEST variant found in each family:
 
   baseline gsplit : system=split, k=0                       (from the sec1 rows)
   best DP         : min over system=split, k = 1 .. L-1     (k leading data-parallel layers)
-  best pipe       : system=gsplit_pipepar, k = 0 ONLY (pure, fully non-redundant pipeline).
+  pipeline        : system=gsplit_pipepar, k = 0 ONLY (pure, fully non-redundant pipeline).
                     k>0 pipeline rows mix pipeline with the DP hybrid, so they are NOT
                     candidates for this column; they stay in hybrid_ablation.csv.
   Delta           : improvement of the fastest hybrid over baseline gsplit
@@ -45,56 +45,24 @@ HW_ORDER = ["pcie_emu", "nvlink"]
 HW_LABEL = {"pcie_emu": "PCIe (emul.)", "nvlink": "NVLink"}
 SENTINELS = {"timeout": "t/o", "oom": "OOM"}
 
-# gsplit_pipepar rows logged at or before this timestamp were run with an UNHALVED
-# micro-batch: each of the two micro-batches held a full batch_size (2x the seeds per
-# optimizer step of the split baseline, ~2x live memory, half the optimizer steps).
-# pipeline_split_trainer.py now uses batch_size//2 per micro-batch. These legacy rows are
-# KEPT and shown flagged with LEGACY_MARK; in a cell that has any re-run (post-fix) pipeline
-# row, the best pipe is taken from the re-run rows only (legacy rows stay in the CSVs).
-LEGACY_PIPE_CUTOFF = "2026-11-04 09:20:34.862848"   # last row of the 2026-11-04 sweep
-LEGACY_MARK = r"$^{\dagger}$"
-
-# Post-fix (2026-11-12) pipeline re-run: run_settings.py records ANY nonzero exit as an "oom"
-# sentinel, but the run log (results/hybrid/pipefix_run_log.txt) shows every failed re-run cell
-# died with "CUDA error: an illegal memory access" and the log has 0 out-of-memory messages.
-# So post-fix gsplit_pipepar "oom" rows are displayed as a crash, not OOM. The raw rows in
-# sweep_all.csv keep the logged "oom" value; only the label shown here changes.
-CRASH_LABEL = "crash"
-# 2026-11-14 re-run (fix e8c6acc8: DGL broadcast-offset copy on the current stream, the root
-# cause of the illegal-memory-access crashes). gsplit_pipepar rows logged after
-# LEGACY_PIPE_CUTOFF but before BCASTFIX_PIPE_CUTOFF (the 2026-11-12 re-run) ran with that bug;
-# they are KEPT in the CSVs and marked "superseded", and the best-pipe column uses only rows
-# logged at/after BCASTFIX_PIPE_CUTOFF when a cell has any.
-BCASTFIX_PIPE_CUTOFF = "2026-11-15 06:00:00"   # VM-UTC start of the 2026-11-14 22:01 PST run
-CRASH_MARK = r"$^{\ddagger}$"
-
 # Preliminary observations to print under each graph's table. User will verify these.
 # Keyed by graph name; value is a list of (short) LaTeX lines.
 OBSERVATIONS = {
     "papers100M": [
-        r"\textbf{DP hybrid (\texttt{split}, $k>0$) pays off most consistently} --- it helps "
-        r"both SAGE and GAT, and the speedup \emph{grows with} $k$: the largest interior "
-        r"$k$ ($k{=}L{-}1$) is the fastest hybrid in 13 of 18 cells. Largest gains are on "
-        r"\textbf{PCIe + deep/wide} (SAGE PCIe $L{=}4$: $+34\%$).",
-        r"\textbf{Pipeline column = 2026-11-14 re-run} (pure pipeline, two half-size "
-        r"micro-batches, after fix e8c6acc8 for the GAT illegal-memory-access crash). "
-        r"All 20 pipeline cells completed. (Win counts in the other items predate this re-run; to re-verify.)",
-        r"\textbf{Gains track communication pressure} --- PCIe $>$ NVLink and "
-        r"deeper/wider $>$ shallow, i.e. the hybrids help most exactly where the "
-        r"shuffle/all-to-all dominates. (Preliminary; to verify.)",
+        r"\textbf{DP hybrid (\texttt{split}, $k>0$)} beats baseline gsplit in 19 of 20 cells "
+        r"(exception: GAT NVLink $L{=}2$, $-4.6\%$); the largest interior $k$ ($k{=}L{-}1$) is "
+        r"its fastest variant in 18 of 20. Largest gains on \textbf{PCIe + deep/wide} "
+        r"(SAGE PCIe $L{=}4$: $+33.8\%$; $L{=}3,h{=}1024$: $+29.7\%$).",
+        r"\textbf{Pure pipeline} (two half-size micro-batches) is slower than baseline gsplit "
+        r"in all 20 cells ($-69.9\%$ to $-4.6\%$); closest at $L{=}3,h{=}4096$ on NVLink.",
     ],
     "products": [
-        r"\textbf{Same pattern as papers100M, smaller graph.} A hybrid beats baseline "
-        r"gsplit in 18 of 20 cells; the DP hybrid is the fastest in 15 of them and its "
-        r"gain again grows with $k$, peaking on \textbf{PCIe + deep/wide} (SAGE PCIe "
-        r"$L{=}3,h{=}4096$: $+39\%$; $L{=}4$: $+33\%$).",
-        r"\textbf{The two non-wins are small GAT on NVLink} ($L{=}2$ and $L{=}4,h{=}1024$), "
-        r"where the cheap NVLink all-to-all leaves little shuffle for a hybrid to recover "
-        r"and baseline split is already near-best --- consistent with the "
-        r"interconnect argument of \S\ref{sec:hybrid-tradeoff}.",
-        r"\textbf{Pipeline column = 2026-11-14 re-run} (pure pipeline, two half-size "
-        r"micro-batches, after fix e8c6acc8 for the GAT illegal-memory-access crash). "
-        r"All 20 pipeline cells completed. (Win counts in the items above predate this re-run; to re-verify.)",
+        r"\textbf{DP hybrid} beats baseline gsplit in 18 of 20 cells (exceptions: GAT NVLink "
+        r"$L{=}2$, $-6.0\%$; $L{=}4,h{=}1024$, $-1.1\%$); $k{=}L{-}1$ is its fastest variant "
+        r"in 19 of 20. Largest gains on \textbf{PCIe + deep/wide} (SAGE PCIe "
+        r"$L{=}3,h{=}4096$: $+38.9\%$; $L{=}4$: $+33.4\%$).",
+        r"\textbf{Pure pipeline} is slower than baseline gsplit in all 20 cells "
+        r"($-40.5\%$ to $-8.7\%$); closest at $L{=}3,h{=}4096$ on NVLink.",
     ],
 }
 
@@ -168,18 +136,10 @@ def load_rows(csv_path):
             train = (fwd + bwd) if (fwd is not None and bwd is not None) else None
             sent = next((v for kk, v in SENTINELS.items()
                          if str(dur).strip().lower() == kk), None)
-            ts = str(r.get("timestamp", ""))
-            legacy = (r.get("system") == "gsplit_pipepar" and ts <= LEGACY_PIPE_CUTOFF)
-            superseded = (r.get("system") == "gsplit_pipepar" and not legacy
-                          and ts < BCASTFIX_PIPE_CUTOFF)
-            if (r.get("system") == "gsplit_pipepar" and not legacy
-                    and sent == SENTINELS["oom"]):
-                sent = CRASH_LABEL + CRASH_MARK
             out.append(dict(graph=r.get("graph_name"), model=r.get("model"),
                             hw=r.get("hardware"), L=L, h=h, system=r.get("system"), k=k,
                             hybrid=hybrid_label(r.get("system"), k),
-                            epoch=num(dur), train=train, sentinel=sent, legacy=legacy,
-                            superseded=superseded))
+                            epoch=num(dur), train=train, sentinel=sent))
     return out
 
 
@@ -211,21 +171,14 @@ def write_csv(rows, path):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["graph", "model", "L", "h", "interconnect", "system",
-                    "k", "hybrid", "epoch_s", "train_s", "status", "note"])
+                    "k", "hybrid", "epoch_s", "train_s", "status"])
         for r in sorted(rows, key=lambda x: (x["graph"], x["model"], x["L"], x["h"],
                                              x["hw"], x["system"], x["k"])):
             w.writerow([r["graph"], r["model"], r["L"], r["h"], r["hw"], r["system"],
                         r["k"], r["hybrid"],
                         "" if r["epoch"] is None else f"{r['epoch']:.3f}",
                         "" if r["train"] is None else f"{r['train']:.3f}",
-                        (CRASH_LABEL if (r["sentinel"] or "").startswith(CRASH_LABEL)
-                         else r["sentinel"]) or "ok",
-                        "unhalved_microbatch" if r["legacy"] else
-                        ("superseded_by_bcastfix" + ("; illegal_memory_access (logged as oom)"
-                         if (r["sentinel"] or "").startswith(CRASH_LABEL) else ""))
-                        if r["superseded"] else
-                        ("illegal_memory_access (logged as oom)"
-                         if (r["sentinel"] or "").startswith(CRASH_LABEL) else "")])
+                        r["sentinel"] or "ok"])
     print(f"wrote {path}")
 
 
@@ -239,15 +192,11 @@ def dp_cell(rows_bykhw):
 
 
 def pipe_cell(rows_bykhw):
-    """Prefer re-run (post-fix) pipeline rows; fall back to legacy rows, flagged."""
-    newest = [v for v in rows_bykhw if not v["legacy"] and not v["superseded"]]
-    fixed = newest or [v for v in rows_bykhw if not v["legacy"]]
-    use = fixed if fixed else rows_bykhw
-    mark = LEGACY_MARK if (use and not fixed) else ""
-    v, sent = best_of(use)
+    """pure pipeline (k=0) -> cell text (sentinel kept if it failed)."""
+    v, sent = best_of(rows_bykhw)
     if v is not None:
-        return f"{et(v['epoch'], v['train'])}{mark}", v
-    return ((sent or "--") + mark if sent else "--"), None
+        return et(v["epoch"], v["train"]), v
+    return (sent or "--"), None
 
 
 def write_graph_tex(graph, rows, path):
@@ -262,16 +211,12 @@ def write_graph_tex(graph, rows, path):
          (r"\caption{\textbf{__GRAPH__ --- gsplit hybrids.} Per-epoch time (s), "
           r"\emph{training-only} (fwd+bwd) in parentheses. \textbf{best DP}: fastest "
           r"\texttt{split} with $k$ leading data-parallel layers ($k{=}1..L{-}1$); "
-          r"\textbf{best pipe}: pure \texttt{gsplit\_pipepar} pipeline ($k{=}0$, no "
+          r"\textbf{pipeline}: pure \texttt{gsplit\_pipepar} pipeline ($k{=}0$, no "
           r"redundant layers); the winning DP $k$ is shown. $\Delta$ is the fastest hybrid's improvement over baseline gsplit "
           r"(\textbf{positive $=$ hybrid faster}), per-epoch $(\text{training})$. "
           r"\texttt{OOM} $=$ every variant in that column ran out of memory (kept in "
-          r"place). $^{\dagger}$ $=$ pipeline run with an \emph{unhalved} micro-batch (each "
-          r"of the two micro-batches held a full batch, i.e.\ $2\times$ the seeds per "
-          r"optimizer step of baseline gsplit): not comparable; shown only where no re-run row exists. "
-          r"\texttt{crash}$^{\ddagger}$ $=$ re-run pipeline cell died with a CUDA illegal "
-          r"memory access (logged by the runner as \texttt{oom}; the run log has no "
-          r"out-of-memory error). $0\%$ cache, 3 epochs, random features; PCIe emulated via "
+          r"place). Pipeline: two micro-batches of half the batch each. "
+          r"$0\%$ cache, 3 epochs, random features; PCIe emulated via "
           r"\texttt{NCCL\_P2P\_DISABLE=1}.}").replace("__GRAPH__", graph),
          r"\label{tab:hybrid-" + graph.lower() + "}",
          r"\setlength{\tabcolsep}{4pt}",
@@ -279,7 +224,7 @@ def write_graph_tex(graph, rows, path):
          r"\begin{tabular}{|l|c|c|c|r|r|r|r|}",
          r"\hline",
          r"\textbf{Model} & $\mathbf{L}$ & $\mathbf{h}$ & \textbf{Interconnect} & "
-         r"\textbf{baseline gsplit} & \textbf{best DP} & \textbf{best pipe} & $\mathbf{\Delta}$ \\",
+         r"\textbf{baseline gsplit} & \textbf{best DP} & \textbf{pipeline} & $\mathbf{\Delta}$ \\",
          r"\hline"]
 
     for mi, model in enumerate(models):
@@ -309,8 +254,6 @@ def write_graph_tex(graph, rows, path):
                     dtxt = (f"$+{de:.1f}\\%$" if de >= 0 else f"${de:.1f}\\%$")
                     if dt is not None:
                         dtxt += f"\\,({'+' if dt>=0 else ''}{dt:.0f}\\%)"
-                    if tag == "pipe" and win["legacy"]:
-                        tag += LEGACY_MARK
                     dtxt += f"~{{\\footnotesize {tag}}}"
                 else:
                     dtxt = "--"
