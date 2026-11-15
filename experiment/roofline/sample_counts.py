@@ -9,7 +9,8 @@ defense_latex/gen_roofline_points.py turns them into roofline points.
 Systems (column `system`, split point `k`; layers l counted FROM THE SEEDS):
   split     gsplit / data-parallel hybrid (SplitGraphLoader, split_trainer.py),
             k = 0 (gsplit) ... L (every layer data-parallel)
-  pipeline  gsplit_pipepar (pipeline_split_trainer.py), k = 0 ... L-1. One step runs
+  pipeline  gsplit_pipepar (pipeline_split_trainer.py), k = 0 only (a data-parallel prefix
+            has no shuffle to overlap). One step runs
             two micro-batches of batch_size/2; only ONE is sampled, and the two are
             assumed identical (balanced; same redundancy and communication).
   dgl       DGL baseline (GraphDataloader, dgl_trainer.py), pure data parallelism.
@@ -157,7 +158,7 @@ def main():
     draw = SeedDrawer(train_idx, owner, G, B)
     # (system, k, seed function)
     strategies = ([("split", k, lambda: draw.split_loader(B)) for k in range(L + 1)]
-                  + [("pipeline", k, lambda: draw.split_loader(B // 2)) for k in range(L)]
+                  + [("pipeline", 0, lambda: draw.split_loader(B // 2))]
                   + [("dgl", L, draw.dgl_loader)])
 
     os.makedirs(os.path.dirname(os.path.abspath(args.out)), exist_ok=True)

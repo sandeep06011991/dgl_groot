@@ -103,7 +103,9 @@ def main():
                 epoch = measured(sweep, r0, L, h, ic, column="epoch")
                 mod = modelled(counts, model, int(h), rates, ic, L, f_in)
                 for with_pipe in (False, True):
-                    common = [s for s in meas if s in mod and (with_pipe or s[0] != "pipeline")]
+                    # pipeline only at k = 0: a data-parallel prefix has no shuffle to overlap
+                    common = [s for s in meas if s in mod
+                              and (s[0] != "pipeline" or (with_pipe and s[1] == 0))]
                     if len(common) < 2:
                         continue
                     best = min(common, key=meas.get)

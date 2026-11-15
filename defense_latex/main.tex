@@ -27,7 +27,7 @@
 % \expdiag{...}  marks where a figure/diagram is planned.
 \newcommand{\expdiag}[1]{\emph{[Expected diagram: #1]}}
 
-\title{Spara: Partition-Aware Distributed GNN Training\\[4pt]
+\title{gsplit: Partition-Aware Distributed GNN Training\\[4pt]
        \large Dissertation --- Hybrid Parallelism Chapter}
 \author{Sandeep Polisetty}
 \date{\today}
@@ -39,7 +39,7 @@
 \chapter{Hybrid Split Parallelism}
 
 \paraq{What has been established before this chapter, and what problem remains?}
-In the preceding chapters we built \textbf{gsplit} (Spara), a partition-aware distributed
+In the preceding chapters we built \textbf{gsplit}, a partition-aware distributed
 GNN training system, and showed that it trains correctly and outperforms the state of the art
 across a range of settings. In gsplit, each GPU owns a METIS partition weighted by sampling
 frequency, and sampling, feature loading, and the model forward/backward exchange only

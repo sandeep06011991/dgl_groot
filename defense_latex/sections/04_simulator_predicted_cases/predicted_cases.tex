@@ -20,7 +20,8 @@ for choosing a strategy.
 \paraq{Which setting is plotted?}
 Products, GraphSAGE, four layers of fanout $15$, $h = 512$, a global minibatch of $1024$ on four
 GPUs, taken from the extended sweep used in Section~\ref{sec:results}. We chose it because it is
-the cleanest case in which only the interconnect decides the winner. Its measured training time (forward plus backward per epoch) flips with the interconnect:
+the cleanest case in which only the interconnect decides the winner. Its measured training time (forward plus backward per epoch) flips with
+the interconnect:
 on emulated PCIe DGL takes $8.98$\,s and gsplit $23.62$\,s; on NVLink DGL takes $8.41$\,s and
 gsplit $7.83$\,s. Sampling the setting once gives the points of both panels of
 Figure~\ref{fig:pred-s1}; only the roofs change between them.
@@ -42,13 +43,13 @@ Figure~\ref{fig:pred-s1}; only the roofs change between them.
 On emulated PCIe the ridge lies at $I^{*} \approx 1430$\,FLOP/byte, and every gsplit layer lies to
 its left ($I \approx 600$--$1260$): all four layers are bound by the interconnect. Their gsplit
 points sit $1.4\times$ (outermost layer) to $3.4\times$ (nearest the seeds) below the DGL lines,
-whose redundancy is small ($\delta^{\mathrm{dp}} \le 1.65$). Recomputing the neighbourhood is cheaper than shuffling it, and
+whose redundancy is small ($\delta^{\mathrm{dgl}} \le 1.65$). Recomputing the neighbourhood is cheaper than shuffling it, and
 DGL wins, as measured.
 
 \paraq{Why does gsplit win on NVLink?}
 NVLink moves the ridge to $I^{*} \approx 106$\,FLOP/byte, so the same points now lie far to its
 right and are compute-bound; gsplit sits just under the compute ceiling at every layer. DGL loses
-at the outermost layer, where its redundancy ($\delta^{\mathrm{dp}} = 1.65$) lowers its line to
+at the outermost layer, where its redundancy ($\delta^{\mathrm{dgl}} = 1.65$) lowers its line to
 about $11$\,TFLOP/s against $16$ for gsplit. That layer holds most of the work ($7.6$\,M of the
 busiest GPU's $8.7$\,M rows under DGL), so gsplit wins overall although DGL is higher at the two
 layers nearest the seeds. The measured margin is small ($7.83$ against $8.41$\,s), as the
@@ -60,18 +61,18 @@ plot suggests.
 
 \paraq{How is a strategy chosen from the roofline?}
 \begin{enumerate}\itemsep2pt
-  \item \textbf{Locate the ridge} $I^{*} = C/\hat{B}_{\mathrm{net}}$ of the interconnect. Split
-        layers to its right are compute-bound, and split parallelism is the default there.
-  \item \textbf{Left of the ridge}, data parallelism wins a layer unless its redundancy ratio
+  \item \textbf{Locate the ridge} $I^{*} = C/\hat{B}_{\mathrm{net}}$ of the interconnect. gsplit
+        layers to its right are compute-bound, and gsplit is the default there.
+  \item \textbf{Left of the ridge}, DGL wins a layer unless its redundancy ratio $\rho$
         exceeds $1 + I^{*}/I$ against gsplit, or $I^{*}/I$ against the pipeline
         (Eq.~\eqref{eq:cm-rule}).
   \item \textbf{Judge by the outer layers.} They carry most of the work and most of the
-        redundancy. Data parallelism for the layers nearest the seeds and split for the outer
-        ones is the hybrid split point $k$.
+        redundancy. Recompute (DGL-style) for the layers nearest the seeds and gsplit for the
+        outer ones is the hybrid with split point $k$.
   \item \textbf{Pipeline only near the ridge.} Overlapping compute and shuffle gains up to
         $2\times$ over gsplit at the ridge and little far from it (Eq.~\eqref{eq:cm-pipe-gain}).
-        The roofline shows the potential of perfect overlap; our pipeline implementation does not
-        reach it yet (Section~\ref{sec:results}).
+        The roofline shows the potential of perfect overlap; \flag{our pipeline implementation
+        does not reach it yet (Section~\ref{sec:results}).}
 \end{enumerate}
-The rules are a reading aid, not an exact predictor: settings close to a boundary can be called
-wrongly, and Section~\ref{sec:results} counts how often that happens.
+\flag{The rules are a reading aid, not an exact predictor: settings close to a boundary can be
+called wrongly, and Section~\ref{sec:results} counts how often that happens.}

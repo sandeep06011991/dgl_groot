@@ -63,9 +63,9 @@ mini-batch.
 % backward passes accumulate into one gradient, which is all-reduced once per optimizer step.
 
 \paraq{How does it combine with the data-parallel hybrid, and what does it cost?}
-The pipeline composes with the data-parallel hybrid: it can run over full split ($k{=}0$, the
-\emph{pure} pipeline) or over a split model with a $k$-layer data-parallel prefix. Overlap only
-helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
+The pipeline runs over full split ($k{=}0$). It does not combine with a data-parallel prefix:
+the prefix layers have no shuffle, so there is nothing for the other micro-batch to overlap with.
+Overlap only helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
 mini-batch's seeds, so the two live micro-batches together occupy roughly the memory of one
 mini-batch, and an optimizer step consumes the same number of seeds as in gsplit.
 % Measured runs (2026-11-14) use micro_batch_size = batch_size // 2 and include the DGL fix
@@ -104,8 +104,8 @@ the computation that the hybrids replicate or overlap, the best scheme and split
 across models, graphs, and machines.
 
 \paraq{What configuration problem do the hybrids introduce?}
-The hybrids enlarge the configuration space. Each model now requires a choice of strategy
-(data-parallel hybrid, pipeline hybrid, or both) and a split point $k\in\{0,\ldots,L\}$, and the
+The hybrids enlarge the configuration space. Each model now requires a choice of strategy---a
+data-parallel hybrid with split point $k\in\{0,\ldots,L\}$, or the pipeline---and the
 best choice depends jointly on the graph, the model, its depth and hidden size, and the
 interconnect.
 
