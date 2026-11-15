@@ -581,8 +581,9 @@ CSRMatrix CSRSliceMatrix(
   IdArray mask = Full(0, csr.indices->shape[0], nbits, ctx);
   // A count for how many masked values per row.
   IdArray count = NewIdArray(csr.num_rows, ctx, nbits);
-  CUDA_CALL(
-      cudaMemset(count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows)));
+  CUDA_CALL(cudaMemsetAsync(
+      count.Ptr<IdType>(), 0, sizeof(IdType) * (csr.num_rows),
+      runtime::getCurrentCUDAStream()));  // was legacy-stream cudaMemset
 
   // Generate a NodeQueryHashmap buffer. The key of the hashmap is col.
   // For performance, the load factor of the hashmap is in (0.25, 0.5);
