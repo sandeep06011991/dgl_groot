@@ -18,6 +18,7 @@ AND their features fetched up front (while each batch_id is current), so the
 per-batch blocks/scattered-arrays/features are independent before any pipelined
 compute. Features are cloned to survive the next GetFeature call.
 """
+import os
 import torch
 import torchmetrics.functional as MF
 import torch.distributed as dist
@@ -54,6 +55,31 @@ class TwoStreamPipeline:
         self.world_size = model.world_size
         self.comm_stream = torch.cuda.Stream()
         self.compute_streams = [torch.cuda.Stream(), torch.cuda.Stream()]
+        # Stream ordering (2026-11-14): order the pipeline streams after the default stream
+        # (features from the async .clone(), reindexed block edge arrays, and parameters from
+        # the previous optimizer.step() are all written there), record cross-stream tensors
+        # with the caching allocator, and join after backward. This was NOT the cause of the
+        # GAT illegal-memory-access crashes (that was DGL's legacy-stream cudaMemcpy in
+        # src/array/cuda/macro.cuh, fixed in e8c6acc8); it is kept because the 2026-11-14
+        # sweep numbers were measured with it. PIPE_STREAM_FIX=0 disables it.
+        self.stream_fix = os.environ.get("PIPE_STREAM_FIX", "1") != "0"
+
+    def _streams(self):
+        return [self.comm_stream] + self.compute_streams
+
+    def join(self):
+        """Order the current stream after all pipeline streams (no host sync). Called after
+        each backward so later frees / reuses on the default stream are safe."""
+        if self.stream_fix:
+            current = torch.cuda.current_stream()
+            for s in self._streams():
+                current.wait_stream(s)
+
+    def _hand_off(self, t, consumer):
+        """Tell the caching allocator that `t` is used on `consumer` (not only its
+        allocation stream), so its block is not recycled while `consumer` still reads it."""
+        if self.stream_fix and t.is_cuda:
+            t.record_stream(consumer)
 
     def run(self, blocks_pair, feat_pair):
         """blocks_pair / feat_pair are (micro-batch-A, micro-batch-B). Returns the
@@ -65,6 +91,12 @@ class TwoStreamPipeline:
         self._shuffled = {}                    # (mb, layer) -> shuffled input to that layer
         self._shuffle_done = {}                # (mb, layer) -> event: shuffle finished
         self._conv_done = {}                   # (mb, layer) -> event: conv finished
+
+        if self.stream_fix:
+            # inputs, block index arrays and parameters are produced on the current stream
+            current = torch.cuda.current_stream()
+            for s in self._streams():
+                s.wait_stream(current)
 
         self._issue_shuffle(MB_A, 0, wait_event=None)
         for layer in range(self.num_layers):
@@ -85,6 +117,7 @@ class TwoStreamPipeline:
         `wait_event`, the producing conv), and record its completion event."""
         if wait_event is not None:
             self.comm_stream.wait_event(wait_event)
+        self._hand_off(self._layer_input[mb], self.comm_stream)
         with torch.cuda.stream(self.comm_stream):
             self._shuffled[(mb, layer)] = Shuffle.apply(
                 self._blocks[mb][layer].scattered_src, self._layer_input[mb],
@@ -97,6 +130,7 @@ class TwoStreamPipeline:
         (after its shuffle), and record its completion event."""
         stream = self.compute_streams[mb]
         stream.wait_event(self._shuffle_done[(mb, layer)])
+        self._hand_off(self._shuffled[(mb, layer)], stream)
         with torch.cuda.stream(stream):
             x = self.layers[layer](self._blocks[mb][layer], self._shuffled[(mb, layer)])
             if layer != self.num_layers - 1:
@@ -213,7 +247,9 @@ def train_pipeline_split_ddp(rank, config, unique_id, graph, feat, label,
             backward_timer = CudaTimer()
             optimizer.zero_grad()
             (0.5 * torch.nn.functional.cross_entropy(pred_a, labels_a)).backward()
+            pipeline.join()                           # A's grads complete before B accumulates
             (0.5 * torch.nn.functional.cross_entropy(pred_b, labels_b)).backward()
+            pipeline.join()                           # all backward work done before reduce/step/free
             for param in model.parameters():
                 if param.grad is not None:
                     dist.all_reduce(param.grad, op=dist.ReduceOp.SUM)

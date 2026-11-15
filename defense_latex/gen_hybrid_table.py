@@ -7,7 +7,9 @@ per cell, the SINGLE FASTEST variant found in each family:
 
   baseline gsplit : system=split, k=0                       (from the sec1 rows)
   best DP         : min over system=split, k = 1 .. L-1     (k leading data-parallel layers)
-  best pipe       : min over system=gsplit_pipepar, k = 0.. (k=0 pure pipeline; k>0 pipe+DP)
+  pipeline        : system=gsplit_pipepar, k = 0 ONLY (pure, fully non-redundant pipeline).
+                    k>0 pipeline rows mix pipeline with the DP hybrid, so they are NOT
+                    candidates for this column; they stay in hybrid_ablation.csv.
   Delta           : improvement of the fastest hybrid over baseline gsplit
                     (POSITIVE = hybrid faster), as per-epoch (training).
 
@@ -43,45 +45,24 @@ HW_ORDER = ["pcie_emu", "nvlink"]
 HW_LABEL = {"pcie_emu": "PCIe (emul.)", "nvlink": "NVLink"}
 SENTINELS = {"timeout": "t/o", "oom": "OOM"}
 
-# gsplit_pipepar rows logged at or before this timestamp were run with an UNHALVED
-# micro-batch: each of the two micro-batches held a full batch_size (2x the seeds per
-# optimizer step of the split baseline, ~2x live memory, half the optimizer steps).
-# pipeline_split_trainer.py now uses batch_size//2 per micro-batch. These legacy rows are
-# KEPT and shown flagged with LEGACY_MARK; in a cell that has any re-run (post-fix) pipeline
-# row, the best pipe is taken from the re-run rows only (legacy rows stay in the CSVs).
-LEGACY_PIPE_CUTOFF = "2026-11-04 09:20:34.862848"   # last row of the 2026-11-04 sweep
-LEGACY_MARK = r"$^{\dagger}$"
-
 # Preliminary observations to print under each graph's table. User will verify these.
 # Keyed by graph name; value is a list of (short) LaTeX lines.
 OBSERVATIONS = {
     "papers100M": [
-        r"\textbf{DP hybrid (\texttt{split}, $k>0$) pays off most consistently} --- it helps "
-        r"both SAGE and GAT, and the speedup \emph{grows with} $k$: the largest interior "
-        r"$k$ ($k{=}L{-}1$) is the fastest hybrid in 13 of 18 cells. Largest gains are on "
-        r"\textbf{PCIe + deep/wide} (SAGE PCIe $L{=}4$: $+34\%$).",
-        r"\textbf{Pipeline numbers ($^{\dagger}$) are not yet comparable.} They were run with "
-        r"an unhalved micro-batch (2$\times$ the seeds per optimizer step of baseline gsplit). "
-        r"All 30 GAT pipeline variants ran out of memory under that bug (kept in place as "
-        r"OOM); SAGE pipeline cells are shown as measured. Re-run pending with half-size "
-        r"micro-batches.",
-        r"\textbf{Gains track communication pressure} --- PCIe $>$ NVLink and "
-        r"deeper/wider $>$ shallow, i.e. the hybrids help most exactly where the "
-        r"shuffle/all-to-all dominates. (Preliminary; to verify.)",
+        r"\textbf{DP hybrid (\texttt{split}, $k>0$)} beats baseline gsplit in 19 of 20 cells "
+        r"(exception: GAT NVLink $L{=}2$, $-4.6\%$); the largest interior $k$ ($k{=}L{-}1$) is "
+        r"its fastest variant in 18 of 20. Largest gains on \textbf{PCIe + deep/wide} "
+        r"(SAGE PCIe $L{=}4$: $+33.8\%$; $L{=}3,h{=}1024$: $+29.7\%$).",
+        r"\textbf{Pure pipeline} (two half-size micro-batches) is slower than baseline gsplit "
+        r"in all 20 cells ($-69.9\%$ to $-4.6\%$); closest at $L{=}3,h{=}4096$ on NVLink.",
     ],
     "products": [
-        r"\textbf{Same pattern as papers100M, smaller graph.} A hybrid beats baseline "
-        r"gsplit in 18 of 20 cells; the DP hybrid is the fastest in 15 of them and its "
-        r"gain again grows with $k$, peaking on \textbf{PCIe + deep/wide} (SAGE PCIe "
-        r"$L{=}3,h{=}4096$: $+39\%$; $L{=}4$: $+33\%$).",
-        r"\textbf{The two non-wins are small GAT on NVLink} ($L{=}2$ and $L{=}4,h{=}1024$), "
-        r"where the cheap NVLink all-to-all leaves little shuffle for a hybrid to recover "
-        r"and baseline split is already near-best --- consistent with the "
-        r"interconnect argument of \S\ref{sec:hybrid-tradeoff}.",
-        r"\textbf{Pipeline numbers ($^{\dagger}$) are not yet comparable.} As on papers100M "
-        r"they were run with an unhalved micro-batch; the 12 GAT pipeline OOMs ($h{=}4096$ "
-        r"and $L{=}2$) occurred under that bug and are kept in place. Re-run pending with "
-        r"half-size micro-batches.",
+        r"\textbf{DP hybrid} beats baseline gsplit in 18 of 20 cells (exceptions: GAT NVLink "
+        r"$L{=}2$, $-6.0\%$; $L{=}4,h{=}1024$, $-1.1\%$); $k{=}L{-}1$ is its fastest variant "
+        r"in 19 of 20. Largest gains on \textbf{PCIe + deep/wide} (SAGE PCIe "
+        r"$L{=}3,h{=}4096$: $+38.9\%$; $L{=}4$: $+33.4\%$).",
+        r"\textbf{Pure pipeline} is slower than baseline gsplit in all 20 cells "
+        r"($-40.5\%$ to $-8.7\%$); closest at $L{=}3,h{=}4096$ on NVLink.",
     ],
 }
 
@@ -155,12 +136,10 @@ def load_rows(csv_path):
             train = (fwd + bwd) if (fwd is not None and bwd is not None) else None
             sent = next((v for kk, v in SENTINELS.items()
                          if str(dur).strip().lower() == kk), None)
-            legacy = (r.get("system") == "gsplit_pipepar"
-                      and str(r.get("timestamp", "")) <= LEGACY_PIPE_CUTOFF)
             out.append(dict(graph=r.get("graph_name"), model=r.get("model"),
                             hw=r.get("hardware"), L=L, h=h, system=r.get("system"), k=k,
                             hybrid=hybrid_label(r.get("system"), k),
-                            epoch=num(dur), train=train, sentinel=sent, legacy=legacy))
+                            epoch=num(dur), train=train, sentinel=sent))
     return out
 
 
@@ -192,15 +171,14 @@ def write_csv(rows, path):
     with open(path, "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["graph", "model", "L", "h", "interconnect", "system",
-                    "k", "hybrid", "epoch_s", "train_s", "status", "note"])
+                    "k", "hybrid", "epoch_s", "train_s", "status"])
         for r in sorted(rows, key=lambda x: (x["graph"], x["model"], x["L"], x["h"],
                                              x["hw"], x["system"], x["k"])):
             w.writerow([r["graph"], r["model"], r["L"], r["h"], r["hw"], r["system"],
                         r["k"], r["hybrid"],
                         "" if r["epoch"] is None else f"{r['epoch']:.3f}",
                         "" if r["train"] is None else f"{r['train']:.3f}",
-                        r["sentinel"] or "ok",
-                        "unhalved_microbatch" if r["legacy"] else ""])
+                        r["sentinel"] or "ok"])
     print(f"wrote {path}")
 
 
@@ -214,15 +192,11 @@ def dp_cell(rows_bykhw):
 
 
 def pipe_cell(rows_bykhw):
-    """Prefer re-run (post-fix) pipeline rows; fall back to legacy rows, flagged."""
-    fixed = [v for v in rows_bykhw if not v["legacy"]]
-    use = fixed if fixed else rows_bykhw
-    mark = LEGACY_MARK if (use and not fixed) else ""
-    v, sent = best_of(use)
+    """pure pipeline (k=0) -> cell text (sentinel kept if it failed)."""
+    v, sent = best_of(rows_bykhw)
     if v is not None:
-        tag = "pure" if v["k"] == 0 else f"$k{v['k']}$"
-        return f"{et(v['epoch'], v['train'])}{mark}~{{\\footnotesize {tag}}}", v
-    return ((sent or "--") + mark if sent else "--"), None
+        return et(v["epoch"], v["train"]), v
+    return (sent or "--"), None
 
 
 def write_graph_tex(graph, rows, path):
@@ -237,14 +211,12 @@ def write_graph_tex(graph, rows, path):
          (r"\caption{\textbf{__GRAPH__ --- gsplit hybrids.} Per-epoch time (s), "
           r"\emph{training-only} (fwd+bwd) in parentheses. \textbf{best DP}: fastest "
           r"\texttt{split} with $k$ leading data-parallel layers ($k{=}1..L{-}1$); "
-          r"\textbf{best pipe}: fastest \texttt{gsplit\_pipepar} (\emph{pure} $={}$pure "
-          r"pipeline $k{=}0$, else pipe over a $k$-layer DP prefix); the winning $k$ is "
-          r"shown. $\Delta$ is the fastest hybrid's improvement over baseline gsplit "
+          r"\textbf{pipeline}: pure \texttt{gsplit\_pipepar} pipeline ($k{=}0$, no "
+          r"redundant layers); the winning DP $k$ is shown. $\Delta$ is the fastest hybrid's improvement over baseline gsplit "
           r"(\textbf{positive $=$ hybrid faster}), per-epoch $(\text{training})$. "
-          r"\texttt{OOM} $=$ every variant in that family ran out of memory (kept in "
-          r"place). $^{\dagger}$ $=$ pipeline run with an \emph{unhalved} micro-batch (each "
-          r"of the two micro-batches held a full batch, i.e.\ $2\times$ the seeds per "
-          r"optimizer step of baseline gsplit): not comparable, re-run pending. $0\%$ cache, 3 epochs, random features; PCIe emulated via "
+          r"\texttt{OOM} $=$ every variant in that column ran out of memory (kept in "
+          r"place). Pipeline: two micro-batches of half the batch each. "
+          r"$0\%$ cache, 3 epochs, random features; PCIe emulated via "
           r"\texttt{NCCL\_P2P\_DISABLE=1}.}").replace("__GRAPH__", graph),
          r"\label{tab:hybrid-" + graph.lower() + "}",
          r"\setlength{\tabcolsep}{4pt}",
@@ -252,7 +224,7 @@ def write_graph_tex(graph, rows, path):
          r"\begin{tabular}{|l|c|c|c|r|r|r|r|}",
          r"\hline",
          r"\textbf{Model} & $\mathbf{L}$ & $\mathbf{h}$ & \textbf{Interconnect} & "
-         r"\textbf{baseline gsplit} & \textbf{best DP} & \textbf{best pipe} & $\mathbf{\Delta}$ \\",
+         r"\textbf{baseline gsplit} & \textbf{best DP} & \textbf{pipeline} & $\mathbf{\Delta}$ \\",
          r"\hline"]
 
     for mi, model in enumerate(models):
@@ -267,7 +239,8 @@ def write_graph_tex(graph, rows, path):
                 base_list = [v for v in fam.get("split", []) if v["k"] == 0]
                 base = base_list[0] if base_list else None
                 dp_list = [v for v in fam.get("split", []) if v["k"] >= 1]
-                pipe_list = fam.get("gsplit_pipepar", [])
+                # pure pipeline only: k>0 would conflate pipeline with the DP hybrid
+                pipe_list = [v for v in fam.get("gsplit_pipepar", []) if v["k"] == 0]
                 dptxt, dpv = dp_cell(dp_list)
                 pptxt, ppv = pipe_cell(pipe_list)
                 basetxt = et(base["epoch"], base["train"]) if base else "--"
@@ -281,8 +254,6 @@ def write_graph_tex(graph, rows, path):
                     dtxt = (f"$+{de:.1f}\\%$" if de >= 0 else f"${de:.1f}\\%$")
                     if dt is not None:
                         dtxt += f"\\,({'+' if dt>=0 else ''}{dt:.0f}\\%)"
-                    if tag == "pipe" and win["legacy"]:
-                        tag += LEGACY_MARK
                     dtxt += f"~{{\\footnotesize {tag}}}"
                 else:
                     dtxt = "--"

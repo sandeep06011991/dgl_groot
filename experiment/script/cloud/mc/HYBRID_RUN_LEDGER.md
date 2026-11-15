@@ -99,3 +99,24 @@ measured best first, then tune the simulator to match). One exploratory table:
   12 products, all GAT pipeline), kept in place. 0 timeouts.
 - Simulator calibration target (cost-model branch): the measured best per cell is in
   defense_latex/results/hybrid_ablation.csv (every variant) and tables/hybrid_<graph>.tex.
+
+### Stream-ordering fix re-run (2026-11-14)
+- Bug found: TwoStreamPipeline never ordered comm/compute streams after the default stream, so
+  the pipeline could read features (.clone()), reindexed block edge arrays and params before they
+  were written; no record_stream on cross-stream tensors. Suspected cause of the 16 GAT
+  "oom" (= illegal memory access) cells of 2026-11-12. Fix 2bd225c0 (PIPE_STREAM_FIX=0 = old).
+- 20:44 PST: MC 8xA100 uuid a2b9bbd1-6128-4c12-bc83-f3facb6c921b (216.81.248.31). Driver
+  580.126.09 + matching FM preinstalled (no swap needed). Full build (no fast-path), done 21:04.
+- 21:06 PST: run_hybrid_autoterm.sh (MAX_HOURS=3, SETTINGS=sec1_pipe_streamfix_settings.jsonl,
+  16 crashed GAT cells first then 24 others; LOG_PREFIX=pipestreamfix, B2_SUBDIR=pipe_streamfix)
+  + idle_watchdog (IDLE_LIMIT=1800, MAXLIFE=12600). Self-terminates; results -> B2.
+- 21:22-21:47 PST: stream-ordering fix FALSIFIED (GAT still crashed). Bisection on the box found the
+  root cause: DGL BCAST_IDX_CTX_SWITCH (macro.cuh) fills a current-stream pool workspace with a
+  legacy-stream cudaMemcpy -> races with PyTorch non-blocking streams (GAT u_mul_e broadcast only).
+  Fix e8c6acc8. Validation: same cell 6/6 clean (was 5/6 crash). Box had been on a DEBUG libdgl
+  (build/ = debug); relinked build -> build-release (debug kept as build-debug) before the re-run.
+- 22:01 PST: 40-cell re-run (release + fix). 23:34: 40/40 OK, 0 crash/oom/timeout. VM self-terminated
+  ~23:35 (finisher.sh; autoterm had started without SELF_UUID, replaced by PID-kill + finisher).
+- Master: per user (option b) ALL 160 older gsplit_pipepar rows removed (120 unhalved 11-04 + 40
+  buggy 11-12), 40 new appended: 508 -> 388. Backup: sweep_all.csv.bak_pre_bcastfix (untracked);
+  older raw shards remain in results/hybrid/. New raw: results/hybrid/pipebcastfix_*.
