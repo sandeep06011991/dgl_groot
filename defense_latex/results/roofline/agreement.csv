@@ -1,4 +1,62 @@
 graph,model,L,h,interconnect,with_pipeline,n_strategies,measured_best,roofline_pick,match,t_best,t_pick,regret,base_dgl_match,base_link_match,epoch_best,epoch_winner_differs
+papers100M,gat,2,256,pcie_emu,False,2,DGL,DGL,True,10.55,10.55,0.0,True,True,DGL,False
+papers100M,gat,2,256,pcie_emu,True,2,DGL,DGL,True,10.55,10.55,0.0,True,True,DGL,False
+papers100M,gat,2,1024,nvlink,False,3,DGL,hybrid k=1,False,7.75,10.09,0.3019354838709678,True,False,DGL,False
+papers100M,gat,2,1024,nvlink,True,4,DGL,pipeline,False,7.75,17.45,1.2516129032258063,True,False,DGL,False
+papers100M,gat,2,1024,pcie_emu,False,3,DGL,hybrid k=1,False,7.92,9.129999999999999,0.15277777777777768,True,True,DGL,False
+papers100M,gat,2,1024,pcie_emu,True,4,DGL,pipeline,False,7.92,17.71,1.2361111111111112,True,True,DGL,False
+papers100M,gat,3,256,nvlink,False,4,DGL,hybrid k=1,False,12.61,13.399999999999999,0.0626486915146709,True,False,DGL,False
+papers100M,gat,3,256,nvlink,True,5,DGL,hybrid k=1,False,12.61,13.399999999999999,0.0626486915146709,True,False,DGL,False
+papers100M,gat,3,256,pcie_emu,False,4,DGL,gsplit,False,13.030000000000001,14.77,0.13353798925556393,True,True,DGL,False
+papers100M,gat,3,256,pcie_emu,True,5,DGL,pipeline,False,13.030000000000001,26.53,1.0360706062931695,True,True,DGL,False
+papers100M,gat,3,512,pcie_emu,False,2,DGL,gsplit,False,19.98,23.58,0.18018018018018012,True,True,DGL,False
+papers100M,gat,3,512,pcie_emu,True,2,DGL,gsplit,False,19.98,23.58,0.18018018018018012,True,True,DGL,False
+papers100M,gat,3,1024,nvlink,False,4,hybrid k=2,hybrid k=1,False,21.81,23.689999999999998,0.0861989912883998,False,False,hybrid k=2,False
+papers100M,gat,3,1024,nvlink,True,5,hybrid k=2,hybrid k=1,False,21.81,23.689999999999998,0.0861989912883998,False,False,hybrid k=2,False
+papers100M,gat,3,1024,pcie_emu,False,4,hybrid k=2,hybrid k=2,True,24.11,24.11,0.0,False,False,hybrid k=2,False
+papers100M,gat,3,1024,pcie_emu,True,5,hybrid k=2,pipeline,False,24.11,38.58,0.6001659062629614,False,False,hybrid k=2,False
+papers100M,gat,3,4096,nvlink,False,4,hybrid k=2,hybrid k=1,False,134.51,139.56,0.037543677050033475,False,False,hybrid k=2,False
+papers100M,gat,3,4096,nvlink,True,5,hybrid k=2,hybrid k=1,False,134.51,139.56,0.037543677050033475,False,False,hybrid k=2,False
+papers100M,gat,3,4096,pcie_emu,False,4,hybrid k=2,hybrid k=2,True,136.32,136.32,0.0,False,False,hybrid k=2,False
+papers100M,gat,3,4096,pcie_emu,True,5,hybrid k=2,pipeline,False,136.32,174.23,0.27809565727699526,False,False,hybrid k=2,False
+papers100M,gat,4,256,pcie_emu,False,2,DGL,gsplit,False,28.93,38.879999999999995,0.34393363290701684,True,True,DGL,False
+papers100M,gat,4,256,pcie_emu,True,2,DGL,gsplit,False,28.93,38.879999999999995,0.34393363290701684,True,True,DGL,False
+papers100M,gat,4,512,pcie_emu,False,2,DGL,gsplit,False,51.190000000000005,57.29,0.11916389919906223,True,True,gsplit,True
+papers100M,gat,4,512,pcie_emu,True,2,DGL,gsplit,False,51.190000000000005,57.29,0.11916389919906223,True,True,gsplit,True
+papers100M,gat,4,1024,nvlink,False,5,hybrid k=3,hybrid k=1,False,77.23,82.13,0.06344684708015014,False,False,hybrid k=2,True
+papers100M,gat,4,1024,nvlink,True,6,hybrid k=3,hybrid k=1,False,77.23,82.13,0.06344684708015014,False,False,hybrid k=2,True
+papers100M,gat,4,1024,pcie_emu,False,5,hybrid k=3,gsplit,False,82.67,104.27000000000001,0.2612797871053587,False,False,hybrid k=3,False
+papers100M,gat,4,1024,pcie_emu,True,6,hybrid k=3,gsplit,False,82.67,104.27000000000001,0.2612797871053587,False,False,hybrid k=3,False
+papers100M,sage,2,256,pcie_emu,False,2,DGL,DGL,True,4.029999999999999,4.029999999999999,0.0,True,True,DGL,False
+papers100M,sage,2,256,pcie_emu,True,2,DGL,DGL,True,4.029999999999999,4.029999999999999,0.0,True,True,DGL,False
+papers100M,sage,2,1024,nvlink,False,3,DGL,DGL,True,3.0999999999999996,3.0999999999999996,0.0,True,False,DGL,False
+papers100M,sage,2,1024,nvlink,True,4,DGL,DGL,True,3.0999999999999996,3.0999999999999996,0.0,True,False,DGL,False
+papers100M,sage,2,1024,pcie_emu,False,3,DGL,DGL,True,3.34,3.34,0.0,True,True,DGL,False
+papers100M,sage,2,1024,pcie_emu,True,4,DGL,DGL,True,3.34,3.34,0.0,True,True,DGL,False
+papers100M,sage,3,256,nvlink,False,4,hybrid k=2,gsplit,False,5.04,5.76,0.1428571428571428,False,False,DGL,True
+papers100M,sage,3,256,nvlink,True,5,hybrid k=2,pipeline,False,5.04,12.44,1.468253968253968,False,False,DGL,True
+papers100M,sage,3,256,pcie_emu,False,4,hybrid k=2,DGL,False,4.859999999999999,5.41,0.1131687242798356,False,False,hybrid k=2,False
+papers100M,sage,3,256,pcie_emu,True,5,hybrid k=2,DGL,False,4.859999999999999,5.41,0.1131687242798356,False,False,hybrid k=2,False
+papers100M,sage,3,512,pcie_emu,False,2,DGL,DGL,True,9.149999999999999,9.149999999999999,0.0,True,True,DGL,False
+papers100M,sage,3,512,pcie_emu,True,2,DGL,DGL,True,9.149999999999999,9.149999999999999,0.0,True,True,DGL,False
+papers100M,sage,3,1024,nvlink,False,4,hybrid k=2,hybrid k=2,True,6.970000000000001,6.970000000000001,0.0,False,False,DGL,True
+papers100M,sage,3,1024,nvlink,True,5,hybrid k=2,pipeline,False,6.970000000000001,13.84,0.9856527977044474,False,False,DGL,True
+papers100M,sage,3,1024,pcie_emu,False,4,DGL,DGL,True,8.27,8.27,0.0,True,True,DGL,False
+papers100M,sage,3,1024,pcie_emu,True,5,DGL,pipeline,False,8.27,19.1,1.3095525997581623,True,True,DGL,False
+papers100M,sage,3,4096,nvlink,False,4,hybrid k=2,hybrid k=2,True,46.230000000000004,46.230000000000004,0.0,False,False,hybrid k=2,False
+papers100M,sage,3,4096,nvlink,True,5,hybrid k=2,pipeline,False,46.230000000000004,55.989999999999995,0.2111183214362966,False,False,hybrid k=2,False
+papers100M,sage,3,4096,pcie_emu,False,4,hybrid k=2,DGL,False,53.980000000000004,60.339999999999996,0.11782141533901425,False,False,hybrid k=2,False
+papers100M,sage,3,4096,pcie_emu,True,5,hybrid k=2,pipeline,False,53.980000000000004,88.33,0.6363467951092996,False,False,hybrid k=2,False
+papers100M,sage,4,256,nvlink,False,2,DGL,gsplit,False,9.469999999999999,11.7,0.23548046462513206,True,False,gsplit,True
+papers100M,sage,4,256,nvlink,True,2,DGL,gsplit,False,9.469999999999999,11.7,0.23548046462513206,True,False,gsplit,True
+papers100M,sage,4,256,pcie_emu,False,2,DGL,DGL,True,10.959999999999999,10.959999999999999,0.0,True,True,DGL,False
+papers100M,sage,4,256,pcie_emu,True,2,DGL,DGL,True,10.959999999999999,10.959999999999999,0.0,True,True,DGL,False
+papers100M,sage,4,512,pcie_emu,False,2,DGL,DGL,True,18.17,18.17,0.0,True,True,DGL,False
+papers100M,sage,4,512,pcie_emu,True,2,DGL,DGL,True,18.17,18.17,0.0,True,True,DGL,False
+papers100M,sage,4,1024,nvlink,False,5,hybrid k=3,gsplit,False,26.64,34.66,0.3010510510510509,False,False,hybrid k=3,False
+papers100M,sage,4,1024,nvlink,True,6,hybrid k=3,gsplit,False,26.64,34.66,0.3010510510510509,False,False,hybrid k=3,False
+papers100M,sage,4,1024,pcie_emu,False,5,hybrid k=3,hybrid k=3,True,32.769999999999996,32.769999999999996,0.0,False,False,hybrid k=3,False
+papers100M,sage,4,1024,pcie_emu,True,6,hybrid k=3,pipeline,False,32.769999999999996,63.64,0.9420201403722921,False,False,hybrid k=3,False
 products,gat,2,256,nvlink,False,2,DGL,DGL,True,1.56,1.56,0.0,True,False,DGL,False
 products,gat,2,256,nvlink,True,2,DGL,DGL,True,1.56,1.56,0.0,True,False,DGL,False
 products,gat,2,256,pcie_emu,False,2,DGL,DGL,True,1.65,1.65,0.0,True,True,DGL,False
