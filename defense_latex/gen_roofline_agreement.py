@@ -42,16 +42,21 @@ def strategy_name(system, k, L):
     return "pipeline" if k == 0 else f"pipe k={k}"
 
 
-def measured(sweep, r0, L, h, ic):
-    """Measured min fwd+bwd per (system, k) for one setting."""
+def measured(sweep, r0, L, h, ic, column="train"):
+    """Measured min time per (system, k) for one setting: column="train" is forward +
+    backward (what the roofline models), column="epoch" is the whole epoch."""
     fan = "[" + ", ".join(str(r0.fanouts).split(",")) + "]"
     s = sweep[(sweep.graph_name == r0.graph_name) & (sweep.model == r0.model)
               & (sweep.fanouts == fan) & (sweep.hid_size == h) & (sweep.hardware == ic)
               & (sweep.batch_size == r0.batch_size) & (sweep.world_size == r0.world_size)
               & (sweep.partition_type == r0.partition_type)]
     s = s[~((s.system == "gsplit_pipepar") & (s.timestamp.astype(str) <= LEGACY_PIPE_CUTOFF))]
-    s = s.assign(t=pd.to_numeric(s["forward (s)"], errors="coerce")
-                 + pd.to_numeric(s["backward (s)"], errors="coerce")).dropna(subset=["t"])
+    if column == "train":
+        t = (pd.to_numeric(s["forward (s)"], errors="coerce")
+             + pd.to_numeric(s["backward (s)"], errors="coerce"))
+    else:
+        t = pd.to_numeric(s["duration (s)"], errors="coerce")
+    s = s.assign(t=t).dropna(subset=["t"])
     out = {}
     for row in s.itertuples():
         k = int(row.num_redundant_layers)
@@ -95,6 +100,7 @@ def main():
                 continue
             for ic in ["pcie_emu", "nvlink"]:
                 meas = measured(sweep, r0, L, h, ic)
+                epoch = measured(sweep, r0, L, h, ic, column="epoch")
                 mod = modelled(counts, model, int(h), rates, ic, L, f_in)
                 for with_pipe in (False, True):
                     common = [s for s in meas if s in mod and (with_pipe or s[0] != "pipeline")]
@@ -102,6 +108,12 @@ def main():
                         continue
                     best = min(common, key=meas.get)
                     pick = min(common, key=mod.get)
+                    # simple baselines for comparison
+                    dgl = ("dgl", L) if ("dgl", L) in common else None
+                    by_link = ("dgl", L) if ic == "pcie_emu" else ("split", 0)
+                    by_link = by_link if by_link in common else None
+                    epoch_common = [x for x in common if x in epoch]
+                    epoch_best = min(epoch_common, key=epoch.get) if epoch_common else None
                     rows.append(dict(graph=r0.graph_name, model=model, L=L, h=int(h),
                                      interconnect=ic, with_pipeline=with_pipe,
                                      n_strategies=len(common),
@@ -109,15 +121,25 @@ def main():
                                      roofline_pick=strategy_name(*pick, L),
                                      match=best == pick,
                                      t_best=meas[best], t_pick=meas[pick],
-                                     regret=meas[pick] / meas[best] - 1))
+                                     regret=meas[pick] / meas[best] - 1,
+                                     base_dgl_match=dgl == best,
+                                     base_link_match=by_link == best,
+                                     epoch_best=strategy_name(*epoch_best, L) if epoch_best else "",
+                                     epoch_winner_differs=(epoch_best is not None
+                                                           and epoch_best != best)))
     allrows = pd.DataFrame(rows).sort_values(["graph", "model", "L", "h", "interconnect"])
     df, dfp = allrows[~allrows.with_pipeline], allrows[allrows.with_pipeline]
     os.makedirs(os.path.join(HERE, "results", "roofline"), exist_ok=True)
     allrows.to_csv(os.path.join(HERE, "results", "roofline", "agreement.csv"), index=False)
     print(df.to_string(index=False))
     for name, d in [("without pipeline", df), ("with pipeline", dfp)]:
+        miss = d[~d.match]
         print(f"{name}: agreement {d.match.mean():.0%} of {len(d)}, "
-              f"mean regret {d.regret.mean():.1%}, max regret {d.regret.max():.1%}")
+              f"mean regret {d.regret.mean():.1%} (over misses {miss.regret.mean():.1%}), "
+              f"max regret {d.regret.max():.1%}")
+    print(f"baselines (without pipeline): always DGL {df.base_dgl_match.mean():.0%}, "
+          f"PCIe->DGL/NVLink->gsplit {df.base_link_match.mean():.0%}; "
+          f"winner differs under epoch time in {df.epoch_winner_differs.sum()} of {len(df)}")
 
     lines = []
     for r in df.itertuples():
@@ -126,10 +148,15 @@ def main():
                      f"{rp.NET_LABEL[r.interconnect]} & {r.measured_best} & {pick} & "
                      f"{100 * r.regret:.0f}\\% \\\\")
     lines.append(r"\midrule")
-    for name, d in [("without pipeline", df), ("with pipeline as a candidate", dfp)]:
-        lines.append(rf"\multicolumn{{5}}{{l}}{{Agreement / mean regret, {name} ({len(d)})}} & "
+    for name, d in [("roofline, without pipeline", df), ("roofline, with pipeline", dfp)]:
+        miss = d[~d.match]
+        lines.append(rf"\multicolumn{{5}}{{l}}{{{name} ({len(d)}): agreement / mean regret (misses)}} & "
                      rf"\multicolumn{{2}}{{c}}{{{100 * d.match.mean():.0f}\%}} & "
-                     rf"{100 * d.regret.mean():.0f}\% \\")
+                     rf"{100 * d.regret.mean():.0f}\% ({100 * miss.regret.mean():.0f}\%) \\")
+    lines.append(rf"\multicolumn{{5}}{{l}}{{baseline: always DGL}} & "
+                 rf"\multicolumn{{2}}{{c}}{{{100 * df.base_dgl_match.mean():.0f}\%}} & \\")
+    lines.append(rf"\multicolumn{{5}}{{l}}{{baseline: DGL on PCIe, gsplit on NVLink}} & "
+                 rf"\multicolumn{{2}}{{c}}{{{100 * df.base_link_match.mean():.0f}\%}} & \\")
     os.makedirs(os.path.join(HERE, "tables"), exist_ok=True)
     with open(os.path.join(HERE, "tables", "roofline_agreement.tex"), "w") as f:
         f.write("% generated by gen_roofline_agreement.py -- do not edit\n"

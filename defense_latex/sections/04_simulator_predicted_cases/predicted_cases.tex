@@ -19,7 +19,8 @@ for choosing a strategy.
 
 \paraq{Which setting is plotted?}
 Products, GraphSAGE, four layers of fanout $15$, $h = 512$, a global minibatch of $1024$ on four
-GPUs. Its measured training time (forward plus backward per epoch) flips with the interconnect:
+GPUs, taken from the extended sweep used in Section~\ref{sec:results}. We chose it because it is
+the cleanest case in which only the interconnect decides the winner. Its measured training time (forward plus backward per epoch) flips with the interconnect:
 on emulated PCIe DGL takes $8.98$\,s and gsplit $23.62$\,s; on NVLink DGL takes $8.41$\,s and
 gsplit $7.83$\,s. Sampling the setting once gives the points of both panels of
 Figure~\ref{fig:pred-s1}; only the roofs change between them.
@@ -61,8 +62,8 @@ plot suggests.
 \begin{enumerate}\itemsep2pt
   \item \textbf{Locate the ridge} $I^{*} = C/\hat{B}_{\mathrm{net}}$ of the interconnect. Split
         layers to its right are compute-bound, and split parallelism is the default there.
-  \item \textbf{Left of the ridge}, data parallelism wins a layer unless its redundancy exceeds
-        the distance to the ridge, $\delta^{\mathrm{dp}}/\delta^{\mathrm{split}} > I^{*}/I$
+  \item \textbf{Left of the ridge}, data parallelism wins a layer unless its redundancy ratio
+        exceeds $1 + I^{*}/I$ against gsplit, or $I^{*}/I$ against the pipeline
         (Eq.~\eqref{eq:cm-rule}).
   \item \textbf{Judge by the outer layers.} They carry most of the work and most of the
         redundancy. Data parallelism for the layers nearest the seeds and split for the outer

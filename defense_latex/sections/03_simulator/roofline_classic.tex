@@ -10,21 +10,22 @@
 \label{sec:simulator}  % keeps existing \ref{sec:simulator} links alive
 
 \paraq{What is this section for?}
-Section~\ref{sec:hybrids} showed that the fastest strategy---data parallelism, gsplit, or a
-hybrid---changes with the model, the graph, the depth, the hidden size, and the interconnect.
+Sections~\ref{sec:limitations} and~\ref{sec:hybrids} showed that the fastest strategy---data
+parallelism, gsplit, or a hybrid---changes with the model, the graph, the depth, the hidden size,
+and the interconnect.
 This section places every layer of every strategy on a classic roofline. The workload (model,
 graph, partition, strategy) fixes where a point sits, and the hardware (GPU and interconnect)
 fixes where the roofs are. Changing the GPU therefore redraws the roofs over the same points, and
-the bottleneck of each layer can be read off for any machine. Section~\ref{sec:predicted} plots the
-roofline for representative settings, and Section~\ref{sec:results} compares its picture with the
+the bottleneck of each layer can be read off for any machine. Section~\ref{sec:predicted} reads the
+roofline for one setting, and Section~\ref{sec:results} compares its picture with the
 measurements.
 
 \paraq{The model is deliberately simple: a first iteration that guides data collection.}
 The roofline is built from the fewest quantities that still separate the strategies: two numbers
 per layer, both obtained from sampling, and three measured rates for each GPU, interconnect, and
 hidden size. The plan has three steps. First, place every layer of every strategy on the roofline
-for a set of representative settings. Second, collect those points together with the measured
-winner of each setting. Third, inspect the plots for the patterns that separate the winners, and
+for every setting of the sweep. Second, collect those points together with the measured winner of
+each setting. Third, inspect the plots for the patterns that separate the winners, and
 condense them into rules of thumb for picking the strategy from the roofline alone. Assumptions
 that the measurements show to matter are refined in later iterations; until then they are listed
 in red.
@@ -57,7 +58,9 @@ The model adopts the standard roofline assumptions:
         input gradient) and $\phi_{\mathrm{net}} = 2$ times the forward shuffle bytes.}
 \end{enumerate}
 Under (R1)--(R5) the roofline is an upper bound on throughput. It is used to identify the binding
-resource of each layer, not to predict time.
+resource of each layer and to rank strategies against each other, not to predict absolute time.
+Building it costs one sampling-only pass per setting (minutes on a CPU) and one set of
+microbenchmarks per GPU, against a full training run per strategy for the measured sweep.
 
 % ---------------------------------------------------------------------------
 \subsection{Work of one node}
@@ -323,7 +326,7 @@ lower lines.
 \paraq{How is the winner of a layer read off the plot?}
 For layer $\ell$, compare the heights of its pipeline point, its gsplit point, and its
 data-parallel line; the highest wins. Only heights of the same layer are compared, and layers are
-distinguished by colour. Writing $\Delta_\ell = \delta^{\mathrm{dp}}_\ell /
+distinguished by colour. Writing $\rho_\ell = \delta^{\mathrm{dp}}_\ell /
 \delta^{s}_\ell$ for the redundancy ratio against strategy $s$ (gsplit or pipeline, each with its
 own $I_\ell$), Eqs.~\eqref{eq:cm-pipe-point}, \eqref{eq:cm-gsplit-point},
 and~\eqref{eq:cm-dp-point} give
@@ -331,15 +334,15 @@ and~\eqref{eq:cm-dp-point} give
   \boxed{\;
   \begin{aligned}
     \text{data parallelism beats gsplit at layer } \ell
-      &\iff \Delta_\ell \;<\; 1 + \frac{I^{*}}{I_\ell},\\
+      &\iff \rho_\ell \;<\; 1 + \frac{I^{*}}{I_\ell},\\
     \text{data parallelism beats the pipeline at layer } \ell
-      &\iff \Delta_\ell \;<\; \max\!\Big(1,\; \frac{I^{*}}{I_\ell}\Big).
+      &\iff \rho_\ell \;<\; \max\!\Big(1,\; \frac{I^{*}}{I_\ell}\Big).
   \end{aligned}\;}
   \label{eq:cm-rule}
 \end{equation}
 Right of the ridge ($I_\ell > I^{*}$) the pipeline wins whenever data parallelism does more work,
 and gsplit can lose only by the overlap gap. Left of the ridge, data parallelism wins as long as
-the redundancy ratio $\Delta_\ell$ is below $I^{*}/I_\ell$ (or $1 + I^{*}/I_\ell$ against gsplit).
+the redundancy ratio $\rho_\ell$ is below $I^{*}/I_\ell$ (or $1 + I^{*}/I_\ell$ against gsplit).
 \assume{Heights are useful FLOP rates, so strategies are compared per useful row; their
 samplings draw different seeds (DGL from contiguous slices, gsplit from partitions), so
 $u^{\mathrm{dp}}_\ell$ and $u^{\mathrm{split}}_\ell$ differ.}
@@ -369,7 +372,7 @@ data-parallel line, under one flat compute ceiling and one sloped interconnect r
 Region & Condition & Bottleneck & Favours \\
 \midrule
 Communication-bound & $I < I^{*}$ & interconnect & DP if Eq.~\eqref{eq:cm-rule} holds, else split \\
-Compute-bound & $I > I^{*}$ & dense arithmetic or gather & split \\
+Compute-bound & $I > I^{*}$ & dense arithmetic or gather & split, unless DP redundancy is small \\
 \bottomrule
 \end{tabular}
 \end{center}
@@ -432,4 +435,4 @@ inflation $\delta$ come from sampling alone; the roofs come from three measured 
 points lie on the roof, gsplit points lie up to $2\times$ below them, and data-parallel layers are
 flat lines lowered by redundancy. The boxed rule~\eqref{eq:cm-rule} names the winner of each
 layer, and changing the GPU or the interconnect redraws the roofs over the same points.
-Section~\ref{sec:predicted} draws this roofline for representative settings.
+Section~\ref{sec:predicted} reads this roofline for one setting.
