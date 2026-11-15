@@ -205,8 +205,9 @@ GPU, which raises $C$.
 
 \begin{table}[h]
 \centering
-\caption{Measured hardware rates (microbenchmarks on one A100 node; all-to-all over 4 GPUs).
-These are the only hardware inputs of the roofline. \placeholder{} = to be measured.}
+\caption{Measured hardware rates (microbenchmarks on one A100-SXM4-80GB node, fp32, TF32 off;
+$10^5$ destination rows, fanout $e{=}15$; all-to-all over 4 GPUs, bytes received per GPU).
+These are the only hardware inputs of the roofline. Raw data: \texttt{results/microbench/}.}
 \label{tab:cm-microbench}
 \small
 \begin{tabular}{l l c c c c c}
@@ -214,13 +215,15 @@ These are the only hardware inputs of the roofline. \placeholder{} = to be measu
 Rate & Microbenchmark & $h{=}256$ & $512$ & $1024$ & $2048$ & $4096$ \\
 \midrule
 $\hat{P}$ (TFLOP/s) & one layer's GEMM on a sampled block
-  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-$\hat{B}_{\mathrm{mem}}$ (GB/s) & neighbour gather, configured fanout
-  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+  & 15.0 & 18.7 & 19.0 & 19.1 & 19.1 \\
+$\hat{B}_{\mathrm{mem}}$ (GB/s) & neighbour gather, fanout $e$ (CSR SpMM)
+  & 1206 & 1240 & 1259 & 1263 & 1281 \\
+\quad alt.\ kernel & index\_select $+$ sum
+  & 225 & 254 & 197 & 196 & 184 \\
 $\hat{B}_{\mathrm{net}}$ (GB/s), PCIe-emu & NCCL all-to-all of $s_H$-byte rows
-  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+  & 12.2 & 13.1 & 13.3 & 13.3 & 13.3 \\
 $\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $s_H$-byte rows
-  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+  & 154 & 177 & 185 & 196 & 200 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -389,7 +392,7 @@ these:
   \item[\assume{(M5)}] \assume{The pipeline realises (R1) exactly.}
 \end{enumerate}
 
-% --- Kept for the author (not typeset): what changed relative to the earlier draft (roofline.tex).
+% --- Kept for the author (not typeset): what changed relative to the earlier draft (roofline.tex, in git history at 8869a0ac~).
 % Earlier draft                                  | This version                         | Simplification
 % gsplit: compute + shuffle (sum); pipeline: max | all overlap (R1); gsplit = gap below | one roof formula; pipeline gain = gap below roof
 % Axes in useful bytes; x = compute/useful byte  | x = FLOPs per interconnect byte      | classic axes; x independent of GPU
