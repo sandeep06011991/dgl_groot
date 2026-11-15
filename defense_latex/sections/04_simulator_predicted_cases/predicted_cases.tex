@@ -69,8 +69,8 @@ plot suggests.
         ones is the hybrid split point $k$.
   \item \textbf{Pipeline only near the ridge.} Overlapping compute and shuffle gains up to
         $2\times$ over gsplit at the ridge and little far from it (Eq.~\eqref{eq:cm-pipe-gain}).
-        The roofline assumes perfect overlap, so it flatters the pipeline; in the measured sweep the
-        pipeline never wins (Section~\ref{sec:results}).
+        The roofline shows the potential of perfect overlap; our pipeline implementation does not
+        reach it yet (Section~\ref{sec:results}).
 \end{enumerate}
 The rules are a reading aid, not an exact predictor: settings close to a boundary can be called
 wrongly, and Section~\ref{sec:results} counts how often that happens.
