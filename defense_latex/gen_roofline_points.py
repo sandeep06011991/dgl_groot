@@ -31,17 +31,18 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 BYTES_PER_VALUE = 4  # fp32
 MICROBENCH_GPUS = 4  # rates_net.csv was measured with a 4-GPU all-to-all
 
-# Eq. (dense-cost)/(sparse-cost) per destination node with e in-edges:
-#   F(e) = 2[(be*e + bn) h^2 + (ge*e + gn) h]   FLOPs,   S(e) = kappa * e * s_H  bytes.
-# Both are linear in e, so summing them over nodes = plugging in summed n and e.
-# PROVISIONAL forward-pass values (tab:cm-constants is still ??):
-#  SAGE: 2 GEMMs per dst (W_self, W_neigh after the mean); 1 row gathered per edge.
-#  GAT : z = W h charged per edge (M2 over-count; the self loop is one of the edges,
-#        so no extra per-node GEMM); el per edge, er per node, alpha*z per edge;
-#        1 row gathered per edge.
+# Eq. (dense-cost)/(sparse-cost) for one layer's block on one GPU, with n destination rows,
+# e edges and n_src source rows (input width d, output width h):
+#   F = 2[(be*e + bn*n + bs*n_src) d h + (ge*e + gn*n + gs*n_src) h]   FLOPs
+#   S = kappa * e * s_g                                                bytes gathered
+# Forward-pass constants read off DGL's SAGEConv / GATConv:
+#  SAGE (mean): fc_self and fc_neigh on each destination (2 GEMMs per dst); 1 row gathered per edge.
+#  GAT : fc on each SOURCE row once (dst rows are a prefix of the sources) and el = <z, a_l>
+#        per source; er per destination; the weighted sum alpha*z per edge; 1 row of z gathered
+#        per edge. (Edge softmax / LeakyReLU are O(heads) per edge and not counted.)
 MODEL_CONSTANTS = {
-    "sage": dict(kappa=1, be=0, bn=2, ge=0, gn=0),
-    "gat":  dict(kappa=1, be=1, bn=0, ge=2, gn=1),
+    "sage": dict(kappa=1, be=0, bn=2, bs=0, ge=0, gn=0, gs=0),
+    "gat":  dict(kappa=1, be=0, bn=0, bs=1, ge=1, gn=1, gs=1),
 }
 # input-feature width F_in of the outermost layer (utils/dataloading.py get_feat_dim)
 FEAT_DIM = {"products": 100, "papers100M": 128, "orkut": 512, "friendster": 128}
@@ -106,8 +107,8 @@ def busiest_gpu_counts(mb, model, h, rates, ic, L, f_in):
     gathered = a.row_bytes if model == "sage" else h * BYTES_PER_VALUE  # SAGE: input row; GAT: z
     phi_cmp = np.where(outermost, PHI_CMP_INPUT, PHI_CMP)
     # training-step n*F(e_bar) and n*S(e_bar) of the busiest GPU (Eqs. dense-cost, sparse-cost, R5)
-    a["flops"] = phi_cmp * 2 * ((c["be"] * a.e_max + c["bn"] * a.n_max) * d_in * h
-                                + (c["ge"] * a.e_max + c["gn"] * a.n_max) * h)
+    a["flops"] = phi_cmp * 2 * ((c["be"] * a.e_max + c["bn"] * a.n_max + c["bs"] * a.src_max) * d_in * h
+                                + (c["ge"] * a.e_max + c["gn"] * a.n_max + c["gs"] * a.src_max) * h)
     a["bytes_gathered"] = phi_cmp * c["kappa"] * a.e_max * gathered
     a["net_bytes"] = PHI_NET * a.m_max * a.row_bytes
     g = a.bytes_gathered / a.flops                                   # bytes gathered per FLOP

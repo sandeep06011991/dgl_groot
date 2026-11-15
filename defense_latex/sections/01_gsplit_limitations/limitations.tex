@@ -18,27 +18,8 @@ setting for gsplit. For each configuration we report the per-epoch time and, in 
 and backward passes, the training-only time captures its full communication cost; it also
 approximates the epoch time under an ideal cache that eliminates feature loading.
 
-\paraq{Experimental setup.}
-\textbf{Experimental Setup.} All measurements run on a single node with $4{\times}$\textbf{A100-SXM-80GB} GPUs
-connected by NVLink. We emulate a PCIe-class interconnect on the same node by disabling NCCL
-peer-to-peer transfers, which routes the same shuffles over the slower path without changing the
-hardware.
-% Detail: NVLink topology is NV12 (all pairs); the switch is NCCL_P2P_DISABLE=1.
-DGL replicates the full graph on every GPU and gathers features over UVA from host-pinned memory.
-% Detail (already stated above): gsplit runs at k=0; neither system uses a feature cache.
-We train \texttt{sage} and \texttt{gat} models with a neighbour fanout of \textbf{15} per layer and a
-global batch size of \textbf{1024} (divided across the four GPUs). Each configuration runs for \textbf{3 epochs}, and all reported times
-are the mean \emph{per-epoch} time over these epochs. We evaluate \textbf{products} and
-\textbf{papers100M}.
-% Detail: world size 4 (= the 4 GPUs above). arxiv is omitted because it is too small to stress
-% either system.
-% Implementation detail: because we measure time rather than accuracy, node features are synthetic
-% (--random_feat): a full-size random tensor keeps feature movement realistic without loading the
-% real features.
-% Protocol detail: a per-cell wall-clock cap of 1200 s records a t/o, and a cell that exhausts GPU
-% memory records oom. No cell in the current tables hit either.
-% [TODO: Draft version -- each section currently has its own experimental-setup paragraph;
-%  consider hoisting a shared setup into the chapter intro.]
+\paraq{How are the systems run?}
+All measurements use the experimental setup of the chapter introduction.
 
 \paraq{Which configurations do we measure?}
 We report one table per graph (Tables~\ref{tab:sec1-products} and~\ref{tab:sec1-papers}).

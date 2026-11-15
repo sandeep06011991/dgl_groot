@@ -48,8 +48,8 @@ The standard roofline assumptions (R) and those specific to our model (M):
         reads input features of width $F_{\mathrm{in}}$; the output layer is treated as width $h$.
         Sampling and feature loading are not modelled, so the roofline is compared with measured
         forward plus backward time.}
-  \item[\assume{(M2)}] \assume{\textbf{GAT dense work} is charged per edge, an over-count: $Wh_v$ is
-        computed once per source row.}
+  \item[\assume{(M2)}] \assume{\textbf{GAT attention.} The edge-wise attention passes (score,
+        LeakyReLU, edge softmax) are scalar per head and per edge and are not counted.}
   \item[\assume{(M3)}] \assume{\textbf{Busiest GPU.} Per minibatch, the per-GPU maxima of rows,
         edges, and shuffled rows stand for the slowest GPU (they may come from different GPUs).}
   \item[\assume{(M4)}] \assume{\textbf{Per useful row.} Strategies are compared per useful row,
@@ -62,32 +62,35 @@ The standard roofline assumptions (R) and those specific to our model (M):
 \subsection{What a layer costs}
 \label{sec:cm-node}
 
-\paraq{How are the compute and the gather of one node counted?}
+\paraq{How are the compute and the gather of a layer counted?}
 A layer reads rows of width $d_\ell$: $h$ for hidden layers, $F_{\mathrm{in}}$ for the outermost
-layer (M1). For a destination node with $e$ sampled in-edges, the forward dense work and the
-gathered bytes are
+layer (M1). A GPU's block of layer $\ell$ has $n$ destination rows, $n_{\mathrm{src}}$ source rows,
+and $e$ edges; its forward dense work and gathered bytes are
 \begin{align}
-  F(e) &= 2\big[(\beta_e\, e + \beta_n)\, d_\ell h + (\gamma_e\, e + \gamma_n)\, h\big]
+  F_\ell &= 2\big[(\beta_e\, e + \beta_n\, n + \beta_s\, n_{\mathrm{src}})\, d_\ell h
+              + (\gamma_e\, e + \gamma_n\, n + \gamma_s\, n_{\mathrm{src}})\, h\big]
        \quad\text{FLOPs}, \label{eq:dense-cost}\\
-  S(e) &= \kappa\, e\, s_{\mathrm{g}} \quad\text{bytes,} \label{eq:sparse-cost}
+  S_\ell &= \kappa\, e\, s_{\mathrm{g}} \quad\text{bytes,} \label{eq:sparse-cost}
 \end{align}
-with $\beta$ the matrix--vector and $\gamma$ the vector--vector products per edge and per node,
-$\kappa$ the rows gathered per edge, and $s_{\mathrm{g}}$ the gathered row size (the input row
-for SAGE, the transformed row $z_v$ for GAT). Table~\ref{tab:cm-constants} gives the constants.
+with $\beta$ the matrix--vector and $\gamma$ the vector--vector products per edge, per destination,
+and per source row, $\kappa$ the rows gathered per edge, and $s_{\mathrm{g}}$ the gathered row size
+(the input row for SAGE, the transformed row $z_v$ for GAT). The constants
+(Table~\ref{tab:cm-constants}) are read off DGL's \texttt{SAGEConv} and \texttt{GATConv}.
 
 \begin{table}[h]
 \centering
-\caption{Model constants (forward pass, per destination node). SAGE: two GEMMs per destination,
-one gathered row per edge. GAT: one GEMM per edge (M2), attention dot products per edge and per
-node, one gathered row per edge.}
+\caption{Model constants (forward pass). SAGE: two GEMMs per destination ($W^{\mathrm{self}}$,
+$W^{\mathrm{neigh}}$ after the mean), one gathered row per edge. GAT: one GEMM and one attention
+dot product per source row (destinations are a prefix of the sources), one attention dot product
+per destination, one weighted sum per edge, one gathered row of $z$ per edge.}
 \label{tab:cm-constants}
 \small
-\begin{tabular}{l c c c c c}
+\begin{tabular}{l c c c c c c c}
 \toprule
-Model & $\kappa$ & $\beta_e$ & $\beta_n$ & $\gamma_e$ & $\gamma_n$ \\
+Model & $\kappa$ & $\beta_e$ & $\beta_n$ & $\beta_s$ & $\gamma_e$ & $\gamma_n$ & $\gamma_s$ \\
 \midrule
-SAGE & 1 & 0 & 2 & 0 & 0 \\
-GAT  & 1 & 1 & 0 & 2 & 1 \\
+SAGE & 1 & 0 & 2 & 0 & 0 & 0 & 0 \\
+GAT  & 1 & 0 & 0 & 1 & 1 & 1 & 1 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -99,8 +102,8 @@ GAT  & 1 & 1 & 0 & 2 & 1 \\
 \paraq{Which counts does a layer need, and how are they obtained?}
 One sampling pass replays the loaders of DGL, gsplit (with and without a data-parallel prefix),
 and the pipeline, without features or training. For each layer $\ell$ (counted from the seeds)
-it records, on the busiest GPU (M3), the destination rows $n$, their average fanout $\bar{e}$, and
-the rows $m$ shuffled in from other GPUs ($m = 0$ for data-parallel layers), plus the distinct
+it records, on the busiest GPU (M3), the destination rows $n$, the source rows $n_{\mathrm{src}}$,
+the edges $e$, and the rows $m$ shuffled in from other GPUs ($m = 0$ for data-parallel layers), plus the distinct
 destination rows $u$ over all $G$ GPUs. gsplit and the hybrids use a global minibatch of $1024$
 seeds split across GPUs by partition; the pipeline samples one of its two micro-batches of $512$;
 DGL gives each GPU $256$ seeds. At the first split layer of a hybrid ($\ell = k$) each GPU still
@@ -115,7 +118,7 @@ computes its own data-parallel frontier, so that layer carries redundancy.
 The $x$-axis is the arithmetic intensity with respect to the interconnect: training FLOPs per
 shuffled byte,
 \begin{equation}
-  I_\ell = \frac{\phi_{\mathrm{cmp}}\, n\, F(\bar{e})}{\phi_{\mathrm{net}}\, m\, s_\ell},
+  I_\ell = \frac{\phi_{\mathrm{cmp}}\, F_\ell}{\phi_{\mathrm{net}}\, m\, s_\ell},
   \qquad s_\ell = d_\ell\, b,
   \label{eq:cm-x}
 \end{equation}
@@ -131,7 +134,7 @@ is the work inflation of the busiest GPU: redundancy for DGL, imbalance for gspl
 \paraq{What are the roofs?}
 The compute ceiling is flat,
 \begin{equation}
-  C = \min\!\Big(\hat{P},\; \frac{\hat{B}_{\mathrm{mem}}}{g}\Big), \qquad g = \frac{S}{F},
+  C = \min\!\Big(\hat{P},\; \frac{\hat{B}_{\mathrm{mem}}}{g}\Big), \qquad g = \frac{S_\ell}{F_\ell},
   \label{eq:roof-cmp}
 \end{equation}
 the lower of the dense rate and the gather bandwidth divided by the bytes gathered per FLOP. The
@@ -178,7 +181,7 @@ $\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $h$-value rows
 \paraq{How long does a training step of one layer take?}
 On the busiest GPU,
 \begin{equation}
-  T^{\mathrm{cmp}}_\ell = \frac{\phi_{\mathrm{cmp}}\, n\, F(\bar{e})}{C},
+  T^{\mathrm{cmp}}_\ell = \frac{\phi_{\mathrm{cmp}}\, F_\ell}{C},
   \qquad
   T^{\mathrm{net}}_\ell = \frac{\phi_{\mathrm{net}}\, m\, s_\ell}{\hat{B}_{\mathrm{net}}}.
   \label{eq:cm-times}

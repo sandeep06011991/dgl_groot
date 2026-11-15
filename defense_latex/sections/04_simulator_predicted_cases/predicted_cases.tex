@@ -73,14 +73,14 @@ both interconnects ($246.7$ against $331.2$\,s on PCIe, $163.3$ against $332.4$\
 
 \paraq{Setting 3: why does a hybrid win (GAT, $L{=}3$, $h{=}1024$)?}
 GAT does much more dense work per shuffled row than SAGE, so all its layers lie far right of both
-ridges ($I \approx 9{,}000$--$11{,}000$) and are compute-bound. The plot then compares DGL's
-redundancy with gsplit's imbalance layer by layer. DGL is higher at $\ell = 0, 1$, where its
-redundancy is small, and gsplit at the outermost layer $\ell = 2$, where DGL's redundancy reaches
-$1.13$. The per-layer reading is exactly the hybrid with $k = 2$: recompute the two layers nearest
-the seeds, split the last. It is the measured winner on both interconnects ($11.68$\,s on PCIe,
+ridges ($I \approx 4{,}300$--$9{,}500$) and are compute-bound. The plot then compares DGL's
+redundancy with gsplit's imbalance layer by layer. On NVLink, DGL is higher at $\ell = 0, 1$, where
+its redundancy is small, and gsplit at the outermost layer $\ell = 2$ ($18.1$ against
+$16.9$\,TFLOP/s), where DGL's redundancy reaches $1.13$. The per-layer reading is exactly the
+hybrid with $k = 2$: recompute the two layers nearest the seeds, split the last. It is the measured winner on both interconnects ($11.68$\,s on PCIe,
 $10.84$\,s on NVLink, against $13.04$/$13.06$ for DGL and $13.96$/$11.18$ for gsplit).
-\flag{On PCIe the outermost layer is a near-tie between gsplit and DGL ($16.3$ against
-$16.9$\,TFLOP/s), and GAT's high intensity is partly the over-count of its dense work (M2).}
+\flag{On PCIe the outermost layer favours split parallelism only when its shuffle is overlapped
+(the pipeline point); serialised gsplit lies below DGL there ($13.9$ against $16.9$\,TFLOP/s).}
 
 % ---------------------------------------------------------------------------
 \subsection{Rules of thumb}

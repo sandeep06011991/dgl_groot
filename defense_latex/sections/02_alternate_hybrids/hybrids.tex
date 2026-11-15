@@ -113,13 +113,11 @@ interconnect.
 \label{sec:hybrid-empirical}
 
 \paraq{How do we measure the hybrids?}
-We measure every hybrid configuration on the same grid as Section~\ref{sec:limitations} and with
-the same setup: $4{\times}$A100-SXM-80GB GPUs, NVLink or emulated PCIe, a $0\%$ feature cache, a
-fanout of $15$, a global batch size of $1024$, and $3$ epochs per configuration, with the per-epoch
-and training-only times reported as in Section~\ref{sec:limitations}. For each configuration we
-run the data-parallel hybrid at every interior split point $k\in\{1,\ldots,L{-}1\}$ and the
-pure pipeline hybrid ($k{=}0$, two micro-batches of $512$ seeds each), and we compare the
-fastest data-parallel variant and the pipeline against baseline gsplit ($k{=}0$, no pipeline).
+We measure every hybrid configuration on the same grid as Section~\ref{sec:limitations}, with the
+setup of the chapter introduction, and report per-epoch and training-only times as there. For each
+configuration we run the data-parallel hybrid at every interior split point
+$k\in\{1,\ldots,L{-}1\}$ and the pipeline hybrid (two micro-batches of $512$ seeds each), and we
+compare the fastest data-parallel variant and the pipeline against baseline gsplit ($k{=}0$).
 % Detail: pipeline variants with k>0 mix the pipeline with the data-parallel hybrid, so they
 % are not measured; the pipeline column isolates the effect of overlap alone.
 % Detail: k = L (pure data parallelism) is not run as a gsplit variant; DGL in

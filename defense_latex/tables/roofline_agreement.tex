@@ -15,7 +15,7 @@ papers100M & GAT & 2 & 256 & PCIe-emu & DGL & DGL & 0\% \\
 papers100M & GAT & 2 & 1024 & NVLink & DGL & \textbf{hybrid k=1} & 30\% \\
 papers100M & GAT & 2 & 1024 & PCIe-emu & DGL & \textbf{hybrid k=1} & 15\% \\
 papers100M & GAT & 3 & 256 & NVLink & DGL & \textbf{hybrid k=1} & 6\% \\
-papers100M & GAT & 3 & 256 & PCIe-emu & DGL & \textbf{gsplit} & 13\% \\
+papers100M & GAT & 3 & 256 & PCIe-emu & DGL & DGL & 0\% \\
 papers100M & GAT & 3 & 512 & PCIe-emu & DGL & \textbf{gsplit} & 18\% \\
 papers100M & GAT & 3 & 1024 & NVLink & hybrid k=2 & \textbf{hybrid k=1} & 9\% \\
 papers100M & GAT & 3 & 1024 & PCIe-emu & hybrid k=2 & hybrid k=2 & 0\% \\
@@ -23,7 +23,7 @@ papers100M & GAT & 3 & 4096 & NVLink & hybrid k=2 & \textbf{hybrid k=1} & 4\% \\
 papers100M & GAT & 3 & 4096 & PCIe-emu & hybrid k=2 & hybrid k=2 & 0\% \\
 papers100M & GAT & 4 & 256 & PCIe-emu & DGL & \textbf{gsplit} & 34\% \\
 papers100M & GAT & 4 & 512 & PCIe-emu & DGL & \textbf{gsplit} & 12\% \\
-papers100M & GAT & 4 & 1024 & NVLink & hybrid k=3 & \textbf{hybrid k=1} & 6\% \\
+papers100M & GAT & 4 & 1024 & NVLink & hybrid k=3 & \textbf{gsplit} & 9\% \\
 papers100M & GAT & 4 & 1024 & PCIe-emu & hybrid k=3 & \textbf{gsplit} & 26\% \\
 papers100M & SAGE & 2 & 256 & PCIe-emu & DGL & DGL & 0\% \\
 papers100M & SAGE & 2 & 1024 & NVLink & DGL & DGL & 0\% \\
@@ -40,9 +40,9 @@ papers100M & SAGE & 4 & 256 & PCIe-emu & DGL & DGL & 0\% \\
 papers100M & SAGE & 4 & 512 & PCIe-emu & DGL & DGL & 0\% \\
 papers100M & SAGE & 4 & 1024 & NVLink & hybrid k=3 & \textbf{gsplit} & 30\% \\
 papers100M & SAGE & 4 & 1024 & PCIe-emu & hybrid k=3 & hybrid k=3 & 0\% \\
-products & GAT & 2 & 256 & NVLink & DGL & DGL & 0\% \\
+products & GAT & 2 & 256 & NVLink & DGL & \textbf{gsplit} & 8\% \\
 products & GAT & 2 & 256 & PCIe-emu & DGL & DGL & 0\% \\
-products & GAT & 2 & 1024 & NVLink & DGL & DGL & 0\% \\
+products & GAT & 2 & 1024 & NVLink & DGL & \textbf{gsplit} & 6\% \\
 products & GAT & 2 & 1024 & PCIe-emu & DGL & DGL & 0\% \\
 products & GAT & 3 & 256 & NVLink & hybrid k=2 & \textbf{gsplit} & 5\% \\
 products & GAT & 3 & 256 & PCIe-emu & DGL & DGL & 0\% \\
@@ -51,11 +51,11 @@ products & GAT & 3 & 512 & PCIe-emu & DGL & DGL & 0\% \\
 products & GAT & 3 & 1024 & NVLink & hybrid k=2 & \textbf{gsplit} & 3\% \\
 products & GAT & 3 & 1024 & PCIe-emu & hybrid k=2 & \textbf{DGL} & 12\% \\
 products & GAT & 3 & 4096 & NVLink & hybrid k=2 & \textbf{gsplit} & 1\% \\
-products & GAT & 3 & 4096 & PCIe-emu & hybrid k=2 & \textbf{DGL} & 17\% \\
+products & GAT & 3 & 4096 & PCIe-emu & hybrid k=2 & hybrid k=2 & 0\% \\
 products & GAT & 4 & 256 & NVLink & gsplit & gsplit & 0\% \\
-products & GAT & 4 & 256 & PCIe-emu & DGL & \textbf{gsplit} & 6\% \\
+products & GAT & 4 & 256 & PCIe-emu & DGL & DGL & 0\% \\
 products & GAT & 4 & 512 & NVLink & gsplit & gsplit & 0\% \\
-products & GAT & 4 & 512 & PCIe-emu & DGL & \textbf{gsplit} & 20\% \\
+products & GAT & 4 & 512 & PCIe-emu & DGL & DGL & 0\% \\
 products & GAT & 4 & 1024 & NVLink & gsplit & \textbf{hybrid k=1} & 1\% \\
 products & GAT & 4 & 1024 & PCIe-emu & hybrid k=3 & \textbf{gsplit} & 14\% \\
 products & SAGE & 2 & 256 & NVLink & DGL & DGL & 0\% \\

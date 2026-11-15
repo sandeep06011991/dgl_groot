@@ -59,14 +59,14 @@ minibatch $1024$. Every setting is listed in Table~\ref{tab:final-full}.}
 For GraphSAGE it picks the measured winner in $76\%$ of the settings, against $57\%$ for always
 picking DGL and $51\%$ for the link rule, without fitting anything to the measured times; on
 products it reaches $82\%$ with a mean regret of $1\%$. \flag{For GAT it is wrong more often than
-right ($38\%$), below both baselines, and over all $69$ settings it agrees in $58\%$.}
+right ($44\%$), below both baselines, and over all $69$ settings it agrees in $61\%$.}
 
 \paraq{Where does it miss, and why?}
 \flag{Three sources account for the misses.}
-First, GAT: \flag{the roofline picks gsplit or a hybrid where DGL wins, most often on
-papers100M. GAT's dense work is charged per edge (M2), which overstates compute relative to the
-shuffle and pushes GAT's points right of the ridge, where gsplit is favoured; counting the dense
-work once per source row is the first refinement.}
+First, GAT: \flag{the roofline often picks gsplit or a hybrid where DGL wins, most often on
+papers100M. GAT spends part of each layer in edge-wise attention passes (score, LeakyReLU, edge
+softmax) that the model does not count (M2); they are memory-bound and shift the balance between
+compute and shuffle that the roofline relies on. Counting them is the first refinement.}
 Second, settings where a hybrid wins: \flag{the roofline often picks a neighbouring split point or
 a pure strategy, because the redundancy of the switch layer and the latency of small layers (R2)
 are only approximated.} The per-layer reading of Section~\ref{sec:predicted} still identifies
@@ -92,7 +92,7 @@ random features, and no feature cache.}
 \paraq{Conclusion of this section.}
 Built from one sampling pass and three measured rates, the roofline picks the fastest of DGL,
 gsplit, and the hybrids for GraphSAGE far more often than simple rules do, and a wrong pick costs
-little on average. \flag{For GAT it inherits the over-count of dense work and is not yet
+little on average. \flag{For GAT, whose edge-wise attention is not modelled, it is not yet
 reliable.} For the pipeline it shows potential that \flag{our implementation does not yet
 realise}. That is the accuracy we expect of a first-iteration model, and enough to support the
 rules of thumb of Section~\ref{sec:pred-algo}.
@@ -117,5 +117,5 @@ and~\ref{sec:predicted}), and for GraphSAGE its pick agrees with the measured wi
 \paraq{What remains open?}
 A pipeline implementation with less synchronisation could approach the overlap the roofline
 credits it with; the agreement should be checked on more GPUs and machines; and the model's
-weakest assumptions---GAT's dense-work count and the latency of small layers---are the first to
-refine.
+weakest assumptions---GAT's uncounted attention passes and the latency of small layers---are
+the first to refine.
