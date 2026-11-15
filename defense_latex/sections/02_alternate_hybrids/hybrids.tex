@@ -18,10 +18,11 @@ We then measure both against gsplit (Section~\ref{sec:hybrid-empirical}).
 \paraq{How does the data-parallel hybrid remove shuffles?}
 The model's layers are divided at a \textbf{split point} $k$. Layers $0,\ldots,k{-}1$, counted
 from the seed nodes, run as \textbf{data parallelism}: each GPU samples and computes the
-neighbourhood of its own seed shard on replicated features, with no cross-GPU shuffle. At
-layer $k$ the per-GPU micro-batches are concatenated into the global batch, every node is
-assigned to its owning partition, and layers $k,\ldots,L{-}1$ run as gsplit-style
-\textbf{split} parallelism, with a shuffle before each layer (Figure~\ref{fig:data-split}).
+neighbourhood of its own seed shard on replicated features, with no cross-GPU shuffle. Layers
+$k,\ldots,L{-}1$ run as gsplit-style \textbf{split} parallelism, with a shuffle before each
+layer (Figure~\ref{fig:data-split}): at layer $k$ each GPU still computes its own frontier but
+receives that layer's inputs from their owning GPUs, and from layer $k{+}1$ on every node is
+computed by its owner.
 Setting $k{=}0$ recovers full split (gsplit), and $k{=}L$ recovers pure data parallelism.
 % Detail: in the code k is num_redundant_layers (config.num_redundant_layer -> model num_dp and
 % sampler SetNumDP); DDP already all-reduces parameter gradients, so the DP prefix needs no new
@@ -39,9 +40,8 @@ replicate, so increasing $k$ removes shuffles in the order where replication cos
   \input{figures/data_split}
   \caption{\textbf{Data-parallel hybrid} with $L{=}4$ layers and split point $k{=}2$ on
   four GPUs. Layers $0$ and $1$ run data-parallel: each GPU computes its own micro-batch with
-  no cross-GPU communication (blue). At the switch point the micro-batches are concatenated
-  into the global batch and each node is assigned to its owning partition; layers $2$ and $3$
-  then run split, with an all-to-all shuffle before each layer (red bands). A larger $k$
+  no cross-GPU communication (blue). Layers $2$ and $3$ run split, with an all-to-all shuffle
+  before each layer (red bands); from layer $3$ on every node is computed by its owning GPU. A larger $k$
   removes more shuffles but makes each GPU recompute more of the early-layer work.}
   \label{fig:data-split}
 \end{figure}
@@ -115,7 +115,7 @@ interconnect.
 \paraq{How do we measure the hybrids?}
 We measure every hybrid configuration on the same grid as Section~\ref{sec:limitations} and with
 the same setup: $4{\times}$A100-SXM-80GB GPUs, NVLink or emulated PCIe, a $0\%$ feature cache, a
-fanout of $15$, a batch size of $1024$, and $3$ epochs per configuration, with the per-epoch
+fanout of $15$, a global batch size of $1024$, and $3$ epochs per configuration, with the per-epoch
 and training-only times reported as in Section~\ref{sec:limitations}. For each configuration we
 run the data-parallel hybrid at every interior split point $k\in\{1,\ldots,L{-}1\}$ and the
 pure pipeline hybrid ($k{=}0$, two micro-batches of $512$ seeds each), and we compare the
@@ -182,4 +182,4 @@ improve on gsplit in any of them. Choosing a configuration therefore requires se
 strategy, the split point $k$, and the hardware. This section performed that search by brute
 force, measuring every variant on real multi-GPU hardware, which is too expensive to repeat
 for every new model, graph, or machine. Section~\ref{sec:roofline} replaces this sweep with a
-cost model that estimates each configuration cheaply.
+roofline that explains and ranks the strategies from one sampling pass.

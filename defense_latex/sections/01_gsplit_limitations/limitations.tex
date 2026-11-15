@@ -27,7 +27,7 @@ hardware.
 DGL replicates the full graph on every GPU and gathers features over UVA from host-pinned memory.
 % Detail (already stated above): gsplit runs at k=0; neither system uses a feature cache.
 We train \texttt{sage} and \texttt{gat} models with a neighbour fanout of \textbf{15} per layer and a
-batch size of \textbf{1024}. Each configuration runs for \textbf{3 epochs}, and all reported times
+global batch size of \textbf{1024} (divided across the four GPUs). Each configuration runs for \textbf{3 epochs}, and all reported times
 are the mean \emph{per-epoch} time over these epochs. We evaluate \textbf{products} and
 \textbf{papers100M}.
 % Detail: world size 4 (= the 4 GPUs above). arxiv is omitted because it is too small to stress
