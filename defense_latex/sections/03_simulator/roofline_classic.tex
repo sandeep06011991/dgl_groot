@@ -49,9 +49,12 @@ The model adopts the standard roofline assumptions:
   \item[\assume{(R4)}] \assume{\textbf{Compulsory traffic.} Bytes are counted from the algorithm:
         each pulled row crosses the interconnect once and each neighbour row is gathered once per
         edge; caches are ignored.}
-  \item[\assume{(R5)}] \assume{\textbf{One kernel per point.} Each layer is analysed in isolation;
-        successive layers add, and the backward pass scales every resource by the same factor and
-        is dropped.}
+  \item[\assume{(R5)}] \assume{\textbf{One kernel per point, training time.} Each layer is
+        analysed in isolation and successive layers add. The modelled time is a training step,
+        forward plus backward: the backward pass repeats the dense work twice (input and weight
+        gradients) and sends each shuffled row back once (its gradient), so a step costs
+        $\phi_{\mathrm{cmp}} = 3$ times the forward FLOPs ($2$ for the input layer, which has no
+        input gradient) and $\phi_{\mathrm{net}} = 2$ times the forward shuffle bytes.}
 \end{enumerate}
 Under (R1)--(R5) the roofline is an upper bound on throughput. It is used to identify the binding
 resource of each layer, not to predict time.
@@ -87,25 +90,34 @@ contiguous memory, bound by the arithmetic rate) with \emph{sparse} work (the ag
 $N(u)$, which reads neighbour rows at scattered addresses and is bound by gather bandwidth).
 
 \paraq{How are the dense and sparse work of a node counted?}
-Every hidden layer has width $h$; a hidden row is $s_H = h\,b$ bytes with $b$ bytes per value.
+Every hidden layer has width $h$. A layer reads input rows of width $d_\ell$: $d_\ell = h$ for the
+hidden layers and $d_\ell = F_{\mathrm{in}}$, the input-feature width, for the outermost layer
+$\ell = L-1$. An input row is $s_\ell = d_\ell\, b$ bytes with $b$ bytes per value; this is also the
+size of a row the shuffle moves into layer $\ell$. The outermost layer matters most: it has the
+largest frontier and the most shuffled rows, and $F_{\mathrm{in}}$ ($100$ for products, $128$ for
+papers100M) is much smaller than the hidden sizes we sweep.
 For a node with $e$ sampled in-edges, a model is described by five constants read off its layer
 equations (Table~\ref{tab:cm-constants}):
 \begin{itemize}\itemsep1pt
-  \item $\kappa$: hidden rows gathered per edge;
-  \item $\beta_e, \beta_n$: vector--matrix products ($h^2$ multiply--adds each) per edge and per
+  \item $\kappa$: rows gathered per edge;
+  \item $\beta_e, \beta_n$: vector--matrix products ($d_\ell h$ multiply--adds each) per edge and per
         node;
   \item $\gamma_e, \gamma_n$: vector--vector products ($h$ multiply--adds each) per edge and per
         node.
 \end{itemize}
 Counting a multiply--add as two FLOPs,
 \begin{align}
-  F(e) &= 2\big[(\beta_e\, e + \beta_n)\, h^{2} + (\gamma_e\, e + \gamma_n)\, h\big]
+  F(e) &= 2\big[(\beta_e\, e + \beta_n)\, d_\ell h + (\gamma_e\, e + \gamma_n)\, h\big]
        \quad\text{FLOPs}, \label{eq:dense-cost}\\
-  S(e) &= \kappa\, e\, s_H \quad\text{bytes gathered.} \label{eq:sparse-cost}
+  S(e) &= \kappa\, e\, s_{\mathrm{g}} \quad\text{bytes gathered,} \label{eq:sparse-cost}
 \end{align}
-\assume{All hidden layers have width $h$; input-feature loading and the first layer's feature
-width are not modelled. The per-edge dense products are charged to every destination, which
-over-counts GAT, whose $z_v$ is computed once per source row.}
+where the gathered row is the layer's input row for SAGE ($s_{\mathrm{g}} = s_\ell$) and the
+transformed row $z_v$ for GAT ($s_{\mathrm{g}} = h\,b$). These are forward counts; the training
+time multiplies them by $\phi_{\mathrm{cmp}}$ and $\phi_{\mathrm{net}}$ of (R5).
+\assume{All hidden layers have width $h$, and the output layer's width (the number of classes) is
+treated as $h$. Feature loading and sampling are not modelled; the roofline is compared with the
+measured forward plus backward time. The per-edge dense products are charged to every destination,
+which over-counts GAT, whose $z_v$ is computed once per source row.}
 
 \begin{table}[h]
 \centering
@@ -137,16 +149,26 @@ seeds, as in Section~\ref{sec:hybrid-dp}), and GPU $q$, sampling gives
   \item $m_{\ell,q}$: rows received over the interconnect ($m=0$ for data parallelism);
   \item $u_\ell$: distinct destination rows of the layer over all $G$ GPUs.
 \end{itemize}
-The shuffle synchronises the GPUs, so a layer ends when its slowest GPU does. Each layer is
-therefore represented by its \textbf{busiest GPU} $q^{*}$, the GPU with the longest time under (R1)
-(Section~\ref{sec:cm-point}). \assume{Representing the layer by its busiest GPU ignores how the
-other GPUs are loaded.} Below, $n$, $\bar{e}$, $m$ denote the counts of $q^{*}$ in layer $\ell$.
+The sampling replays the loaders of the trained systems exactly, minibatch by minibatch.
+gsplit, the hybrids, and the pipeline use a global minibatch of $B = 1024$ seeds, divided among the
+GPUs in proportion to each partition's share of the training nodes; the pipeline samples one of
+its two micro-batches of $B/2$. The DGL baseline gives each GPU $B/G$ seeds from its own slice of
+the training nodes. A split layer sends every requested row to the GPU that owns it, so from the
+second split layer on each row is computed once, by its owner.
+
+The shuffle synchronises the GPUs at every minibatch, so a layer ends when its slowest GPU does.
+Each layer is therefore represented by its \textbf{busiest GPU} $q^{*}$: per minibatch, the
+largest per-GPU counts $n$, $e$, and $m$ over the $G$ GPUs, summed over the sampled minibatches.
+\assume{Each count is maximised on its own, so the three maxima may come from different GPUs;
+this over-estimates the busiest GPU slightly.} Below, $n$, $\bar{e}$, $m$ denote these counts of
+layer $\ell$.
 
 \paraq{The $x$-axis is the operational intensity with respect to the interconnect.}
 The $x$-coordinate of a layer is the number of FLOPs its busiest GPU performs per byte it receives
 over the interconnect,
 \begin{equation}
-  I_\ell \;=\; \frac{n\, F(\bar{e})}{m\, s_H} \quad \text{FLOP/byte}.
+  I_\ell \;=\; \frac{\phi_{\mathrm{cmp}}\, n\, F(\bar{e})}{\phi_{\mathrm{net}}\, m\, s_\ell}
+  \quad \text{FLOP/byte}.
   \label{eq:cm-x}
 \end{equation}
 This is the classic arithmetic intensity, with the interconnect in place of DRAM. It depends only
@@ -220,9 +242,9 @@ $\hat{B}_{\mathrm{mem}}$ (GB/s) & neighbour gather, fanout $e$ (CSR SpMM)
   & 1206 & 1240 & 1259 & 1263 & 1281 \\
 \quad alt.\ kernel & index\_select $+$ sum
   & 225 & 254 & 197 & 196 & 184 \\
-$\hat{B}_{\mathrm{net}}$ (GB/s), PCIe-emu & NCCL all-to-all of $s_H$-byte rows
+$\hat{B}_{\mathrm{net}}$ (GB/s), PCIe-emu & NCCL all-to-all of $h$-value rows
   & 12.2 & 13.1 & 13.3 & 13.3 & 13.3 \\
-$\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $s_H$-byte rows
+$\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $h$-value rows
   & 154 & 177 & 185 & 196 & 200 \\
 \bottomrule
 \end{tabular}
@@ -234,14 +256,13 @@ $\hat{B}_{\mathrm{net}}$ (GB/s), NVLink & NCCL all-to-all of $s_H$-byte rows
 \label{sec:cm-strategies}
 
 \paraq{Each layer of each strategy is one point, computed from two times.}
-On GPU $q$, layer $\ell$ needs compute time and transfer time
+On its busiest GPU, a training step of layer $\ell$ needs compute time and transfer time
 \begin{equation}
-  T^{\mathrm{cmp}}_{\ell,q} = \frac{n_{\ell,q}\, F(\bar{e}_{\ell,q})}{C},
+  T^{\mathrm{cmp}}_{\ell} = \frac{\phi_{\mathrm{cmp}}\, n\, F(\bar{e})}{C},
   \qquad
-  T^{\mathrm{net}}_{\ell,q} = \frac{m_{\ell,q}\, s_H}{\hat{B}_{\mathrm{net}}}.
+  T^{\mathrm{net}}_{\ell} = \frac{\phi_{\mathrm{net}}\, m\, s_\ell}{\hat{B}_{\mathrm{net}}}.
   \label{eq:cm-times}
 \end{equation}
-The busiest GPU is $q^{*} = \arg\max_q \max(T^{\mathrm{cmp}}_{\ell,q}, T^{\mathrm{net}}_{\ell,q})$,
 and the layer's point is
 \begin{equation}
   \big(I^{s}_\ell,\; y^{s}_\ell\big)
@@ -250,19 +271,23 @@ and the layer's point is
   \label{eq:cm-point}
 \end{equation}
 where $I^{s}_\ell$ and $\delta^{s}_\ell$ are Eqs.~\eqref{eq:cm-x} and~\eqref{eq:cm-redundancy}
-evaluated on $q^{*}$. An $L$-layer model gives $L$ points per strategy.
+evaluated on the busiest GPU of strategy $s$. An $L$-layer model gives $L$ points per strategy.
 
 \paraq{A split layer whose compute and shuffle overlap sits on the roof.}
-A split layer computes each row once, so $\delta^{\mathrm{split}}_\ell$ reflects imbalance only and
-is close to $1$. When compute and shuffle overlap, as (R1) assumes and as the pipeline hybrid
-arranges across two micro-batches, the point lies on the roof:
+A gsplit layer computes each row once, so $\delta^{\mathrm{split}}_\ell$ reflects imbalance only
+and is close to $1$. (The first split layer of a hybrid, $\ell = k$, is the exception: each GPU
+still computes its own data-parallel frontier there, so its $\delta$ includes redundancy.) The
+pipeline overlaps compute and shuffle across its two micro-batches, as (R1) assumes, so its point
+lies on the roof. Its $I^{\mathrm{pipe}}$ and $\delta^{\mathrm{pipe}}$ come from its own
+micro-batch of $B/2$ seeds, which overlaps less with itself than a full minibatch does:
 \begin{equation}
-  y^{\mathrm{pipe}} \;=\; \frac{1}{\delta^{\mathrm{split}}}\,
-      \min\!\big( C,\; \hat{B}_{\mathrm{net}}\, I \big).
+  y^{\mathrm{pipe}} \;=\; \frac{1}{\delta^{\mathrm{pipe}}}\,
+      \min\!\big( C,\; \hat{B}_{\mathrm{net}}\, I^{\mathrm{pipe}} \big).
   \label{eq:cm-pipe-point}
 \end{equation}
-\assume{The pipeline is taken to realise (R1) exactly; micro-batch fill and drain and the lower
-efficiency of half-size GEMMs are ignored.}
+\assume{The pipeline is taken to realise (R1) exactly, and its two micro-batches are taken to be
+identical (balanced, with the same redundancy and communication); micro-batch fill and drain and
+the lower efficiency of half-size GEMMs are ignored.}
 
 \paraq{gsplit runs compute and shuffle one after the other, so it sits below the roof.}
 gsplit does not overlap the two, and its time is their sum:
@@ -271,7 +296,7 @@ gsplit does not overlap the two, and its time is their sum:
       \Big(\frac{1}{C} + \frac{1}{\hat{B}_{\mathrm{net}}\, I}\Big).
   \label{eq:cm-gsplit-point}
 \end{equation}
-It is drawn directly below the pipeline point of the same layer. The vertical gap is
+It is drawn next to the pipeline point of the same layer. For the same counts the gap is
 \begin{equation}
   \frac{y^{\mathrm{pipe}}}{y^{\mathrm{gsplit}}}
   \;=\; \frac{T^{\mathrm{cmp}} + T^{\mathrm{net}}}{\max(T^{\mathrm{cmp}}, T^{\mathrm{net}})}
@@ -297,8 +322,9 @@ lower lines.
 For layer $\ell$, compare the heights of its pipeline point, its gsplit point, and its
 data-parallel line; the highest wins. Only heights of the same layer are compared, and layers are
 distinguished by colour. Writing $\Delta_\ell = \delta^{\mathrm{dp}}_\ell /
-\delta^{\mathrm{split}}_\ell$ for the redundancy ratio, Eqs.~\eqref{eq:cm-pipe-point},
-\eqref{eq:cm-gsplit-point}, and~\eqref{eq:cm-dp-point} give
+\delta^{s}_\ell$ for the redundancy ratio against strategy $s$ (gsplit or pipeline, each with its
+own $I_\ell$), Eqs.~\eqref{eq:cm-pipe-point}, \eqref{eq:cm-gsplit-point},
+and~\eqref{eq:cm-dp-point} give
 \begin{equation}
   \boxed{\;
   \begin{aligned}
@@ -312,8 +338,9 @@ distinguished by colour. Writing $\Delta_\ell = \delta^{\mathrm{dp}}_\ell /
 Right of the ridge ($I_\ell > I^{*}$) the pipeline wins whenever data parallelism does more work,
 and gsplit can lose only by the overlap gap. Left of the ridge, data parallelism wins as long as
 the redundancy ratio $\Delta_\ell$ is below $I^{*}/I_\ell$ (or $1 + I^{*}/I_\ell$ against gsplit).
-\assume{The comparison assumes both strategies produce the same distinct rows,
-$u^{\mathrm{dp}}_\ell \approx u^{\mathrm{split}}_\ell$; the two samplings are not identical.}
+\assume{Heights are useful FLOP rates, so strategies are compared per useful row; their
+samplings draw different seeds (DGL from contiguous slices, gsplit from partitions), so
+$u^{\mathrm{dp}}_\ell$ and $u^{\mathrm{split}}_\ell$ differ.}
 
 \paraq{A data-parallel hybrid takes data parallelism for a prefix of layers.}
 With split point $k$, layers $\ell < k$ (those nearest the seeds) run data-parallel and layers
@@ -382,14 +409,18 @@ strategy.
 Besides the roofline assumptions (R1)--(R5) of Section~\ref{sec:cm-purpose}, the model makes
 these:
 \begin{enumerate}\itemsep1pt
-  \item[\assume{(M1)}] \assume{Uniform hidden width $h$; input-feature loading, the first layer's
-        width, and sampling are outside the plot.}
+  \item[\assume{(M1)}] \assume{Hidden layers have width $h$, the outermost layer reads input
+        features of width $F_{\mathrm{in}}$, and the output layer is treated as width $h$;
+        feature loading and sampling are outside the plot (compared with forward plus backward
+        time).}
   \item[\assume{(M2)}] \assume{Per-edge dense products charged per destination (over-counts
         GAT).}
-  \item[\assume{(M3)}] \assume{The busiest GPU represents the layer.}
-  \item[\assume{(M4)}] \assume{$u^{\mathrm{dp}}_\ell \approx u^{\mathrm{split}}_\ell$ when
-        comparing strategies at one layer.}
-  \item[\assume{(M5)}] \assume{The pipeline realises (R1) exactly.}
+  \item[\assume{(M3)}] \assume{The busiest GPU represents the layer, built per minibatch from the
+        per-GPU maxima of $n$, $e$, $m$ (possibly from different GPUs).}
+  \item[\assume{(M4)}] \assume{Strategies are compared per useful row although their seed draws,
+        and so $u_\ell$, differ.}
+  \item[\assume{(M5)}] \assume{The pipeline realises (R1) exactly, and its two micro-batches are
+        identical.}
 \end{enumerate}
 
 % --- Kept for the author (not typeset): what changed relative to the earlier draft (roofline.tex, in git history at 8869a0ac~).

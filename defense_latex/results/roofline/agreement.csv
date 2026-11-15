@@ -1,0 +1,41 @@
+graph,model,L,h,interconnect,n_strategies,measured_best,roofline_pick,match,t_best,t_pick,regret
+products,gat,2,256,nvlink,2,DGL,DGL,True,1.56,1.56,0.0
+products,gat,2,256,pcie_emu,2,DGL,DGL,True,1.65,1.65,0.0
+products,gat,2,1024,nvlink,3,DGL,DGL,True,1.93,1.93,0.0
+products,gat,2,1024,pcie_emu,3,DGL,DGL,True,1.95,1.95,0.0
+products,gat,3,256,nvlink,4,hybrid k=2,gsplit,False,3.4899999999999998,3.66,0.04871060171919783
+products,gat,3,256,pcie_emu,4,DGL,DGL,True,3.9299999999999997,3.9299999999999997,0.0
+products,gat,3,512,nvlink,2,gsplit,gsplit,True,5.84,5.84,0.0
+products,gat,3,512,pcie_emu,2,DGL,DGL,True,6.779999999999999,6.779999999999999,0.0
+products,gat,3,1024,nvlink,4,hybrid k=2,gsplit,False,10.84,11.18,0.03136531365313644
+products,gat,3,1024,pcie_emu,4,hybrid k=2,DGL,False,11.68,13.040000000000001,0.11643835616438358
+products,gat,3,4096,nvlink,4,hybrid k=2,gsplit,False,75.18,75.78999999999999,0.008113860069167034
+products,gat,3,4096,pcie_emu,4,hybrid k=2,DGL,False,76.0,88.7,0.16710526315789487
+products,gat,4,256,nvlink,2,gsplit,gsplit,True,11.25,11.25,0.0
+products,gat,4,256,pcie_emu,2,DGL,gsplit,False,15.09,15.98,0.058979456593770685
+products,gat,4,512,nvlink,2,gsplit,gsplit,True,21.31,21.31,0.0
+products,gat,4,512,pcie_emu,2,DGL,gsplit,False,30.64,36.730000000000004,0.19875979112271547
+products,gat,4,1024,nvlink,5,gsplit,hybrid k=1,False,48.959999999999994,49.69,0.014910130718954306
+products,gat,4,1024,pcie_emu,5,hybrid k=3,gsplit,False,56.67,64.72,0.14205046761955176
+products,sage,2,256,nvlink,2,DGL,DGL,True,0.62,0.62,0.0
+products,sage,2,256,pcie_emu,2,DGL,DGL,True,0.81,0.81,0.0
+products,sage,2,1024,nvlink,3,DGL,DGL,True,0.62,0.62,0.0
+products,sage,2,1024,pcie_emu,3,DGL,DGL,True,0.64,0.64,0.0
+products,sage,3,256,nvlink,4,DGL,DGL,True,0.98,0.98,0.0
+products,sage,3,256,pcie_emu,4,DGL,DGL,True,1.06,1.06,0.0
+products,sage,3,512,nvlink,2,DGL,DGL,True,1.69,1.69,0.0
+products,sage,3,512,pcie_emu,2,DGL,DGL,True,1.71,1.71,0.0
+products,sage,3,1024,nvlink,4,hybrid k=2,DGL,False,2.27,2.48,0.09251101321585908
+products,sage,3,1024,pcie_emu,4,DGL,DGL,True,2.56,2.56,0.0
+products,sage,3,4096,nvlink,4,hybrid k=2,DGL,False,13.459999999999999,14.34,0.06537890044576522
+products,sage,3,4096,pcie_emu,4,hybrid k=2,DGL,False,14.06,14.149999999999999,0.006401137980085236
+products,sage,4,256,nvlink,2,gsplit,gsplit,True,4.72,4.72,0.0
+products,sage,4,256,pcie_emu,2,DGL,DGL,True,4.84,4.84,0.0
+products,sage,4,512,nvlink,2,gsplit,gsplit,True,7.83,7.83,0.0
+products,sage,4,512,pcie_emu,2,DGL,DGL,True,8.98,8.98,0.0
+products,sage,4,1024,nvlink,5,hybrid k=3,hybrid k=1,False,14.52,16.439999999999998,0.13223140495867747
+products,sage,4,1024,pcie_emu,5,DGL,DGL,True,18.14,18.14,0.0
+products,sage,4,4096,nvlink,2,gsplit,gsplit,True,140.41,140.41,0.0
+products,sage,4,4096,pcie_emu,2,DGL,DGL,True,153.97,153.97,0.0
+products,sage,6,1024,nvlink,2,gsplit,gsplit,True,163.33,163.33,0.0
+products,sage,6,1024,pcie_emu,2,gsplit,gsplit,True,246.7,246.7,0.0
