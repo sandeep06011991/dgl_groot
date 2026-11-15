@@ -25,7 +25,7 @@ per layer, both obtained from sampling, and three measured rates for each GPU, i
 hidden size. The plan has three steps. First, place every layer of every strategy on the roofline
 for a set of representative settings. Second, collect those points together with the measured
 winner of each setting. Third, inspect the plots for the patterns that separate the winners, and
-turn them into an algorithm that picks the hybrid strategy from the roofline alone. Assumptions
+condense them into rules of thumb for picking the strategy from the roofline alone. Assumptions
 that the measurements show to matter are refined in later iterations; until then they are listed
 in red.
 
@@ -122,15 +122,17 @@ which over-counts GAT, whose $z_v$ is computed once per source row.}
 \begin{table}[h]
 \centering
 \caption{Model constants of Eqs.~\eqref{eq:dense-cost}--\eqref{eq:sparse-cost} (forward pass,
-per destination node). \placeholder{} = to be derived from the layer equations.}
+per destination node), read off Eqs.~\eqref{eq:sage}--\eqref{eq:gat-agg}. SAGE: two GEMMs per
+destination ($W^{\mathrm{self}}$, $W^{\mathrm{neigh}}$ after the mean). GAT: one GEMM per edge
+(M2), the attention terms $a^{\top} z$ per edge and per node, and the weighted sum per edge.}
 \label{tab:cm-constants}
 \small
 \begin{tabular}{l c c c c c}
 \toprule
 Model & $\kappa$ & $\beta_e$ & $\beta_n$ & $\gamma_e$ & $\gamma_n$ \\
 \midrule
-SAGE & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
-GAT  & \placeholder & \placeholder & \placeholder & \placeholder & \placeholder \\
+SAGE & 1 & 0 & 2 & 0 & 0 \\
+GAT  & 1 & 1 & 0 & 2 & 1 \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -350,19 +352,10 @@ for the outer ones. The hybrid is realisable when the layers that data paralleli
 prefix $\ell < k$, and it beats both pure strategies when that prefix is neither empty nor the
 whole model.
 
-\begin{figure}[h]
-  \centering
-  \fbox{\parbox{0.85\linewidth}{\centering\small
-  \expdiag{classic roofline. $x$: FLOPs per interconnect byte $I$ (log); $y$: useful FLOP/s per
-  GPU (log). Flat: dense roof $\hat{P}$ and gather roof $\hat{B}_{\mathrm{mem}}/g$ (one per model
-  and $h$); sloped: $\hat{B}_{\mathrm{net}} I$ for PCIe-emu and NVLink. Ridge $I^*$ marked per
-  interconnect. One colour per layer $\ell$: its pipeline point on the roof, its gsplit point
-  directly below, and its data-parallel layer as a horizontal line at $C/\delta^{\mathrm{dp}}_\ell$.
-  The winner of layer $\ell$ is the highest of the three.}\\[4pt]
-  \placeholder}}
-  \caption{Schematic classic roofline (placeholder).}
-  \label{fig:cm-schematic}
-\end{figure}
+\paraq{What does the plot look like?}
+Figure~\ref{fig:pred-s1} in Section~\ref{sec:predicted} shows the roofline of one setting on both
+interconnects: per layer, a gsplit point ($\times$), a pipeline point ($\bullet$), and a
+data-parallel line, under one flat compute ceiling and one sloped interconnect roof.
 
 % ---------------------------------------------------------------------------
 \subsection{Regions of the roofline}
