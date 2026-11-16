@@ -3,7 +3,7 @@
 \label{sec:results}
 
 \paraq{What does this section check?}
-Whether the picture drawn by the roofline (Section~\ref{sec:roofline}) and the rules of thumb
+We check whether the picture drawn by the roofline (Section~\ref{sec:roofline}) and the rules of thumb
 read from it (Section~\ref{sec:pred-algo}) agree with the measured sweep of
 Section~\ref{sec:hybrid-empirical}: does the roofline pick the strategy that actually wins, and how much is lost when it does
 not?
@@ -13,15 +13,16 @@ not?
 \label{sec:res-compare}
 
 \paraq{What is the ground truth?}
-For each configuration of the sweep (graph, model, $L$, $h$, interconnect), the fastest measured
-strategy among DGL (data parallelism), gsplit, the hybrids $0<k<L$, and the
-pipeline, by forward plus backward time---the part of an epoch the roofline models. Pipeline
-times use two micro-batches of half the minibatch each. The sweep extends the grid of
+For each configuration of the sweep (graph, model, $L$, $h$, interconnect), the ground truth is
+the fastest measured strategy among DGL (data parallelism), gsplit, the hybrids $0<k<L$, and the
+pipeline, ranked by forward plus backward time---the part of an epoch the roofline models. Pipeline
+times use two micro-batches of half the mini-batch each. The sweep extends the grid of
 Sections~\ref{sec:limitations} and~\ref{sec:hybrids} with $h = 512$, more hidden sizes at $L = 4$,
 and $L = 6$; every products and papers100M configuration with sampled counts is included.
 
 \paraq{What does the roofline contribute?}
-For the same configuration, the strategy with the smallest modelled training time: the per-layer
+For the same configuration, the roofline picks the strategy with the smallest modelled training
+time: the per-layer
 times of Section~\ref{sec:cm-point}, summed over layers, using only the sampled counts and the
 measured rates. This is the quantitative form of the rules of thumb of Section~\ref{sec:pred-algo}.
 
@@ -49,14 +50,14 @@ backward time among DGL, gsplit, and the hybrids measured for each setting), by 
 Regret $= t(\text{pick})/t(\text{best}) - 1$ from the measured times, averaged over all settings
 and over the misses only. Baselines: always pick DGL; the link rule picks DGL on PCIe and gsplit
 on NVLink. Last column: agreement when the pipeline is an extra candidate. Four A100 GPUs, global
-minibatch $1024$. Every setting is listed in Table~\ref{tab:final-full}.}
+mini-batch $1024$. Every setting is listed in Table~\ref{tab:final-full}.}
 \label{tab:final}
 \footnotesize
 \input{tables/roofline_agreement_summary}
 \end{table}
 
 \paraq{How often does the roofline pick the winner?}
-For GraphSAGE it picks the measured winner in $76\%$ of the settings, against $57\%$ for always
+For SAGE it picks the measured winner in $76\%$ of the settings, against $57\%$ for always
 picking DGL and $51\%$ for the link rule, without fitting anything to the measured times; on
 products it reaches $82\%$ with a mean regret of $1\%$. \flag{For GAT it is wrong more often than
 right ($44\%$), below both baselines, and over all $69$ settings it agrees in $61\%$.}
@@ -89,9 +90,9 @@ outside the model (M1).}
 peer-to-peer transfers, which routes the all-to-all through host memory. Runs use three epochs,
 random features, and no feature cache.}
 
-\paraq{Conclusion of this section.}
+\paraq{What does this section conclude?}
 Built from one sampling pass and three measured rates, the roofline picks the fastest of DGL,
-gsplit, and the hybrids for GraphSAGE far more often than simple rules do, and a wrong pick costs
+gsplit, and the hybrids for SAGE far more often than simple rules do, and a wrong pick costs
 little on average. \flag{For GAT, whose edge-wise attention is not modelled, it is not yet
 reliable.} For the pipeline it shows potential that \flag{our implementation does not yet
 realise}. That is the accuracy we expect of a first-iteration model, and enough to support the
@@ -109,9 +110,9 @@ rules of thumb of Section~\ref{sec:pred-algo}.
 gsplit's gain over DGL is not uniform: it depends on the model, the depth, the hidden
 size, and above all the interconnect (Section~\ref{sec:limitations}). A hybrid that recomputes the layers nearest the seeds
 recovers part of the loss where the shuffle dominates (Section~\ref{sec:hybrids}). A
-classic roofline built from one sampling pass and three measured rates explains which resource
+multi-level roofline built from one sampling pass and three measured rates explains which resource
 binds each layer and why the winner flips between interconnects (Sections~\ref{sec:roofline}
-and~\ref{sec:predicted}), and for GraphSAGE its pick agrees with the measured winner in three of four settings
+and~\ref{sec:predicted}), and for SAGE its pick agrees with the measured winner in three of four settings
 (Section~\ref{sec:results}).
 
 \paraq{What remains open?}

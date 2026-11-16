@@ -6,7 +6,7 @@ Section~\ref{sec:limitations} showed that neither full split parallelism (gsplit
 parallelism (DGL) is faster across the measured space. Both strategies sit at the ends of a
 spectrum: gsplit computes each node once, on its owning GPU, but pays an all-to-all
 \textbf{shuffle} at every layer; data parallelism never shuffles, but every GPU recomputes the
-overlapping parts of its neighbourhood. This section introduces two hybrids that keep gsplit's
+overlapping parts of its neighbourhood. In this section, we introduce two hybrids that keep gsplit's
 partition-aware shuffle where it pays off and avoid or hide it where it does not: a
 \emph{data-parallel hybrid}, which removes shuffles (Section~\ref{sec:hybrid-dp}), and a
 \emph{pipeline hybrid}, which overlaps them with computation (Section~\ref{sec:hybrid-pipeline}).
@@ -16,7 +16,7 @@ We then measure both against gsplit (Section~\ref{sec:hybrid-empirical}).
 \label{sec:hybrid-dp}
 
 \paraq{How does the data-parallel hybrid remove shuffles?}
-The model's layers are divided at a \textbf{split point} $k$. Layers $0,\ldots,k{-}1$, counted
+We divide the model's layers at a \textbf{split point} $k$. Layers $0,\ldots,k{-}1$, counted
 from the seed nodes, run as \textbf{data parallelism}: each GPU samples and computes the
 neighbourhood of its own seed shard on replicated features, with no cross-GPU shuffle. Layers
 $k,\ldots,L{-}1$ run as gsplit-style \textbf{split} parallelism, with a shuffle before each
@@ -50,7 +50,7 @@ replicate, so increasing $k$ removes shuffles in the order where replication cos
 \label{sec:hybrid-pipeline}
 
 \paraq{How does the pipeline hybrid hide shuffles instead of removing them?}
-Each mini-batch is divided into two micro-batches, $A$ and $B$, which run through the same model
+We divide each mini-batch into two micro-batches, $A$ and $B$, which run through the same model
 on two CUDA streams, staggered by one stage. While $A$ computes layer $i$, $B$ performs the
 shuffle of the same layer, and the roles then alternate (Figure~\ref{fig:pipeline-split}). The
 shuffle still occurs, but it overlaps with useful work, so the cost of each layer approaches
@@ -63,8 +63,8 @@ mini-batch.
 % backward passes accumulate into one gradient, which is all-reduced once per optimizer step.
 
 \paraq{How does it combine with the data-parallel hybrid, and what does it cost?}
-The pipeline runs over full split ($k{=}0$). It does not combine with a data-parallel prefix:
-the prefix layers have no shuffle, so there is nothing for the other micro-batch to overlap with.
+We run the pipeline over full split ($k{=}0$) only, because it does not combine with a
+data-parallel prefix: the prefix layers have no shuffle, so there is nothing for the other micro-batch to overlap with.
 Overlap only helps when there is enough computation to cover the shuffle. Each micro-batch holds half of the
 mini-batch's seeds, so the two live micro-batches together occupy roughly the memory of one
 mini-batch, and an optimizer step consumes the same number of seeds as in gsplit.
@@ -177,7 +177,7 @@ are GAT on NVLink: $L{=}2$ on both graphs and $L{=}4$ on products.
 \textbf{Conclusion.} The hybrids improve on gsplit in $37$ of $40$ configurations, but the best
 split point and the size of the gain vary across configurations, and the pure pipeline does not
 improve on gsplit in any of them. Choosing a configuration therefore requires searching over the
-strategy, the split point $k$, and the hardware. This section performed that search by brute
+strategy, the split point $k$, and the hardware. In this section, we performed that search by brute
 force, measuring every variant on real multi-GPU hardware, which is too expensive to repeat
 for every new model, graph, or machine. Section~\ref{sec:roofline} replaces this sweep with a
 roofline that explains and ranks the strategies from one sampling pass.

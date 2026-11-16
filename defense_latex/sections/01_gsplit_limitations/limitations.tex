@@ -2,9 +2,10 @@
 \label{sec:limitations}
 
 \paraq{What does this section establish?}
-This section quantifies how gsplit's performance relative to the DGL baseline changes as we vary the
-interconnect, the graph, the GNN model, and the model's width and depth. To understand how gsplit's
-gain varies, we first perform a systematic exploration of these factors.
+In this section, we quantify how gsplit's performance relative to the DGL baseline changes as we
+vary the interconnect, the graph, the GNN model, and the model's width and depth. We explore these
+factors systematically, so that each shift in gsplit's gain can be traced back to the factor that
+caused it.
 
 \paraq{Why compare the two systems at a $0\%$ feature cache?}
 We compare \textbf{gsplit} (\(k{=}0\), i.e.\ full split parallelism; see

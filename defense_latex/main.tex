@@ -57,24 +57,24 @@ deeper or wider, gsplit's training time relative to the baseline improves in som
 degrades in others, depending on the GNN model, the graph, and the interconnect. 
 
 \paraq{What does this chapter do about it, and in what order?}
-This chapter (i)~\emph{quantifies} how gsplit's gain over the DGL baseline varies
-(Section~\ref{sec:limitations}); (ii)~proposes \emph{two hybrid parallelism
+In this chapter, we (i)~\emph{quantify} how gsplit's gain over the DGL baseline varies
+(Section~\ref{sec:limitations}); (ii)~propose \emph{two hybrid parallelism
 schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
-(Section~\ref{sec:hybrids}); (iii)~introduces a \emph{communication-centric roofline} on which
+(Section~\ref{sec:hybrids}); (iii)~introduce a \emph{multi-level roofline} on which
 every layer of every strategy is one point, so that the bottleneck of each layer can be read off
-(Section~\ref{sec:roofline}); (iv)~reads that roofline for three settings of the sweep and condenses
+(Section~\ref{sec:roofline}); (iv)~read that roofline for three settings of the sweep and condense
 the reading into rules of thumb for choosing a strategy (Section~\ref{sec:predicted}); and
-(v)~checks how close the roofline's picture comes to the measured winners (Section~\ref{sec:results}).
+(v)~check how close the roofline's picture comes to the measured winners (Section~\ref{sec:results}).
 
-\paraq{Experimental setup.}
-\textbf{Experimental Setup.} All measurements run on a single node with $4{\times}$\textbf{A100-SXM-80GB} GPUs
+\paraq{On what hardware and workloads do we measure?}
+\textbf{Experimental Setup.} All measurements run on a single node with $4{\times}$\textbf{A100-SXM4-80GB} GPUs
 connected by NVLink. We emulate a PCIe-class interconnect on the same node by disabling NCCL
 peer-to-peer transfers, which routes the same shuffles over the slower path without changing the
 hardware.
 % Detail: NVLink topology is NV12 (all pairs); the switch is NCCL_P2P_DISABLE=1.
 DGL replicates the full graph on every GPU and gathers features over UVA from host-pinned memory.
 % Detail (already stated above): gsplit runs at k=0; neither system uses a feature cache.
-We train \texttt{sage} and \texttt{gat} models with a neighbour fanout of \textbf{15} per layer and a
+We train SAGE and GAT models with a neighbour fanout of \textbf{15} per layer and a
 global batch size of \textbf{1024} (divided across the four GPUs). Each configuration runs for \textbf{3 epochs} with the feature cache disabled, and all
 reported times are the mean \emph{per-epoch} time over these epochs. We evaluate
 \textbf{products} and \textbf{papers100M}.
@@ -92,5 +92,8 @@ reported times are the mean \emph{per-epoch} time over these epochs. We evaluate
 \input{sections/03_simulator/roofline_classic}
 \input{sections/04_simulator_predicted_cases/predicted_cases}
 \input{sections/05_final_results/final_results}
+
+\bibliographystyle{plain}
+\bibliography{refs}
 
 \end{document}

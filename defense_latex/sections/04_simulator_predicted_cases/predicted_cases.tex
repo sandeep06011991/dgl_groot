@@ -2,9 +2,9 @@
 \label{sec:predicted}
 
 \paraq{What does this section do?}
-It places three settings of the sweep on the roofline of Section~\ref{sec:roofline}, explains
-the measured winner of each on both interconnects from the plot, and condenses the reading into
-rules of thumb for choosing a strategy.
+In this section, we place three settings of the sweep on the roofline of
+Section~\ref{sec:roofline}, use the plot to explain the measured winner of each on both
+interconnects, and condense the reading into rules of thumb for choosing a strategy.
 
 % Candidate further settings (min epoch time, s, from results/sweep_all.csv):
 %   S1 products, GAT,  L=3, h=1024, NVLink   : DGL 15.48, gsplit 13.09, DP-hybrid k=2 13.63 -> gsplit
@@ -19,9 +19,9 @@ rules of thumb for choosing a strategy.
 \label{sec:pred-obs}
 
 \paraq{Which settings are plotted, and why these?}
-Three products settings, one per kind of winner: DGL or gsplit depending on the interconnect
+We pick three products settings, one per kind of winner: DGL or gsplit depending on the interconnect
 (Figure~\ref{fig:pred-s1}), gsplit on both (Figure~\ref{fig:pred-s2}), and a hybrid on both
-(Figure~\ref{fig:pred-s3}). All use a global minibatch of $1024$ on four GPUs. Each setting is
+(Figure~\ref{fig:pred-s3}). All use a global mini-batch of $1024$ on four GPUs. Each setting is
 sampled once; its two panels share the same points and differ only in the roofs. In every figure
 one colour is one layer $\ell$ (counted from the seeds): gsplit ($\times$), pipeline ($\bullet$),
 and DGL (dashed line). The highest mark of a colour wins that layer.
@@ -94,8 +94,8 @@ $10.84$\,s on NVLink, against $13.04$/$13.06$ for DGL and $13.96$/$11.18$ for gs
         exceeds $1 + I^{*}/I$ against gsplit, or $I^{*}/I$ against the pipeline
         (Eq.~\eqref{eq:cm-rule}).
   \item \textbf{Judge by the outer layers.} They carry most of the work and most of the
-        redundancy. Recompute (DGL-style) for the layers nearest the seeds and gsplit for the
-        outer ones is the hybrid with split point $k$.
+        redundancy. Recomputing (DGL-style) the layers nearest the seeds and splitting the outer
+        ones gives the hybrid with split point $k$.
   \item \textbf{Pipeline only near the ridge.} Overlapping compute and shuffle gains up to
         $2\times$ over gsplit at the ridge and little far from it (Eq.~\eqref{eq:cm-pipe-gain}).
         The roofline shows the potential of perfect overlap; \flag{our pipeline implementation
