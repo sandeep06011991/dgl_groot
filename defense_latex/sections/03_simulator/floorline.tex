@@ -14,31 +14,33 @@
 \label{sec:floorline}
 
 \paraq{What is this section for?}
-In Sections~\ref{sec:limitations} and~\ref{sec:hybrids} we saw that the best choice between
+Sections~\ref{sec:limitations} and~\ref{sec:hybrids} established that the best choice between
 data-parallel (DGL), split (gsplit), and pipeline training depends on the model (depth, hidden
 size), the graph, and the hardware (compute throughput, interconnect bandwidth). This section
-explains that choice with a simple construction: we plot each strategy's \emph{overhead} as a
-lower-bound curve and read off which strategy pays less. The picture borrows the two-resource,
-ridge-and-crossover shape of the roofline~\cite{williams2009roofline}, but because it bounds
-overhead from below rather than throughput from above, we call it a \emph{floorline}. The side of
-its ridge on which a layer falls names the strategy with the smaller overhead.
+explains that choice with a single construction that plots each strategy's \emph{overhead} as a
+lower-bound curve; the strategy with the smaller overhead is read directly from it. The construction
+borrows the two-resource, ridge-and-crossover geometry of the roofline~\cite{williams2009roofline},
+but because it bounds overhead from below rather than throughput from above, we term it a
+\emph{floorline}. The side of its ridge on which a layer falls identifies the strategy with the
+smaller overhead.
 
 \paraq{Why overhead, and not throughput?}
 The useful work of a mini-batch -- each distinct output row computed once -- is the same whichever
 strategy runs it. What differs is the \emph{overhead} each strategy adds on top: DGL recomputes
 rows on several GPUs, gsplit moves rows across the interconnect, the pipeline hides the move behind
-compute. Plotting useful throughput would spend the picture on a quantity that does not change
-between strategies and hide the decision inside correction factors. We therefore model the one
-thing that does change -- the overhead -- and compare the two overheads directly. The whole
+compute. Plotting useful throughput would devote the plot to a quantity that does not vary across
+strategies, leaving the decision buried in correction factors. We therefore model only the
+overhead, the quantity that varies across strategies, and compare the two overheads directly. The
 construction is built from a single sampling pass (minutes of CPU per setting) plus one set of
-microbenchmarks per GPU. The model is deliberately simple: its assumptions are listed once, up
-front, and we refine them only where a measurement asks for it.
+microbenchmarks per GPU. The model is deliberately simple: its assumptions are stated once, up
+front, and refined only where the measurements require.
 
 % ---------------------------------------------------------------------------
 \subsection{Assumptions}
 \label{sec:cm-assumptions}
 
 \paraq{Which assumptions does the model make?}
+The model rests on five assumptions, A1--A5.
 \begin{enumerate}\itemsep1pt
   \item[\assume{(A1)}] \assume{\textbf{Two costs per layer.} A layer costs useful dense work plus,
         depending on the strategy, one overhead: redundant work (DGL) or a shuffle (gsplit). Within

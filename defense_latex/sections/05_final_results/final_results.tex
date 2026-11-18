@@ -41,9 +41,9 @@ measured times; a wrong choice between two near-equal strategies has small regre
 \paraq{Does the floorline pick the winner?}
 Table~\ref{tab:final-grid} places every configuration on a grid: each cell is the floorline's pick,
 green when it matches the measured winner and red when it misses (the measured winner is named in
-parentheses, and a darker red marks a costlier miss). The grid is overwhelmingly green for SAGE and
-for products, and the red concentrates in two readable places---GAT, and papers100M---rather than
-scattering. Over all $69$ settings the floorline agrees with the measured winner in $68\%$ of them,
+parentheses, and a darker red marks a costlier miss). Agreement is high for SAGE and for products,
+and the misses concentrate in two regions---GAT and papers100M---rather than scattering across the
+grid. Over all $69$ settings the floorline agrees with the measured winner in $68\%$ of them,
 against $54\%$ for always picking DGL and $51\%$ for the interconnect rule (pick DGL on PCIe, gsplit
 on NVLink), with a mean regret of $4\%$. For SAGE it reaches $76\%$, and on products SAGE $82\%$
 with a mean regret of $1\%$; GAT, after the shuffle calibration of Section~\ref{sec:cm-estimate},
