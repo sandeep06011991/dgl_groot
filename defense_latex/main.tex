@@ -60,11 +60,10 @@ degrades in others, depending on the GNN model, the graph, and the interconnect.
 In this chapter, we (i)~\emph{quantify} how gsplit's gain over the DGL baseline varies
 (Section~\ref{sec:limitations}); (ii)~propose \emph{two hybrid parallelism
 schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
-(Section~\ref{sec:hybrids}); (iii)~introduce a \emph{multi-level roofline} on which
-every layer of every strategy is one point, so that the bottleneck of each layer can be read off
-(Section~\ref{sec:roofline}); (iv)~read that roofline for three settings of the sweep and condense
-the reading into rules of thumb for choosing a strategy (Section~\ref{sec:predicted}); and
-(v)~check how close the roofline's picture comes to the measured winners (Section~\ref{sec:results}).
+(Section~\ref{sec:hybrids}); (iii)~introduce a \emph{floorline}, a lower bound on each strategy's
+overhead whose ridge names the strategy to use, and condense it into rules of thumb for choosing a
+strategy per layer (Section~\ref{sec:roofline}); and (iv)~check how often the floorline's pick
+matches the measured winner across the full sweep (Section~\ref{sec:results}).
 
 \paraq{On what hardware and workloads do we measure?}
 \textbf{Experimental Setup.} All measurements run on a single node with $4{\times}$\textbf{A100-SXM4-80GB} GPUs
@@ -89,8 +88,7 @@ reported times are the mean \emph{per-epoch} time over these epochs. We evaluate
 \input{sections/01_gsplit_limitations/limitations}
 \input{sections/02_alternate_hybrids/hybrids}
 \FloatBarrier  % flush hybrid tables (tab:hybrid-*) before the roofline section starts
-\input{sections/03_simulator/roofline_classic}
-\input{sections/04_simulator_predicted_cases/predicted_cases}
+\input{sections/03_simulator/floorline}
 \input{sections/05_final_results/final_results}
 
 \bibliographystyle{plain}

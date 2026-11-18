@@ -33,6 +33,11 @@ COUNTS_GLOB = os.path.join(HERE, "results", "roofline", "counts", "*.csv")
 LEGACY_PIPE_CUTOFF = "2026-11-04 09:20:34.862848"
 LABEL = {"dgl": "DGL", "split": "split", "pipeline": "pipe"}
 
+# GAT calibration: its shuffle moves narrow z-rows whose small-message all-to-all runs below the
+# measured peak bandwidth, so we scale GAT's modelled shuffle time. Calibrated on this sweep; set to
+# 1.0 to recover the uncalibrated baseline (results/roofline/agreement_cn1_baseline.csv).
+GAT_NET_SCALE = 2.0
+
 
 def strategy_name(system, k, L):
     if system == "dgl":
@@ -71,11 +76,13 @@ def modelled(counts, model, h, rates, ic, L, f_in):
     """Modelled training time per (system, k), summed over layers (and minibatches)."""
     t = rp.busiest_gpu_counts(counts, model, h, rates, ic, L, f_in)
     out = {}
+    net_scale = GAT_NET_SCALE if model == "gat" else 1.0
     for (system, k), g in t.groupby(["system", "k"]):
+        Tc, Tn = g.T_cmp, g.T_net * net_scale
         if system == "pipeline":
-            out[(system, k)] = 2 * np.maximum(g.T_cmp, g.T_net).sum()
+            out[(system, k)] = 2 * np.maximum(Tc, Tn).sum()
         else:
-            out[(system, k)] = (g.T_cmp + g.T_net).sum()
+            out[(system, k)] = (Tc + Tn).sum()
     return out
 
 
