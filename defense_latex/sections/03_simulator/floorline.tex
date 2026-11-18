@@ -70,29 +70,6 @@ and identifies the regions in which each strategy gains. The remainder of this s
 roofline and validates it against measurements.
 
 % ---------------------------------------------------------------------------
-\subsection{Assumptions}
-\label{sec:cm-assumptions}
-
-\paraq{Which assumptions does the model make?}
-The model rests on five assumptions, A1--A5.
-\begin{enumerate}\itemsep1pt
-  \item[\assume{(A1)}] \assume{\textbf{Two costs per layer.} A layer costs useful dense work plus,
-        depending on the strategy, one overhead: redundant work (DGL) or a shuffle (gsplit). Within
-        a layer the neighbour gather and the dense arithmetic overlap, so the slower sets the
-        compute time. Compute and shuffle overlap only in the pipeline; gsplit serialises them.}
-  \item[\assume{(A2)}] \assume{\textbf{Steady state, fixed rates.} Latency, kernel launches, and
-        synchronisation are ignored; one measured rate per resource and hidden size, the same for
-        every layer.}
-  \item[\assume{(A3)}] \assume{\textbf{Training step.} Modelled time is forward plus backward:
-        compute counts $3\times$ the forward FLOPs ($2\times$ for the input layer) and the shuffle
-        $2\times$ the forward bytes (rows out, gradients back).}
-  \item[\assume{(A4)}] \assume{\textbf{Busiest GPU.} Per mini-batch the per-GPU maxima of rows,
-        edges, and shuffled rows stand for the slowest GPU; strategies are compared per useful row.}
-  \item[\assume{(A5)}] \assume{\textbf{Pipeline.} Its two micro-batches are identical and overlap
-        perfectly.}
-\end{enumerate}
-
-% ---------------------------------------------------------------------------
 \subsection{Deriving the roofline from two achievable regions}
 \label{sec:cm-floor}
 
@@ -101,7 +78,7 @@ Consider one layer on the busiest GPU. Let $\flopsU$ be the useful dense FLOPs o
 row computed once -- and $\Tflops$ the peak dense rate. Data parallelism (DGL) recomputes rows that
 other GPUs also compute, an extra $\Fdp$ FLOPs on top of the useful ones, and shuffles nothing.
 gsplit computes each row once but moves $\Sgs$ bytes over the interconnect at $\BWnet$, serially with
-the compute (A1). Write $\tdp=\Fdp/\Tflops$ and $\tgs=\Sgs/\BWnet$ for the two additional times at
+the compute. Write $\tdp=\Fdp/\Tflops$ and $\tgs=\Sgs/\BWnet$ for the two additional times at
 peak, and $\inten\equiv\Fdp/\Sgs$ for the \emph{redundant-work intensity}, redundant FLOPs per shuffled
 byte. Start from the two total times. The best a layer can do is the faster of the two, and because
 the useful term is identical in both it factors out of the minimum exactly; what is left is the
@@ -218,7 +195,7 @@ layer may run either strategy, so the achievable set is the union of the two reg
 $\max(\Tflops,\BWnet\cdot\inten)$ is the optimal upper bound. Left of the ridge the compute roof
 binds and DGL attains it; right of the ridge the interconnect branch binds and gsplit attains it, and
 because a fixed shuffle stands in for ever more redundant compute as the intensity grows, that branch
-is unbounded. The roofline is built from peak rates (A2), so every measured point lies below it; the
+is unbounded. The roofline is built from peak rates, so every measured point lies below it; the
 gap to the roof is the model's optimism, which we do not predict. What we read is the side of the
 ridge:
 \begin{equation}
@@ -363,7 +340,7 @@ HBM in place of compute.}
 \label{fig:roofline-mem}
 \end{figure}
 
-Since the gather and the dense work of a layer overlap (A1), DGL's overhead is the larger of the two
+\assume{The gather and the dense work of a layer overlap}, so DGL's overhead is the larger of the two
 redundant costs, so DGL wins only when it is below the shuffle on \emph{both} rooflines; gsplit wins
 as soon as it is cheaper on \emph{either}. In almost every setting the dense branch binds, so the
 compute roofline~\eqref{eq:roofline} decides; the one place the gather binds is the outermost layer of
@@ -376,17 +353,22 @@ resources is what makes the single-roofline rule precise.
 
 \paraq{How are $\Fdp$, $\Bdp$, and $\Sgs$ obtained?}
 One sampling pass replays the loaders of DGL, gsplit (with and without a data-parallel prefix), and
-the pipeline, without features or training. For each layer it records, on the busiest GPU (A4), the
-destination rows $n$, source rows $n_{\mathrm{src}}$, edges $e$, and shuffled rows $m$, plus the
-distinct destination rows pooled across the GPUs. The useful dense FLOPs $\flopsU$, the gather bytes
-$\bytesG$, and the shuffle bytes $\Sgs$ follow from these counts and the per-model constants
-(Table~\ref{tab:cm-constants}), scaled by the training-step factors (A3). The $\redund$ is the ratio
+the pipeline, without features or training. For each layer it records the destination rows $n$,
+source rows $n_{\mathrm{src}}$, edges $e$, and shuffled rows $m$ on every GPU, plus the distinct
+destination rows pooled across the GPUs. \assume{Per mini-batch, the per-GPU maxima of these counts
+stand for the busiest GPU, which sets the step time, and strategies are compared per useful row.}
+The useful dense FLOPs $\flopsU$, the gather bytes $\bytesG$, and the shuffle bytes $\Sgs$ follow
+from these counts and the per-model constants (Table~\ref{tab:cm-constants}). \assume{Modelled time
+is a training step, forward plus backward: compute counts $3\times$ the forward FLOPs ($2\times$ for
+the input layer) and the shuffle $2\times$ the forward bytes, rows out and gradients back.} The
+$\redund$ is the ratio
 of rows a strategy pays for to rows the mini-batch needs: DGL's per-GPU frontiers overlap, so it
 recomputes rows; gsplit's partitions are disjoint, so its $\redund$ is only the load imbalance of the
 busiest GPU above the mean. The derivation's quantities are then
 $\Fdp=\redund\cdot\flopsU$ and $\Bdp=\redund\cdot\bytesG$. gsplit and the hybrids use a global
 mini-batch of $1024$ seeds split across $4$ GPUs by partition; DGL gives each GPU $256$. The three
-rates $\Tflops$, $\BWdram$, $\BWnet$ come from microbenchmarks (Table~\ref{tab:cm-microbench}).
+rates $\Tflops$, $\BWdram$, $\BWnet$ come from microbenchmarks (Table~\ref{tab:cm-microbench}),
+\assume{one fixed rate per resource and hidden size, used for every layer}.
 For GAT the shuffle moves narrow rows of the transformed features $z$, whose small-message
 all-to-all runs below the measured peak bandwidth; we scale GAT's modelled shuffle time by a single
 calibration constant to absorb this, fixed once on the sweep (Section~\ref{sec:results}).
@@ -483,8 +465,8 @@ gsplit; layers below it inherit DGL.}
 \end{figure}
 
 \paraq{Where does the pipeline fit?}
-The pipeline is the same roofline with one change. Write the full compute and shuffle times of a
-layer as
+The pipeline is the same roofline with one change. \assume{Its two micro-batches are assumed
+identical and to overlap perfectly.} Write the full compute and shuffle times of a layer as
 \begin{equation}
   \mathrm{time}^{\mathrm{cmp}} = \frac{(1+\redund)\cdot\flopsU}{\Tflops},\qquad
   \mathrm{time}^{\mathrm{net}} = \frac{\Sgs}{\BWnet},
@@ -492,7 +474,7 @@ layer as
 \end{equation}
 the useful dense work $\flopsU/\Tflops$ inflated by redundancy, and the shuffle. DGL pays
 $\mathrm{time}^{\mathrm{cmp}}$ (no shuffle) and gsplit pays
-$\mathrm{time}^{\mathrm{cmp}}+\mathrm{time}^{\mathrm{net}}$ serially; the pipeline overlaps them (A5),
+$\mathrm{time}^{\mathrm{cmp}}+\mathrm{time}^{\mathrm{net}}$ serially; the pipeline overlaps them,
 so its layer costs $\max(\mathrm{time}^{\mathrm{cmp}},\mathrm{time}^{\mathrm{net}})$, with the
 redundancy of its two micro-batches, $\redund_{\mathrm{pipe}}$, in place of $\redund$. Substituting
 $\redund_{\mathrm{pipe}}$ and the overlap into Equations~\eqref{eq:floor-overheads}--\eqref{eq:floor-rule}
