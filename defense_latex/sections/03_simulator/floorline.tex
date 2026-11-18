@@ -32,38 +32,42 @@
 \providecommand{\bytesG}{\mathrm{bytes}_{\mathrm{gather}}}      % neighbour-gather bytes of a layer
 \providecommand{\redund}{\mathrm{redundancy}}                   % rows paid for / rows needed
 
-\section{An Overhead Roofline}
+\section{Where Each Strategy Is Bound: A Roofline View}
 \label{sec:roofline}
 \label{sec:simulator}   % keeps existing \ref{sec:simulator} links alive
 \label{sec:floorline}
 
 \paraq{What is this section for?}
-Sections~\ref{sec:limitations} and~\ref{sec:hybrids} established that the best choice between
-data-parallel (DGL), split (gsplit), and pipeline training depends on the model (depth, hidden
-size), the graph, and the hardware (compute throughput, interconnect bandwidth). This section turns
-that choice into a single picture. We build an empirical model of each strategy's \emph{overhead} --
-the work it adds beyond the useful computation -- in terms of the machine's measured rates, and plot
-it as a roofline: a two-resource curve with a compute ceiling, an interconnect-limited branch, and a
-ridge where the cheaper strategy changes. The strategy to use is read off directly from the side of
-the ridge a layer falls on.
+Sections~\ref{sec:limitations} and~\ref{sec:hybrids} showed that gsplit's gain over data-parallel
+training is not uniform: the same model is faster or slower than DGL depending on its depth and
+hidden size, the graph, and the interconnect. This section builds a model that explains that
+behaviour. We model each strategy mathematically, in terms of the work it performs and the
+machine's measured rates, and use the model the way a roofline is used: to identify the regions in
+which a layer is limited by compute and those in which it is limited by the interconnect, and to
+plot each strategy's performance and relative gain.
 
-\paraq{Why overhead, and what is new here?}
-The useful work of a mini-batch -- each distinct output row computed once -- is the same whichever
-strategy runs it. What differs is the \emph{overhead} each strategy adds on top: DGL recomputes rows
-on several GPUs, gsplit moves rows across the interconnect, the pipeline hides the move behind
-compute. Plotting useful throughput would devote the plot to a quantity that does not vary across
-strategies, leaving the decision buried in correction factors. We therefore model only the overhead.
-The model is not the roofline of Williams et~al.~\cite{williams2009roofline} with new quantities
-substituted in. The classic roofline bounds one kernel's throughput by the two resources that kernel
-itself consumes, and its ridge is that kernel's balance point. Here we derive, from first principles,
-a bound on the best additional time achievable across two \emph{alternative strategies} that spend
-\emph{different} resources -- compute for data parallelism, the interconnect for gsplit -- by taking
-the minimum of their total times and showing that the shared useful term factors out exactly. The
-bound that results has the ceiling-and-ridge geometry of a roofline, so we borrow the name and its
-reading conventions; but its ridge is a \emph{decision boundary between strategies}, not a kernel's
-balance point, and the region under each branch is one strategy's achievable set. The construction is
-built from a single sampling pass (minutes of CPU per setting) plus one set of microbenchmarks per
-GPU, and its assumptions are stated once, up front, and refined only where the measurements require.
+\paraq{Why can the classical roofline not be applied as it stands?}
+The classical roofline of Williams et~al.~\cite{williams2009roofline} describes one kernel. It
+bounds that kernel's throughput by the two resources the kernel itself consumes, compute and memory
+bandwidth, and places it on one shared axis, arithmetic intensity, so that the kernel's distance
+from the ceiling shows how far it sits from peak. It can compare two implementations of the same
+kernel, since both consume the same two resources and differ only in where they fall under the
+roof. Our systems differ from that setting in two ways. First, our strategies do not consume the
+same resources: data parallelism shuffles nothing across the interconnect and gsplit computes
+nothing redundantly, so the ratio a roofline plots is zero for one strategy and unbounded for the
+other. Second, a roofline decides between implementations only when the goal is to maximise the
+achieved FLOP rate, and under that goal data parallelism always wins: its redundant computation
+keeps the GPU busy and raises the achieved rate without shortening the step. Our goal is the step
+that finishes in the least time, so a roofline in its standard form cannot express the comparison
+and we need a different construction.
+
+\paraq{What does the section derive?}
+We derive a roofline-inspired model built on \emph{overhead}. The non-redundant work of a
+mini-batch is the work gsplit's compute performs, since gsplit computes each row exactly once;
+anything beyond it is overhead: the redundant computation of data parallelism, and the shuffle
+gsplit itself pays to avoid that redundancy. The model prices these overheads against each other
+and identifies the regions in which each strategy gains. The remainder of this section derives the
+roofline and validates it against measurements.
 
 % ---------------------------------------------------------------------------
 \subsection{Assumptions}
