@@ -1,14 +1,38 @@
 % ===========================================================================
-% Section 3: the floorline -- a roofline-inspired lower bound on the
-% unavoidable overhead of a parallelism strategy, used to choose between
-% gsplit, DGL (data parallel), and the pipeline.
+% Section 3: an overhead roofline -- a roofline on the unavoidable overhead of
+% a parallelism strategy, used to choose between gsplit, DGL (data parallel),
+% and the pipeline. The floorline (the same construction read as a time) is
+% kept as the equivalent dual.
 % Assumptions are typeset in red via \assume{...}; author-softenable
 % weaknesses via \flag{...}.
+% NOTE (author): the overhead model itself is still being revised; this section
+% will be revisited once that is settled.
 % ===========================================================================
 \providecommand{\assume}[1]{{\color{red}#1}}
 \providecommand{\flag}[1]{{\color{red}#1}}
 
-\section{A Lower Bound on Overhead}
+% --- notation: descriptive names throughout, no single-letter symbols ---
+% measured rates
+\providecommand{\Tflops}{\mathrm{TFLOPS}}                      % peak dense compute (FLOP/s)
+\providecommand{\BWnet}{\mathrm{BW_{net}}}                      % interconnect / network bandwidth
+\providecommand{\BWdram}{\mathrm{BW_{DRAM}}}                    % random HBM gather bandwidth
+% per-strategy additional work
+\providecommand{\Fdp}{\mathrm{flops}^{\rho}_{\mathrm{dp}}}      % redundant FLOPs data parallelism performs
+\providecommand{\Bdp}{\mathrm{bytes}^{\rho}_{\mathrm{dp}}}      % redundant gather bytes data parallelism reads
+\providecommand{\Sgs}{\mathrm{bytes}_{\mathrm{gs}}}             % bytes gsplit shuffles
+% per-strategy additional time
+\providecommand{\tdp}{\mathrm{time}^{\mathrm{add}}_{\mathrm{dp}}}
+\providecommand{\tgs}{\mathrm{time}^{\mathrm{add}}_{\mathrm{gs}}}
+% roofline axes
+\providecommand{\inten}{\mathrm{intensity}}                     % redundant FLOPs per shuffled byte
+\providecommand{\intenm}{\mathrm{intensity}_{\mathrm{m}}}       % redundant gather bytes per shuffled byte
+\providecommand{\rate}{\mathrm{rate}}                           % overhead rate (y-axis)
+% counts used to estimate the above
+\providecommand{\flopsU}{\mathrm{flops}_{\mathrm{useful}}}      % useful dense FLOPs of a layer
+\providecommand{\bytesG}{\mathrm{bytes}_{\mathrm{gather}}}      % neighbour-gather bytes of a layer
+\providecommand{\redund}{\mathrm{redundancy}}                   % rows paid for / rows needed
+
+\section{An Overhead Roofline}
 \label{sec:roofline}
 \label{sec:simulator}   % keeps existing \ref{sec:simulator} links alive
 \label{sec:floorline}
@@ -16,24 +40,30 @@
 \paraq{What is this section for?}
 Sections~\ref{sec:limitations} and~\ref{sec:hybrids} established that the best choice between
 data-parallel (DGL), split (gsplit), and pipeline training depends on the model (depth, hidden
-size), the graph, and the hardware (compute throughput, interconnect bandwidth). This section
-explains that choice with a single construction that plots each strategy's \emph{overhead} as a
-lower-bound curve; the strategy with the smaller overhead is read directly from it. The construction
-borrows the two-resource, ridge-and-crossover geometry of the roofline~\cite{williams2009roofline},
-but because it bounds overhead from below rather than throughput from above, we term it a
-\emph{floorline}. The side of its ridge on which a layer falls identifies the strategy with the
-smaller overhead.
+size), the graph, and the hardware (compute throughput, interconnect bandwidth). This section turns
+that choice into a single picture. We build an empirical model of each strategy's \emph{overhead} --
+the work it adds beyond the useful computation -- in terms of the machine's measured rates, and plot
+it as a roofline: a two-resource curve with a compute ceiling, an interconnect-limited branch, and a
+ridge where the cheaper strategy changes. The strategy to use is read off directly from the side of
+the ridge a layer falls on.
 
-\paraq{Why overhead, and not throughput?}
+\paraq{Why overhead, and what is new here?}
 The useful work of a mini-batch -- each distinct output row computed once -- is the same whichever
-strategy runs it. What differs is the \emph{overhead} each strategy adds on top: DGL recomputes
-rows on several GPUs, gsplit moves rows across the interconnect, the pipeline hides the move behind
+strategy runs it. What differs is the \emph{overhead} each strategy adds on top: DGL recomputes rows
+on several GPUs, gsplit moves rows across the interconnect, the pipeline hides the move behind
 compute. Plotting useful throughput would devote the plot to a quantity that does not vary across
-strategies, leaving the decision buried in correction factors. We therefore model only the
-overhead, the quantity that varies across strategies, and compare the two overheads directly. The
-construction is built from a single sampling pass (minutes of CPU per setting) plus one set of
-microbenchmarks per GPU. The model is deliberately simple: its assumptions are stated once, up
-front, and refined only where the measurements require.
+strategies, leaving the decision buried in correction factors. We therefore model only the overhead.
+The model is not the roofline of Williams et~al.~\cite{williams2009roofline} with new quantities
+substituted in. The classic roofline bounds one kernel's throughput by the two resources that kernel
+itself consumes, and its ridge is that kernel's balance point. Here we derive, from first principles,
+a bound on the best additional time achievable across two \emph{alternative strategies} that spend
+\emph{different} resources -- compute for data parallelism, the interconnect for gsplit -- by taking
+the minimum of their total times and showing that the shared useful term factors out exactly. The
+bound that results has the ceiling-and-ridge geometry of a roofline, so we borrow the name and its
+reading conventions; but its ridge is a \emph{decision boundary between strategies}, not a kernel's
+balance point, and the region under each branch is one strategy's achievable set. The construction is
+built from a single sampling pass (minutes of CPU per setting) plus one set of microbenchmarks per
+GPU, and its assumptions are stated once, up front, and refined only where the measurements require.
 
 % ---------------------------------------------------------------------------
 \subsection{Assumptions}
@@ -59,52 +89,163 @@ The model rests on five assumptions, A1--A5.
 \end{enumerate}
 
 % ---------------------------------------------------------------------------
-\subsection{One floorline: redundant compute versus the shuffle}
+\subsection{Deriving the roofline from two achievable regions}
 \label{sec:cm-floor}
 
-\paraq{What is the overhead of each strategy?}
-Let $F$ be the useful dense FLOPs of a layer on the busiest GPU and $S$ the bytes that GPU would
-shuffle under gsplit. Both strategies pay the useful $F$; we subtract it and keep only the
-overhead. gsplit adds the shuffle. DGL adds the redundant dense work: it recomputes rows that other
-GPUs also compute, a factor $\rho \ge 0$ of extra FLOPs, so
+\paraq{Deriving the bound from the two strategies' times}
+Consider one layer on the busiest GPU. Let $\flopsU$ be the useful dense FLOPs of the layer -- each
+row computed once -- and $\Tflops$ the peak dense rate. Data parallelism (DGL) recomputes rows that
+other GPUs also compute, an extra $\Fdp$ FLOPs on top of the useful ones, and shuffles nothing.
+gsplit computes each row once but moves $\Sgs$ bytes over the interconnect at $\BWnet$, serially with
+the compute (A1). Write $\tdp=\Fdp/\Tflops$ and $\tgs=\Sgs/\BWnet$ for the two additional times at
+peak, and $\inten\equiv\Fdp/\Sgs$ for the \emph{redundant-work intensity}, redundant FLOPs per shuffled
+byte. Start from the two total times. The best a layer can do is the faster of the two, and because
+the useful term is identical in both it factors out of the minimum exactly; what is left is the
+optimal \emph{additional} time, and the additional FLOPs it handles per additional second is the
+roofline:
+\begin{align}
+  \mathrm{time}_{\mathrm{dp}} &= \frac{\flopsU + \Fdp}{\Tflops}
+  && \text{\small DGL: recompute}
+  \label{eq:time-dp}\\
+  \mathrm{time}_{\mathrm{gs}} &= \frac{\flopsU}{\Tflops} + \frac{\Sgs}{\BWnet}
+  && \text{\small gsplit: compute, then shuffle}
+  \label{eq:time-gs}\\
+  \mathrm{time}_{\mathrm{opt}} &= \min(\mathrm{time}_{\mathrm{dp}},\,\mathrm{time}_{\mathrm{gs}})
+  && \text{\small best of the two}
+  \label{eq:time-opt}\\
+  &= \frac{\flopsU}{\Tflops} + \min(\tdp,\ \tgs)
+  && \text{\small useful term factors out} \notag\\
+  \mathrm{time}^{\mathrm{add}}_{\mathrm{opt}} &= \mathrm{time}_{\mathrm{opt}} - \frac{\flopsU}{\Tflops}
+   = \min(\tdp,\ \tgs)
+  && \text{\small optimal additional time}
+  \label{eq:floor-overheads}\\
+  \rate(\inten) &= \frac{\Fdp}{\mathrm{time}^{\mathrm{add}}_{\mathrm{opt}}}
+   = \max\!\big(\Tflops,\ \BWnet\cdot\inten\big)
+  && \text{\small additional FLOP/s}
+  \label{eq:roofline}\\
+  \inten^\star &= \frac{\Tflops}{\BWnet}
+  && \text{\small ridge}
+  \label{eq:ridge}
+\end{align}
+The last two lines are where the bound catches every strategy. A real DGL run takes at least $\tdp$
+of additional time, so the additional FLOPs it performs per second cannot exceed the compute peak; a
+real gsplit run takes at least $\tgs$, so the FLOPs its shuffle saves per second cannot exceed
+$\BWnet$ times the intensity:
 \begin{equation}
-  F_{\mathrm{dgl}} = (1+\rho)\,F ,\qquad
-  t^{\mathrm{over}}_{\mathrm{dgl}} = \frac{\rho F}{\hat P},\qquad
-  t^{\mathrm{over}}_{\mathrm{gs}} = \frac{S}{\hat B},
-  \label{eq:floor-overheads}
+  \frac{\Fdp}{\mathrm{time}^{\mathrm{run}}_{\mathrm{dp}}} \le \Tflops,
+  \qquad
+  \frac{\Fdp}{\mathrm{time}^{\mathrm{run}}_{\mathrm{gs}}} \le \BWnet\cdot\inten,
+  \qquad
+  \mathrm{time}^{\mathrm{run}}_{\mathrm{dp}} \ge \tdp,\ \ \mathrm{time}^{\mathrm{run}}_{\mathrm{gs}} \ge \tgs .
+  \label{eq:regions}
 \end{equation}
-with $\hat P$ the dense rate and $\hat B$ the interconnect bandwidth. We keep $\rho$ abstract; how
-it is measured is deferred to Section~\ref{sec:cm-estimate}. The point of writing the overheads
-this way is that the choice is now a comparison of two numbers.
+Each strategy on its own is therefore the region \emph{under} one line -- horizontal for DGL,
+slanting for gsplit -- and since the optimum~\eqref{eq:time-opt} takes the faster strategy at every
+intensity, the achievable set is the \emph{union} of the two regions and its boundary is
+exactly~\eqref{eq:roofline}.
 
-\paraq{What is the floorline?}
-The least overhead the layer can pay, having chosen the better strategy, is
+\paraq{How this differs from the roofline}
+Equation~\eqref{eq:roofline} is derived, not borrowed. A roofline bounds a single kernel by its own
+arithmetic intensity against its own two resources; its two branches are two limits on one
+computation. Here each branch is a different \emph{strategy} spending a different resource, the
+horizontal axis is a ratio \emph{across} strategies -- the FLOPs DGL would redo over the bytes gsplit
+would move -- and the maximum in~\eqref{eq:roofline} is the minimum over strategies
+in~\eqref{eq:time-opt} read as a rate. The ceiling-and-ridge shape is a consequence of that minimum,
+which is why the roofline's reading -- achievable below, ridge as crossover -- transfers; the model
+itself is new.
+
+\begin{figure}[h]
+\centering
+% Common geometry: roof height 2.0 (TFLOPS), slant slope 0.8 so the ridge sits at intensity*=2.5.
+% (a) DGL: additional FLOPs done, capped at TFLOPS
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\inten$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize FLOP/s};
+  \fill[black!8] (0,0) rectangle (4.6,2.0);
+  \draw[very thick] (0,2.0) -- (4.6,2.0);
+  \node[above] at (2.3,2.0) {\scriptsize $\Tflops$};
+  \node at (2.3,1.0) {\scriptsize achievable};
+  \node[below] at (2.4,-0.3) {\scriptsize (a) DGL: FLOPs done};
+\end{tikzpicture}
+\hfill
+% (b) gsplit: FLOPs saved per second, BW_net * intensity
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\inten$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize FLOP/s};
+  \fill[black!8] (0,0) -- (4.6,3.68) -- (4.6,0) -- cycle;
+  \draw[very thick] (0,0) -- (4.6,3.68);
+  \node[rotate=39] at (2.0,2.1) {\scriptsize $\BWnet\cdot\inten$};
+  \node at (3.5,0.9) {\scriptsize achievable};
+  \node[below] at (2.4,-0.3) {\scriptsize (b) gsplit: FLOPs saved};
+\end{tikzpicture}
+\hfill
+% (c) union = optimal upper bound = roofline
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\inten$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize FLOP/s};
+  \fill[black!8] (0,0) -- (0,2.0) -- (2.5,2.0) -- (4.6,3.68) -- (4.6,0) -- cycle;
+  \draw[very thick] (0,2.0) -- (2.5,2.0) -- (4.6,3.68);
+  \draw[dashed] (2.5,0) -- (2.5,2.0);
+  \node[below] at (2.5,0) {\scriptsize $\inten^\star$};
+  \node at (1.2,1.0) {\scriptsize DGL};
+  \node at (3.9,1.2) {\scriptsize gsplit};
+  \node[above] at (1.1,2.0) {\scriptsize $\Tflops$};
+  \node[rotate=39] at (3.2,3.2) {\scriptsize $\BWnet\cdot\inten$};
+  \node[below] at (2.4,-0.3) {\scriptsize (c) union: optimal bound};
+\end{tikzpicture}
+\caption{The overhead roofline, derived from the optimal time~\eqref{eq:time-opt}. Additional FLOPs
+per additional second against the redundant-work intensity $\inten=\Fdp/\Sgs$. (a)~DGL performs the additional FLOPs at no more than
+the compute peak: a horizontal line at $\Tflops$. (b)~gsplit saves them by shuffling at $\BWnet$: a
+slanting line $\BWnet\cdot\inten$. Under each line the strategy is achievable but running below
+peak; above it is unachievable. (c)~A layer may use either, so the achievable set is the union and its
+boundary $\max(\Tflops,\BWnet\cdot\inten)$ is the optimal upper bound~\eqref{eq:roofline}; the two
+cross at the ridge $\inten^\star=\Tflops/\BWnet$~\eqref{eq:ridge}. Only the \emph{side of the ridge}
+is read: left of it DGL pays less overhead, right of it gsplit does.}
+\label{fig:roofline}
+\end{figure}
+
+\paraq{Reading the roofline}
+Figure~\ref{fig:roofline} draws the lines. Panel~(a) is DGL: it performs its redundant FLOPs no
+faster than the compute peak, a horizontal line at $\Tflops$ whatever the intensity. Panel~(b) is
+gsplit: a shuffle of $\Sgs$ bytes at $\BWnet$ \emph{saves} the $\Fdp$ redundant FLOPs, so the FLOPs it
+saves per second grow with the intensity, a slanting line through the origin. Under each line the
+strategy is achievable but running below peak; above it is unachievable. Panel~(c) combines them: a
+layer may run either strategy, so the achievable set is the union of the two regions and its boundary
+$\max(\Tflops,\BWnet\cdot\inten)$ is the optimal upper bound. Left of the ridge the compute roof
+binds and DGL attains it; right of the ridge the interconnect branch binds and gsplit attains it, and
+because a fixed shuffle stands in for ever more redundant compute as the intensity grows, that branch
+is unbounded. The roofline is built from peak rates (A2), so every measured point lies below it; the
+gap to the roof is the model's optimism, which we do not predict. What we read is the side of the
+ridge:
 \begin{equation}
-  t_\star = \min\!\big(t^{\mathrm{over}}_{\mathrm{dgl}},\ t^{\mathrm{over}}_{\mathrm{gs}}\big)
-          = \min\!\Big(\frac{\rho F}{\hat P},\ \frac{S}{\hat B}\Big).
-  \label{eq:floor-min}
+  \boxed{\ \text{DGL beats gsplit at a layer}\iff
+         \inten=\frac{\Fdp}{\Sgs} < \frac{\Tflops}{\BWnet}=\inten^\star.\ }
+  \label{eq:floor-rule}
 \end{equation}
-Put the \emph{redundant-work intensity} $x = \rho F / S$ on the $x$-axis -- redundant FLOPs per
-shuffled byte -- and the overhead per shuffled byte, $y = t_\star/S$, on the $y$-axis:
+The interconnect moves the ridge; the model, depth, and hidden size move the intensity ($\Fdp$ grows
+with depth, $\Fdp/\Sgs$ with hidden size). A hybrid with split point $k$ is DGL below $k$ and gsplit
+above it; it wins when the rule changes sign across the layers of one model
+(Section~\ref{sec:cm-layers}).
+
+\paraq{The same picture as a floorline}
+Read as a time instead of a rate, the roof becomes a floor. The least additional time a layer can pay
+is $\mathrm{time}_\star=\min(\tdp,\,\tgs)$, and per shuffled byte
 \begin{equation}
-  y(x) = \min\!\Big(\frac{x}{\hat P},\ \frac{1}{\hat B}\Big).
+  \mathrm{floor}(\inten) = \frac{\mathrm{time}_\star}{\Sgs}
+  = \min\!\Big(\frac{\inten}{\Tflops},\ \frac{1}{\BWnet}\Big),
   \label{eq:floorline}
 \end{equation}
-This is the floorline: a rising branch $x/\hat P$ (DGL's overhead, growing with redundancy) that
-plateaus into a flat branch $1/\hat B$ (gsplit's shuffle, independent of redundancy). The two meet
-at the \textbf{ridge}
-\begin{equation}
-  x^\star = \frac{\hat P}{\hat B}.
-  \label{eq:ridge}
-\end{equation}
+a rising branch that plateaus (Figure~\ref{fig:floorline}): a lower bound, so real runs sit
+\emph{above} it. We call this the \emph{floorline}. It is the reciprocal of~\eqref{eq:roofline} with the
+same ridge and the same decision; we keep it because time composes directly with the per-layer times
+of Section~\ref{sec:cm-layers}.
 
 \begin{figure}[h]
 \centering
 \begin{tikzpicture}[scale=1.0]
   % axes
-  \draw[->] (0,0) -- (6.3,0) node[right] {\footnotesize $x=\rho F/S$ (redundant FLOPs / shuffled byte)};
-  \draw[->] (0,0) -- (0,4.0) node[above] {\footnotesize overhead per byte $y$};
-  % ridge x-coordinate
+  \draw[->] (0,0) -- (6.3,0) node[right] {\footnotesize $\inten=\Fdp/\Sgs$};
+  \draw[->] (0,0) -- (0,4.0) node[above] {\footnotesize time per shuffled byte};
   \def\xr{3.0}
   \def\yr{2.0}
   % DGL rising branch up to ridge
@@ -113,7 +254,7 @@ at the \textbf{ridge}
   \draw[very thick] (\xr,\yr) -- (6.0,\yr);
   % ridge marker
   \draw[dashed] (\xr,0) -- (\xr,\yr);
-  \node[below] at (\xr,0) {\footnotesize $x^\star=\hat P/\hat B$};
+  \node[below] at (\xr,0) {\footnotesize $\inten^\star=\Tflops/\BWnet$};
   % region labels
   \node at (1.4,0.35) {\footnotesize DGL cheaper};
   \node at (4.6,1.6) {\footnotesize gsplit cheaper};
@@ -126,74 +267,122 @@ at the \textbf{ridge}
   \draw[->,gray] (1.6,1.1) -- (1.6,0.95);
   \draw[->,gray] (4.3,2.45) -- (4.3,2.15);
 \end{tikzpicture}
-\caption{The floorline (thick) is a lower bound on a layer's overhead per shuffled byte: the rising
-branch is DGL's redundant compute, the flat branch is gsplit's shuffle, and they cross at the ridge
-$x^\star=\hat P/\hat B$. Real runs pay more than the model's best-case rates, so measured points sit
-\emph{above} the floor; nothing is achievable below it. Only the \emph{side of the ridge} is read:
-left of it DGL pays less, right of it gsplit does.}
+\caption{The floorline: the roofline of Figure~\ref{fig:roofline} read as a time. Time per shuffled
+byte is bounded \emph{below} -- a rising branch $\inten/\Tflops$ (DGL's redundant compute) and a flat
+branch $1/\BWnet$ (gsplit's shuffle) crossing at the ridge $\inten^\star=\Tflops/\BWnet$. Real runs
+pay more, so measured points sit \emph{above} the floor; below it is unachievable. Same crossover and
+same decision as the roofline; only the axis and the achievable side differ.}
 \label{fig:floorline}
 \end{figure}
 
-\paraq{What does the floor mean, and where does real performance sit?}
-Equation~\eqref{eq:floorline} is built from best-case rates: peak $\hat P$, peak $\hat B$, no
-latency, no launch cost (A2). It is therefore a genuine \emph{lower bound} -- no run can pay less
-overhead than this. A real run pays more: sub-peak kernels, all-to-all latency and
-synchronisation, feature loading. So on Figure~\ref{fig:floorline} every measured point lies
-\emph{above} the floor; the region below it is unachievable. The gap between a point and the floor
-is the model's optimism, and we do not try to predict it -- it is exactly the part we chose not to
-model. What the floorline is used for is not the height of a point but the \textbf{side of the
-ridge} it falls on:
-\begin{equation}
-  \boxed{\ \text{DGL beats gsplit at a layer}\iff \rho\,\frac{F}{S} < \frac{\hat P}{\hat B}
-         \iff x < x^\star.\ }
-  \label{eq:floor-rule}
-\end{equation}
-Left of the ridge the shuffle is the larger cost, so recomputing is cheaper and DGL wins; right of
-it redundancy is the larger cost, so moving rows is cheaper and gsplit wins. The interconnect moves
-the ridge; the model, depth, and hidden size move $x$ (redundancy grows with depth, $F/S$ with
-hidden size). A hybrid with split point $k$ is DGL below $k$ and gsplit above it; it wins when the
-rule changes sign across the layers of one model (Section~\ref{sec:cm-layers}).
-
 % ---------------------------------------------------------------------------
-\subsection{Which two resources? A second floorline}
+\subsection{Which two resources? A second roofline}
 \label{sec:cm-second}
 
-\paraq{Why is there more than one floorline?}
+\paraq{Why is there more than one roofline?}
 The construction compares the shuffle against \emph{redundant work}, but redundant work can bind on
-either of two resources: the dense units (redundant FLOPs, above) or HBM (redundant random gather
-of neighbour rows). The interesting modelling choice is which pair of resources to pit against the
-shuffle. Replacing redundant FLOPs with redundant gather bytes $S_{\mathrm{g}}$ against the HBM rate
-$\hat B_{\mathrm{m}}$ gives a second floorline on the same axes,
-\begin{equation}
-  y_{\mathrm{m}}(x_{\mathrm{m}}) = \min\!\Big(\frac{x_{\mathrm{m}}}{\hat B_{\mathrm{m}}},\
-        \frac{1}{\hat B}\Big),\qquad
-  x_{\mathrm{m}} = \frac{\rho\,S_{\mathrm{g}}}{S},\qquad
-  x^\star_{\mathrm{m}} = \frac{\hat B_{\mathrm{m}}}{\hat B}.
-  \label{eq:floor-mem}
-\end{equation}
-Since the gather and the dense work of a layer overlap (A1), DGL's overhead is the larger of the
-two redundant costs, so DGL wins only when it is below the shuffle on \emph{both} floorlines;
-gsplit wins as soon as it is cheaper on \emph{either}. In almost every setting the dense branch
-binds, so the compute floorline~\eqref{eq:floorline} decides; the one place the gather binds is the
-outermost layer of 4-layer GAT on products, where the second floorline~\eqref{eq:floor-mem} takes
-over. Naming both resources is what makes the single-floorline rule precise.
+either of two resources: the dense units (redundant FLOPs, above) or HBM (redundant random gather of
+neighbour rows). The interesting modelling choice is which pair of resources to pit against the
+shuffle. The derivation of Section~\ref{sec:cm-floor} runs unchanged on the HBM resource. Let
+$\bytesG$ be the useful neighbour-gather bytes of the layer (each row once) and $\Bdp$ the extra
+gather bytes DGL reads for rows that other GPUs also gather; the gather is a random access, so it
+runs at $\BWdram$. Write $\intenm\equiv\Bdp/\Sgs$ for the \emph{gather intensity}, redundant gather
+bytes per shuffled byte. Start again from the two total times, let the useful term factor out of the
+minimum exactly as in~\eqref{eq:time-opt}, and read the optimal additional time as a rate -- now
+additional DRAM random bytes per additional second:
+\begin{align}
+  \mathrm{time}_{\mathrm{dp}} &= \frac{\bytesG + \Bdp}{\BWdram}
+  && \text{\small DGL: redundant gather} \notag\\
+  \mathrm{time}_{\mathrm{gs}} &= \frac{\bytesG}{\BWdram} + \frac{\Sgs}{\BWnet}
+  && \text{\small gsplit: gather, then shuffle} \notag\\
+  \mathrm{time}^{\mathrm{add}}_{\mathrm{opt}} &= \min\!\Big(\frac{\Bdp}{\BWdram},\ \frac{\Sgs}{\BWnet}\Big)
+  \notag\\
+  \rate_{\mathrm{m}}(\intenm) &= \frac{\Bdp}{\mathrm{time}^{\mathrm{add}}_{\mathrm{opt}}}
+   = \max\!\big(\BWdram,\ \BWnet\cdot\intenm\big)
+  && \text{\small random byte/s}
+  \label{eq:floor-mem}\\
+  \intenm^\star &= \frac{\BWdram}{\BWnet}
+  && \text{\small ridge}
+  \label{eq:ridge-mem}
+\end{align}
+As before, a real DGL run reads its redundant gather bytes no faster than $\BWdram$ (a horizontal
+line) and a real gsplit run saves them no faster than $\BWnet$ times the gather intensity (a slanting
+line); the optimum takes the faster strategy, so the achievable set is the union of the two regions
+and its boundary is~\eqref{eq:floor-mem} (Figure~\ref{fig:roofline-mem}).
+
+\begin{figure}[h]
+\centering
+% Same geometry as fig:roofline: roof height 2.0 (BW_DRAM), slant slope 0.8, ridge at 2.5.
+% (a) DGL: redundant gather bytes done, capped at BW_DRAM
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\intenm$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize random byte/s};
+  \fill[black!8] (0,0) rectangle (4.6,2.0);
+  \draw[very thick] (0,2.0) -- (4.6,2.0);
+  \node[above] at (2.3,2.0) {\scriptsize $\BWdram$};
+  \node at (2.3,1.0) {\scriptsize achievable};
+  \node[below] at (2.4,-0.3) {\scriptsize (a) DGL: random bytes read};
+\end{tikzpicture}
+\hfill
+% (b) gsplit: gather bytes saved per second, BW_net * intensity_m
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\intenm$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize random byte/s};
+  \fill[black!8] (0,0) -- (4.6,3.68) -- (4.6,0) -- cycle;
+  \draw[very thick] (0,0) -- (4.6,3.68);
+  \node[rotate=39] at (2.0,2.1) {\scriptsize $\BWnet\cdot\intenm$};
+  \node at (3.5,0.9) {\scriptsize achievable};
+  \node[below] at (2.4,-0.3) {\scriptsize (b) gsplit: gather saved};
+\end{tikzpicture}
+\hfill
+% (c) union = optimal upper bound
+\begin{tikzpicture}[scale=0.72]
+  \draw[->] (0,0) -- (5.2,0) node[right]{\scriptsize $\intenm$};
+  \draw[->] (0,0) -- (0,4.2) node[above]{\scriptsize random byte/s};
+  \fill[black!8] (0,0) -- (0,2.0) -- (2.5,2.0) -- (4.6,3.68) -- (4.6,0) -- cycle;
+  \draw[very thick] (0,2.0) -- (2.5,2.0) -- (4.6,3.68);
+  \draw[dashed] (2.5,0) -- (2.5,2.0);
+  \node[below] at (2.5,0) {\scriptsize $\intenm^\star$};
+  \node at (1.2,1.0) {\scriptsize DGL};
+  \node at (3.9,1.2) {\scriptsize gsplit};
+  \node[above] at (1.1,2.0) {\scriptsize $\BWdram$};
+  \node[rotate=39] at (3.2,3.2) {\scriptsize $\BWnet\cdot\intenm$};
+  \node[below] at (2.4,-0.3) {\scriptsize (c) union: optimal bound};
+\end{tikzpicture}
+\caption{The second roofline, on the HBM resource. Additional DRAM random bytes per additional
+second against the gather intensity $\intenm=\Bdp/\Sgs$. (a)~DGL reads its redundant gather bytes at
+no more than the random-access HBM bandwidth: a horizontal line at $\BWdram$. (b)~gsplit saves those
+bytes by shuffling: a slanting line $\BWnet\cdot\intenm$. (c)~The union is bounded by
+$\max(\BWdram,\BWnet\cdot\intenm)$~\eqref{eq:floor-mem}, crossing at the ridge
+$\intenm^\star=\BWdram/\BWnet$~\eqref{eq:ridge-mem}. Same derivation as Figure~\ref{fig:roofline} with
+HBM in place of compute.}
+\label{fig:roofline-mem}
+\end{figure}
+
+Since the gather and the dense work of a layer overlap (A1), DGL's overhead is the larger of the two
+redundant costs, so DGL wins only when it is below the shuffle on \emph{both} rooflines; gsplit wins
+as soon as it is cheaper on \emph{either}. In almost every setting the dense branch binds, so the
+compute roofline~\eqref{eq:roofline} decides; the one place the gather binds is the outermost layer of
+4-layer GAT on products, where the second roofline~\eqref{eq:floor-mem} takes over. Naming both
+resources is what makes the single-roofline rule precise.
 
 % ---------------------------------------------------------------------------
 \subsection{Estimating the counts}
 \label{sec:cm-estimate}
 
-\paraq{How are $\rho$, $F$, and $S$ obtained?}
+\paraq{How are $\Fdp$, $\Bdp$, and $\Sgs$ obtained?}
 One sampling pass replays the loaders of DGL, gsplit (with and without a data-parallel prefix), and
 the pipeline, without features or training. For each layer it records, on the busiest GPU (A4), the
 destination rows $n$, source rows $n_{\mathrm{src}}$, edges $e$, and shuffled rows $m$, plus the
-distinct destination rows pooled across the GPUs. The dense FLOPs $F$ and shuffle bytes $S$ follow from
-these counts and the per-model constants (Table~\ref{tab:cm-constants}), scaled by the training-step
-factors (A3). The redundancy $\rho$ is the ratio of rows a strategy pays for to rows the mini-batch
-needs: DGL's per-GPU frontiers overlap, so it recomputes rows; gsplit's partitions are disjoint, so
-its $\rho$ is only the load imbalance of the busiest GPU above the mean. gsplit and the hybrids use a
-global mini-batch of $1024$ seeds split across $4$ GPUs by partition; DGL gives each GPU $256$. The
-three rates $\hat P$, $\hat B_{\mathrm{m}}$, $\hat B$ come from microbenchmarks
-(Table~\ref{tab:cm-microbench}).
+distinct destination rows pooled across the GPUs. The useful dense FLOPs $\flopsU$, the gather bytes
+$\bytesG$, and the shuffle bytes $\Sgs$ follow from these counts and the per-model constants
+(Table~\ref{tab:cm-constants}), scaled by the training-step factors (A3). The $\redund$ is the ratio
+of rows a strategy pays for to rows the mini-batch needs: DGL's per-GPU frontiers overlap, so it
+recomputes rows; gsplit's partitions are disjoint, so its $\redund$ is only the load imbalance of the
+busiest GPU above the mean. The derivation's quantities are then
+$\Fdp=\redund\cdot\flopsU$ and $\Bdp=\redund\cdot\bytesG$. gsplit and the hybrids use a global
+mini-batch of $1024$ seeds split across $4$ GPUs by partition; DGL gives each GPU $256$. The three
+rates $\Tflops$, $\BWdram$, $\BWnet$ come from microbenchmarks (Table~\ref{tab:cm-microbench}).
 For GAT the shuffle moves narrow rows of the transformed features $z$, whose small-message
 all-to-all runs below the measured peak bandwidth; we scale GAT's modelled shuffle time by a single
 calibration constant to absorb this, fixed once on the sweep (Section~\ref{sec:results}).
@@ -225,13 +414,13 @@ all-to-all over $4$ GPUs). Raw data: \texttt{results/microbench/}.}
 \toprule
 Rate & Microbenchmark & $h{=}256$ & $512$ & $1024$ & $2048$ & $4096$ \\
 \midrule
-$\hat P$ (TFLOP/s) & layer GEMM on a sampled block
+$\Tflops$ (TFLOP/s) & layer GEMM on a sampled block
   & 15.0 & 18.7 & 19.0 & 19.1 & 19.1 \\
-$\hat B_{\mathrm{m}}$ (GB/s) & neighbour gather (CSR SpMM)
+$\BWdram$ (GB/s) & neighbour gather (CSR SpMM)
   & 1206 & 1240 & 1259 & 1263 & 1281 \\
-$\hat B$ (GB/s), PCIe-emu & NCCL all-to-all
+$\BWnet$ (GB/s), PCIe-emu & NCCL all-to-all
   & 12.2 & 13.1 & 13.3 & 13.3 & 13.3 \\
-$\hat B$ (GB/s), NVLink & NCCL all-to-all
+$\BWnet$ (GB/s), NVLink & NCCL all-to-all
   & 154 & 177 & 185 & 196 & 200 \\
 \bottomrule
 \end{tabular}
@@ -242,11 +431,11 @@ $\hat B$ (GB/s), NVLink & NCCL all-to-all
 \label{sec:cm-layers}
 
 \paraq{How is a split point chosen across layers?}
-Rule~\eqref{eq:floor-rule} is per layer. Redundancy $\rho$ grows with distance from the seeds, so
-the layers nearest the seeds are the smallest and least redundant and the layers farthest away are
-the largest. We therefore read the layers from the output back towards the seeds and stop at the
-first that prefers DGL: every layer above it is smaller and also prefers DGL, so it inherits the
-choice. The split point $k$ is where the rule flips.
+Rule~\eqref{eq:floor-rule} is per layer. The $\redund$ grows with distance from the seeds, so the
+layers nearest the seeds are the smallest and least redundant and the layers farthest away are the
+largest. We therefore read the layers from the output back towards the seeds and stop at the first
+that prefers DGL: every layer above it is smaller and also prefers DGL, so it inherits the choice.
+The split point $k$ is where the rule flips.
 \begin{quote}\small
 \texttt{for}\ $\ell = L, L{-}1, \dots, 1$:\quad
 \texttt{if}\ layer $\ell$ prefers DGL (Eq.~\ref{eq:floor-rule}) \texttt{then}\ split point $k=\ell$,
@@ -254,30 +443,66 @@ choice. The split point $k$ is where the rule flips.
 \end{quote}
 A pure strategy is the boundary case: $k=0$ is gsplit, $k=L$ is DGL.
 
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[scale=1.0]
+  \draw[->] (0,0) -- (0,3.5) node[above] {\footnotesize $\inten=\Fdp/\Sgs$};
+  \draw[->] (0,0) -- (9.0,0);
+  % region tints: above ridge = gsplit, below = DGL
+  \fill[black!7] (0,1.75) rectangle (8.4,3.25);
+  \fill[black!3] (0,0) rectangle (8.4,1.75);
+  % ridge
+  \draw[dashed] (0,1.75) -- (8.6,1.75) node[right] {\footnotesize $\inten^\star$};
+  \node[anchor=west] at (0.15,2.95) {\footnotesize above $\inten^\star$: gsplit cheaper};
+  \node[anchor=west] at (0.15,0.5)  {\footnotesize below $\inten^\star$: DGL cheaper};
+  % per-layer points, output (L) -> seeds (1), intensity decreasing
+  \draw[dotted,gray] (1.0,2.8) -- (2.3,2.4) -- (3.6,2.0) -- (4.8,1.65) -- (6.0,1.3) -- (7.3,0.9);
+  \fill (1.0,2.8) circle (2pt);
+  \fill (2.3,2.4) circle (2pt);
+  \fill (3.6,2.0) circle (2pt);
+  \fill (6.0,1.3) circle (2pt);
+  \fill (7.3,0.9) circle (2pt);
+  % split point: first layer (scanning L->1) that drops below the ridge
+  \draw[thick] (4.3,0) -- (4.3,3.25);
+  \node[above] at (4.3,3.25) {\footnotesize split point $k$};
+  % layer ticks
+  \foreach \x/\l in {1.0/{L}, 2.3/{L-1}, 3.6/{L-2}, 6.0/{2}, 7.3/{1}}
+      \node[below] at (\x,0) {\footnotesize $\l$};
+  \node[below=6pt] at (7.3,-0.2) {\footnotesize (seeds)};
+\end{tikzpicture}
+\caption{Choosing the split point. Reading the layers from the output ($\ell=L$) back towards the
+seeds ($\ell=1$), the redundant FLOPs $\Fdp$ -- and so the intensity $\Fdp/\Sgs$ -- fall
+monotonically. Scan outward and stop at the first layer whose intensity drops below the ridge
+$\inten^\star$: that layer is the split point $k$. Layers above it (larger, more redundant) stay on
+gsplit; layers below it inherit DGL.}
+\label{fig:layer-split}
+\end{figure}
+
 \paraq{Where does the pipeline fit?}
-The pipeline is the same floorline with one change. Write the full compute and shuffle times of a
+The pipeline is the same roofline with one change. Write the full compute and shuffle times of a
 layer as
 \begin{equation}
-  T^{\mathrm{cmp}} = \frac{(1+\rho)\,F}{\hat P},\qquad
-  T^{\mathrm{net}} = \frac{S}{\hat B},
+  \mathrm{time}^{\mathrm{cmp}} = \frac{(1+\redund)\cdot\flopsU}{\Tflops},\qquad
+  \mathrm{time}^{\mathrm{net}} = \frac{\Sgs}{\BWnet},
   \label{eq:layer-times}
 \end{equation}
-the useful dense work $F/\hat P$ inflated by redundancy, and the shuffle. DGL pays
-$T^{\mathrm{cmp}}$ (no shuffle) and gsplit pays $T^{\mathrm{cmp}}+T^{\mathrm{net}}$ serially; the
-pipeline overlaps them (A5), so its layer costs $\max(T^{\mathrm{cmp}},T^{\mathrm{net}})$, with the
-redundancy of its two micro-batches, $\rho_{\mathrm{pipe}}$, in place of $\rho$. Substituting
-$\rho_{\mathrm{pipe}}$ and the overlap into
-Equations~\eqref{eq:floor-overheads}--\eqref{eq:floor-rule} reproduces the whole construction, so we
-do not redraw it. The choice is between the pipeline and gsplit, and because compute is typically
-large enough to hide the shuffle, the pipeline's overhead collapses to its redundant compute alone;
-the comparison then turns on $\rho_{\mathrm{pipe}}$, and we make the choice at the bottom (largest)
-layer, as above.
+the useful dense work $\flopsU/\Tflops$ inflated by redundancy, and the shuffle. DGL pays
+$\mathrm{time}^{\mathrm{cmp}}$ (no shuffle) and gsplit pays
+$\mathrm{time}^{\mathrm{cmp}}+\mathrm{time}^{\mathrm{net}}$ serially; the pipeline overlaps them (A5),
+so its layer costs $\max(\mathrm{time}^{\mathrm{cmp}},\mathrm{time}^{\mathrm{net}})$, with the
+redundancy of its two micro-batches, $\redund_{\mathrm{pipe}}$, in place of $\redund$. Substituting
+$\redund_{\mathrm{pipe}}$ and the overlap into Equations~\eqref{eq:floor-overheads}--\eqref{eq:floor-rule}
+reproduces the whole construction, so we do not redraw it. The choice is between the pipeline and
+gsplit, and because compute is typically large enough to hide the shuffle, the pipeline's overhead
+collapses to its redundant compute alone; the comparison then turns on $\redund_{\mathrm{pipe}}$, and
+we make the choice at the bottom (largest) layer, as above.
 
 \paraq{What does this section conclude?}
-The floorline is a roofline-inspired lower bound on a strategy's overhead: a rising redundant-work
-branch and a flat shuffle branch crossing at a ridge fixed by the interconnect. The useful work is
-the same for every strategy, so only the overhead and the side of the ridge matter; real runs sit
-above the floor and are not predicted. Built from one sampling pass and three measured rates, the
-rule picks a strategy per layer, a split point across layers, and the pipeline-versus-gsplit choice
-at the bottom layer. Section~\ref{sec:res-table} reports how often the pick matches the measured
-winner.
+The overhead roofline is a new model, derived from the minimum of the strategies' total times rather
+than taken from the classic roofline: a two-resource bound on the best achievable overhead across
+alternative strategies, a flat compute ceiling and a rising interconnect branch crossing at a ridge
+that is a decision boundary between strategies, with the floorline as its time-domain dual. The useful work is the same for every strategy, so only the overhead and the side
+of the ridge matter; real runs sit below the roof (above the floor) and are not predicted. Built from
+one sampling pass and three measured rates, the rule picks a strategy per layer, a split point across
+layers, and the pipeline-versus-gsplit choice at the bottom layer. Section~\ref{sec:res-table}
+reports how often the pick matches the measured winner.
