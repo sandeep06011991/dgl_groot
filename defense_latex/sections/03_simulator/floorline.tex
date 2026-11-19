@@ -341,8 +341,26 @@ the pipeline, without features or training. For each layer it records the destin
 source rows $n_{\mathit{src}}$, edges $e$, and shuffled rows $m$ on every GPU, plus the distinct
 destination rows pooled across the GPUs. \assume{Per mini-batch, the per-GPU maxima of these counts
 stand for the busiest GPU, which sets the step time, and strategies are compared per useful row.}
-The useful dense FLOPs $\flopsU$, the gather bytes $\bytesG$, and the shuffle bytes $\Sgs$ follow
-from these counts and the per-model constants (Table~\ref{tab:cm-constants}). \assume{Modelled time
+The forward dense FLOPs of a layer follow from these counts and the per-model constants
+(Table~\ref{tab:cm-constants}). For a layer with input row width $d$ ($h$ for a hidden layer, the
+feature width for the layer that reads input features) and output width $h$,
+\begin{equation}
+  \mathit{flops}(n, n_{\mathit{src}}, e) =
+  2\,\Big[\underbrace{(\beta_e\, e + \beta_n\, n + \beta_s\, n_{\mathit{src}})\, d\, h}_{\text{matrix--vector products}}
+        +\underbrace{(\gamma_e\, e + \gamma_n\, n + \gamma_s\, n_{\mathit{src}})\, h}_{\text{vector--vector products}}\Big] ,
+  \label{eq:dense-cost}
+\end{equation}
+where each $\beta$ counts the matrix--vector products and each $\gamma$ the vector--vector products
+the model performs per edge, per destination row, and per source row, and the factor $2$ counts a
+multiply and an add. The constants are where the two models differ. SAGE applies two weight matrices
+to every destination row, one to the row itself and one to its aggregated neighbours, so only
+$\beta_n=2$ is non-zero and its FLOPs scale with $n$. GAT transforms every source row once
+($\beta_s=1$), takes one attention dot product per source row and one per destination row
+($\gamma_s=\gamma_n=1$), and forms the attention-weighted sum over edges ($\gamma_e=1$), so its FLOPs
+scale with $n_{\mathit{src}}$ and $e$. Evaluating~\eqref{eq:dense-cost} on gsplit's counts gives the
+useful FLOPs $\flopsU$. The gather bytes are $\bytesG=\kappa\ast e\ast s_g$, with $\kappa$ the rows
+gathered per edge and $s_g$ the bytes of a gathered row (the input row for SAGE, the transformed row
+$z$ for GAT), and the shuffle bytes are $\Sgs=m\ast s$, with $s$ the bytes of an input row. \assume{Modelled time
 is a training step, forward plus backward: compute counts $3\times$ the forward FLOPs ($2\times$ for
 the input layer) and the shuffle $2\times$ the forward bytes, rows out and gradients back.} The
 redundancy $\redund$ is the ratio
@@ -401,52 +419,32 @@ $\BWnet$ (GB/s), NVLink & NCCL all-to-all
 \label{sec:cm-layers}
 
 \paraq{How is a split point chosen across layers?}
-Rule~\eqref{eq:floor-rule} is per layer. The redundancy $\redund$ grows with distance from the seeds, so the
-layers nearest the seeds are the smallest and least redundant and the layers farthest away are the
-largest. We therefore read the layers from the output back towards the seeds and stop at the first
-that prefers DGL: every layer above it is smaller and also prefers DGL, so it inherits the choice.
-The split point $k$ is where the rule flips.
-\begin{quote}\small
-\texttt{for}\ $\ell = L, L{-}1, \dots, 1$:\quad
-\texttt{if}\ layer $\ell$ prefers DGL (Eq.~\ref{eq:floor-rule}) \texttt{then}\ split point $k=\ell$,
-\texttt{stop}.
-\end{quote}
-A pure strategy is the boundary case: $k=0$ is gsplit, $k=L$ is DGL.
+Rule~\eqref{eq:floor-rule} is per layer; Algorithm~\ref{alg:split-point} turns it into a split
+point. Number the layers from the seeds, $\ell=1$ nearest them and $\ell=L$ farthest. The redundancy
+$\redund$ grows with distance from the seeds, so the layers nearest the seeds are the smallest and
+least redundant and the layers farthest away are the largest. The algorithm therefore scans from the
+farthest layer towards the seeds and stops at the first layer that prefers DGL: every layer nearer
+the seeds is smaller and also prefers DGL, so it inherits the choice. A layer prefers DGL only when
+it is left of the ridge on both rooflines (Section~\ref{sec:cm-second}). The split point $k$ is
+where the rule flips, and a pure strategy is the boundary case: $k=0$ is gsplit, $k=L$ is DGL.
 
-\begin{figure}[h]
-\centering
-\begin{tikzpicture}[scale=1.0]
-  \draw[->] (0,0) -- (0,3.5) node[above] {\footnotesize $\inten=\Fdp/\Sgs$};
-  \draw[->] (0,0) -- (9.0,0);
-  % region tints: above ridge = gsplit, below = DGL
-  \fill[black!7] (0,1.75) rectangle (8.4,3.25);
-  \fill[black!3] (0,0) rectangle (8.4,1.75);
-  % ridge
-  \draw[dashed] (0,1.75) -- (8.6,1.75) node[right] {\footnotesize $\inten^\star$};
-  \node[anchor=west] at (0.15,2.95) {\footnotesize above $\inten^\star$: gsplit cheaper};
-  \node[anchor=west] at (0.15,0.5)  {\footnotesize below $\inten^\star$: DGL cheaper};
-  % per-layer points, output (L) -> seeds (1), savings decreasing
-  \draw[dotted,gray] (1.0,2.8) -- (2.3,2.4) -- (3.6,2.0) -- (4.8,1.65) -- (6.0,1.3) -- (7.3,0.9);
-  \fill (1.0,2.8) circle (2pt);
-  \fill (2.3,2.4) circle (2pt);
-  \fill (3.6,2.0) circle (2pt);
-  \fill (6.0,1.3) circle (2pt);
-  \fill (7.3,0.9) circle (2pt);
-  % split point: first layer (scanning L->1) that drops below the ridge
-  \draw[thick] (4.3,0) -- (4.3,3.25);
-  \node[above] at (4.3,3.25) {\footnotesize split point $k$};
-  % layer ticks
-  \foreach \x/\l in {1.0/{L}, 2.3/{L-1}, 3.6/{L-2}, 6.0/{2}, 7.3/{1}}
-      \node[below] at (\x,0) {\footnotesize $\l$};
-  \node[below=6pt] at (7.3,-0.2) {\footnotesize (seeds)};
-\end{tikzpicture}
-\caption{Choosing the split point. Reading the layers from the output ($\ell=L$) back towards the
-seeds ($\ell=1$), the redundant FLOPs $\Fdp$ -- and so the savings $\Fdp/\Sgs$ -- fall
-monotonically. Scan outward and stop at the first layer whose savings drop below the ridge
-$\inten^\star$: that layer is the split point $k$. Layers above it (larger, more redundant) stay on
-gsplit; layers below it inherit DGL.}
-\label{fig:layer-split}
-\end{figure}
+\begin{algorithm}[h]
+\caption{Choosing the split point $k$ of an $L$-layer model. Layers $1,\dots,k$ (nearest the
+seeds) run data-parallel; layers $k{+}1,\dots,L$ run split.}
+\label{alg:split-point}
+\begin{algorithmic}[1]
+\Require per-layer savings $\inten(\ell)$ and gather savings $\intenm(\ell)$ for $\ell=1,\dots,L$;
+         ridges $\inten^\star$~\eqref{eq:ridge} and $\intenm^\star$~\eqref{eq:ridge-mem}
+\Ensure split point $k\in\{0,\dots,L\}$
+\For{$\ell = L, L{-}1, \dots, 1$} \Comment{farthest (largest) layer first}
+  \If{$\inten(\ell) < \inten^\star$ \textbf{and} $\intenm(\ell) < \intenm^\star$}
+      \Comment{DGL cheaper on both rooflines}
+    \State \Return $k=\ell$ \Comment{layers $1,\dots,\ell$ inherit DGL}
+  \EndIf
+\EndFor
+\State \Return $k=0$ \Comment{no layer prefers DGL: pure gsplit}
+\end{algorithmic}
+\end{algorithm}
 
 \paraq{Where does the pipeline fit?}
 The pipeline is the same roofline with one change. \assume{Its two micro-batches are assumed
