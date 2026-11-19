@@ -64,8 +64,8 @@ In this chapter, we (i)~\emph{quantify} how gsplit's gain over the DGL baseline 
 schemes}---a data-parallel hybrid and a pipeline hybrid---that address the communication costs exposed by our system
 (Section~\ref{sec:hybrids}); (iii)~introduce a \emph{floorline}, a lower bound on each strategy's
 overhead whose ridge names the strategy to use, and condense it into rules of thumb for choosing a
-strategy per layer (Section~\ref{sec:roofline}); and (iv)~check how often the floorline's pick
-matches the measured winner across the full sweep (Section~\ref{sec:results}).
+strategy per layer (Section~\ref{sec:roofline}); and (iv)~validate the floorline by checking
+whether its pick matches the measured winner (Section~\ref{sec:results}).
 
 \paraq{On what hardware and workloads do we measure?}
 \textbf{Experimental Setup.} All measurements run on a single node with $4{\times}$\textbf{A100-SXM4-80GB} GPUs
@@ -92,6 +92,7 @@ reported times are the mean \emph{per-epoch} time over these epochs. We evaluate
 \FloatBarrier  % flush hybrid tables (tab:hybrid-*) before the roofline section starts
 \input{sections/03_simulator/floorline}
 \input{sections/05_final_results/final_results}
+\input{sections/06_conclusion/conclusion}
 
 \bibliographystyle{plain}
 \bibliography{refs}

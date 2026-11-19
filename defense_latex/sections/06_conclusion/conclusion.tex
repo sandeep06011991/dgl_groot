@@ -1,0 +1,30 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+\paraq{What problem did this chapter start from?}
+gsplit's gain over data parallelism is not uniform. Depth and hidden size change both the cost of
+its shuffles and the computation it saves, so the same system is faster or slower than DGL
+depending on the model, the graph, and the interconnect (Section~\ref{sec:limitations}).
+
+\paraq{What did we add to gsplit?}
+We added two hybrids. The data-parallel hybrid runs the first $k$ layers data-parallel and the
+rest split, and it improves on gsplit in $37$ of $40$ configurations; the pipeline hybrid overlaps
+one micro-batch's shuffle with another's compute, and our implementation does not improve on
+gsplit. The hybrids turn one system into a family indexed by the split point $k$, and the best $k$
+changes with the configuration (Section~\ref{sec:hybrids}).
+
+\paraq{How do we choose among the strategies?}
+We built a model. The floorline prices each strategy's overhead per layer, redundant computation
+for data parallelism and the shuffle for gsplit, against two measured resources, and its ridge is
+the decision boundary between them. Scanning the layers from the farthest towards the seeds gives the
+split point. Its inputs are one sampling pass and three measured rates
+(Section~\ref{sec:roofline}).
+
+\paraq{Is the model correct?}
+We validated it against the measured sweep. The floorline's pick is the measured winner or one
+layer from it in $32$ of $40$ settings, including every PCIe setting; the misses are on NVLink,
+where it picks too few data-parallel layers (Section~\ref{sec:results}).
+
+\paraq{What does the chapter establish?}
+No single parallelisation strategy is the fastest across models, graphs, and interconnects, and the
+strategy can be chosen from a model of overhead instead of a sweep on the target machine.

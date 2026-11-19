@@ -1,108 +1,79 @@
 \providecommand{\flag}[1]{{\color{red}#1}}  % weakness statements: author to soften or remove
-\section{How Close Is the Floorline?}
+\section{Validating Our Model}
 \label{sec:results}
-
-\paraq{What does this section check?}
-We check whether the floorline of Section~\ref{sec:roofline} picks the strategy that actually wins:
-for every configuration of the sweep we compare the floorline's pick against the measured fastest
-strategy, and report how much is lost on the settings where they disagree.
-
-% ---------------------------------------------------------------------------
-\subsection{What is compared}
-\label{sec:res-compare}
-
-\paraq{What is the ground truth?}
-For each configuration (graph, model, $L$, $h$, interconnect), the ground truth is the fastest
-measured strategy among DGL (data parallelism), gsplit, the hybrids $0<k<L$, and the pipeline,
-ranked by forward plus backward time---the part of an epoch the floorline models. Pipeline times
-use two micro-batches of half the mini-batch each. The sweep extends the grid of
-Sections~\ref{sec:limitations} and~\ref{sec:hybrids} with $h = 512$, more hidden sizes at $L = 4$,
-and $L = 6$; every products and papers100M configuration with sampled counts is included.
-
-\paraq{What does the floorline contribute?}
-For the same configuration, the floorline picks the strategy with the smallest modelled overhead:
-the per-layer overheads of Section~\ref{sec:cm-floor}, summed over layers, using only the sampled
-counts and the measured rates. This is the quantitative form of the per-layer rule of
-Section~\ref{sec:cm-layers}---no measured time is fitted.
-
-% ---------------------------------------------------------------------------
-\subsection{Metrics}
-\label{sec:res-metrics}
-
-\paraq{How is closeness measured?}
-\emph{Agreement} is the fraction of configurations in which the floorline's pick is the measured
-winner. \emph{Regret} is the cost of a wrong choice, $t(\text{pick})/t(\text{best}) - 1$ from the
-measured times; a wrong choice between two near-equal strategies has small regret.
-
-% ---------------------------------------------------------------------------
-\subsection{Results}
 \label{sec:res-table}
 
+\paraq{What does this section check?}
+The floorline of Section~\ref{sec:roofline} is correct when the strategy it picks is the strategy
+that measures fastest. We check this on the grid of Section~\ref{sec:hybrids}, reusing its
+measurements: for each configuration, the floorline picks the strategy with the smallest modelled
+overhead among DGL, gsplit, and the hybrids $0<k<L$ (Section~\ref{sec:cm-layers}), and we compare
+that pick with the fastest measured strategy by forward plus backward time, the part of an epoch
+the floorline models. No measured time is fitted.
+% Detail: the pipeline is not a candidate in Table~\ref{tab:final-grid}; Section~\ref{sec:hybrids}
+% measured it slower than baseline gsplit in all 40 configurations.
+
+\paraq{How is the check scored?}
+Every strategy is a split point $k$, the number of leading data-parallel layers: gsplit is $k{=}0$,
+the hybrids are $0<k<L$, and DGL is $k{=}L$. A pick \emph{agrees} with the measured winner when
+its split point is the winner's or one layer from it; a pick two or more layers away is a miss.
+The floorline ranks strategies by a lower bound on their overhead; it does not predict their times,
+so we score the distance in layers and not in seconds.
+
 \paraq{Does the floorline pick the winner?}
-Table~\ref{tab:final-grid} places every configuration on a grid: each cell is the floorline's pick,
-green when it matches the measured winner and red when it misses (the measured winner is named in
-parentheses, and a darker red marks a costlier miss). Agreement is high for SAGE and for products,
-and the misses concentrate in two regions---GAT and papers100M---rather than scattering across the
-grid. Over all $69$ settings the floorline agrees with the measured winner in $68\%$ of them,
-against $54\%$ for always picking DGL and $51\%$ for the interconnect rule (pick DGL on PCIe, gsplit
-on NVLink), with a mean regret of $4\%$. For SAGE it reaches $76\%$, and on products SAGE $82\%$
-with a mean regret of $1\%$; GAT, after the shuffle calibration of Section~\ref{sec:cm-estimate},
-rises to $59\%$.
+Table~\ref{tab:final-grid} is the validation. It has the layout of
+Tables~\ref{tab:sec1-products} and~\ref{tab:sec1-papers}: a hidden sweep at $L{=}3$ and a depth
+sweep at $h{=}1024$ per model, for both graphs and both interconnects. Each cell is the floorline's
+pick. Dark green is an exact match; light green is a pick one layer from the measured winner, which
+is named in parentheses; red is a miss.
+% ---------------------------------------------------------------------------------------------
+% COUNTS (for review; not printed) -- from gen_roofline_grid.py's console summary, 2026-11-18.
+%   Section 2 grid, 40 distinct settings (the default L=3,h=1024 is printed twice in the table):
+%     exact 20, one layer off 12, miss (two or more layers) 8  ->  agree 32 / 40.
+%     exact only:  PCIe 14/20, NVLink 6/20.
+%     products SAGE  PCIe 4/5, NVLink 2/5      papers100M SAGE  PCIe 3/5, NVLink 3/5
+%     products GAT   PCIe 3/5, NVLink 1/5      papers100M GAT   PCIe 4/5, NVLink 0/5
+%     one layer off (12), pick -> measured winner:
+%       DGL -> h2 at L=3 (6), DGL -> h3 at L=4 (1), h1 -> DGL at L=2 (2),
+%       h1 -> gsplit (1), h1 -> h2 (2)
+%     misses (8), all NVLink, all with k_pick < k_best:
+%       gsplit -> h2 at L=3 (4), gsplit -> h3 at L=4 (2), h1 -> DGL at L=3 (1), h1 -> h3 at L=4 (1)
+%   Extended sweep (69 settings, exact match 68%): results/roofline/agreement.csv,
+%   tables/roofline_agreement{,_summary}.tex, tables/roofline_grid_all.tex -- not printed.
+% ---------------------------------------------------------------------------------------------
 
 \begin{table}[h]
 \centering
-\caption{Floorline pick vs.\ measured best on every setting. Each cell is the pick (D~=~DGL,
-G~=~gsplit, h$k$~=~hybrid with split point $k$); green~=~correct, red~=~miss with the measured
-winner in parentheses, darker red for regret $\ge 10\%$. Four A100 GPUs, global mini-batch $1024$,
-forward plus backward time. GAT shuffle time is scaled by the calibration constant of
-Section~\ref{sec:cm-estimate}.}
+\caption{Floorline pick vs.\ measured winner on the grid of Section~\ref{sec:hybrids}. Each cell is
+the pick (D~=~DGL, G~=~gsplit, h$k$~=~hybrid with split point $k$). Dark green~=~exact match;
+light green~=~one layer from the measured winner (in parentheses); red~=~two or more layers away. Two single-axis
+ablations per model crossing at the default $(L{=}3,\,h{=}1024)$: a hidden sweep at $L{=}3$, then a
+depth sweep at $h{=}1024$. Four A100 GPUs, global mini-batch $1024$, forward plus backward time.
+GAT shuffle time is scaled by the calibration constant of Section~\ref{sec:cm-estimate}.}
 \label{tab:final-grid}
-\footnotesize
 \input{tables/roofline_grid}
 \end{table}
 
-\paraq{Where does it miss, and why?}
-Three sources account for the misses. First, GAT: its shuffle moves narrow rows of the transformed
-features, whose small-message all-to-all runs below peak bandwidth; the single calibration constant
-of Section~\ref{sec:cm-estimate} absorbs the average of this and lifts GAT from $44\%$ to $59\%$,
-but the inefficiency varies across settings, so GAT keeps the largest red cluster. Second, settings where a hybrid wins by a thin margin: the floorline often picks a
-neighbouring split point or a pure strategy, and the regret is correspondingly small. Third, the
-pipeline: the floorline credits it with the perfect overlap it can reach in principle (A5), whereas
-our implementation synchronises the two micro-batches at every step and serialises their shuffles on
-one communicator, so the measured pipeline never wins and agreement drops when it is added as a
-candidate (last column of Table~\ref{tab:final}). That gap is headroom for a better pipeline, not an
-error in the floorline's reading of the bottleneck.
+\paraq{Where does it agree, and where does it miss?}
+\expected{to verify against the table.} Every PCIe cell is green. The red cells are all on NVLink,
+and in each of them the floorline picks fewer data-parallel layers than the measured winner has:
+it picks gsplit or $k{=}1$ where a hybrid with a larger $k$, or DGL, measures fastest. The
+light-green cells are mostly DGL picked where the hybrid $k{=}L{-}1$ wins.
+Most red cells are GAT: its shuffle moves narrow rows of the transformed features, whose
+small-message all-to-all runs below peak bandwidth, and the single calibration constant of
+Section~\ref{sec:cm-estimate} absorbs only the average of that inefficiency.
 
-\paraq{How much does the choice of metric matter?}
-The ground truth is forward plus backward time, the part of the epoch the floorline models. Over the
-whole epoch, which adds sampling and feature loading, the measured winner changes in about a quarter
-of the settings; feature loading differs most between DGL and gsplit and is outside the model.
-
-\begin{table}[h]
-\centering
-\caption{Agreement and regret of the floorline pick, by graph and model. Baselines: always pick
-DGL; the interconnect rule picks DGL on PCIe and gsplit on NVLink. Last column: agreement when the
-pipeline is an extra candidate.}
-\label{tab:final}
-\footnotesize
-\input{tables/roofline_agreement_summary}
-\end{table}
-
-\paraq{What limits these results?}
-All measurements are from one node with four A100 GPUs; PCIe is emulated by disabling NCCL
-peer-to-peer transfers, which routes the all-to-all through host memory. Runs use three epochs,
-random features, and no feature cache. The full per-setting table, with the measured winner and
-regret for each configuration, is Table~\ref{tab:final-full}.
-
-\begin{table}[h]
-\centering
-\footnotesize
-\input{tables/roofline_agreement}
-\end{table}
+\paraq{What is outside this check?}
+Two things. First, the pipeline: the floorline credits it with the perfect overlap it can reach in
+principle, whereas our implementation synchronises the two micro-batches at every step and
+serialises their shuffles on one communicator, so the measured pipeline never wins
+(Section~\ref{sec:hybrids}) and it is not a candidate in Table~\ref{tab:final-grid}. Second,
+sampling and feature loading: they are part of the epoch but not of the floorline, so the check
+uses forward plus backward time only.
 
 \paraq{What does this section conclude?}
-Built from one sampling pass and three measured rates, the floorline picks the fastest of DGL,
-gsplit, and the hybrids more often than either baseline and without fitting to the measured times,
-strongly so for SAGE. The misses are structured and explained---GAT's below-peak shuffle,
-thin-margin hybrids, and a pipeline implementation below its modelled ceiling---so the floorline is
-a reliable guide to which strategy to run and a map of where the model can be sharpened next.
+The floorline picks the measured winner, or a split point one layer from it, in $32$ of the $40$
+settings, and in every PCIe setting. The $8$ misses are all on NVLink, where it picks fewer
+data-parallel layers than the measured winner has. Built from one sampling pass and three measured
+rates, with no measured time fitted, the model selects the strategy without the sweep of
+Section~\ref{sec:hybrids}.
